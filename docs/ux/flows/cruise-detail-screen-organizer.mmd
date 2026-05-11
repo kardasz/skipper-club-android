@@ -1,0 +1,31 @@
+flowchart TB
+    %% Screens
+    CruiseDetailOrganizer[Cruise Detail Screen <br> Organizer view]
+    DeleteCruise[Delete Cruise Screen]
+    MembersChat[Members Chat Screen]
+    ParticipantManage[Participant Manage Screen]
+    CruiseEdit[Cruise Edit Screen]
+    CruiseReview[Cruise Review Screen]
+    UserProfile[User Profile Screen]
+    AllCruisesFiltered[All Cruises Screen <br> Filtered by hashtag]
+
+    %% Organizer Actions on Cruise Detail
+    CruiseDetailOrganizer -->|Tap Delete button| DeleteCruise
+    CruiseDetailOrganizer -->|Tap Manage participants button| ParticipantManage
+    CruiseDetailOrganizer -->|Tap Edit button| CruiseEdit
+    CruiseDetailOrganizer -->|Tap Members Chat button| MembersChat
+    CruiseDetailOrganizer -->|Tap Review button| CruiseReview
+    CruiseDetailOrganizer -->|Tap organizer profile| UserProfile
+    CruiseDetailOrganizer -->|Tap participant profile| UserProfile
+    CruiseDetailOrganizer -->|Tap hashtag| AllCruisesFiltered
+
+    %% Styling
+    classDef screenStyle fill:#4A90E2,stroke:#2E5C8A,stroke-width:2px,color:#fff
+    classDef modalStyle fill:#FF9500,stroke:#CC7700,stroke-width:2px,color:#fff
+    classDef actionStyle fill:#7ED321,stroke:#5FA319,stroke-width:2px,color:#000
+    classDef noteStyle fill:#F5F5F5,stroke:#999,stroke-width:1px,color:#333,stroke-dasharray: 5 5
+    classDef entryStyle fill:#BD10E0,stroke:#8B0AA8,stroke-width:2px,color:#fff
+
+    class CruiseDetailOrganizer,DeleteCruise,MembersChat,ParticipantManage,CruiseEdit,CruiseReview,UserProfile,AllCruisesFiltered screenStyle
+
+

@@ -1,0 +1,36 @@
+flowchart TB
+    %% Screens / main areas
+    ParticipantManage[Participant Manage Screen]
+    CrewListTab[Crew Member List tab]
+    InvitationListTab[Invitation List tab]
+    UserProfile[User Profile Screen]
+    RemoveConfirmModal[Remove from Cruise<br>Confirmation Modal]
+    AcceptConfirmModal[Accept Request<br>Confirmation Modal]
+    RejectConfirmModal[Reject Request<br>Confirmation Modal]
+    CancelInvitationConfirmModal[Cancel Invitation<br>Confirmation Modal]
+    UserSearchModal[User Search<br>Modal]
+
+    %% Tab navigation
+    ParticipantManage -->|Tap Crew Member List tab| CrewListTab
+    ParticipantManage -->|Tap Invitation List tab| InvitationListTab
+
+    %% Crew Member List actions
+    CrewListTab -->|Tap avatar or name| UserProfile
+    CrewListTab -->|Tap Remove from cruise on ACCEPTED| RemoveConfirmModal
+
+    %% Invitation List actions
+    InvitationListTab -->|Tap avatar or name| UserProfile
+    InvitationListTab -->|Tap Accept on PENDING| AcceptConfirmModal
+    InvitationListTab -->|Tap Reject on PENDING| RejectConfirmModal
+    InvitationListTab -->|Tap Cancel invitation on INVITED| CancelInvitationConfirmModal
+    InvitationListTab -->|Tap Invite user| UserSearchModal
+
+
+    %% Styling
+    classDef screenStyle fill:#4A90E2,stroke:#2E5C8A,stroke-width:2px,color:#fff
+    classDef tabStyle fill:#FF9500,stroke:#CC7700,stroke-width:2px,color:#fff
+    classDef modalStyle fill:#7ED321,stroke:#5FA319,stroke-width:2px,color:#000
+
+    class ParticipantManage,CruiseDetailOrganizer,UserProfile screenStyle
+    class CrewListTab,InvitationListTab tabStyle
+    class RemoveConfirmModal,AcceptConfirmModal,RejectConfirmModal,CancelInvitationConfirmModal,UserSearchModal modalStyle

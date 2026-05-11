@@ -1,0 +1,42 @@
+flowchart TB
+    MainNav([Main Navigation])
+
+    %% Main Screens
+    MyCruises[My Cruises Screen]
+    AllCruises[All Cruises Screen]
+    CruiseDetail[Cruise Detail Screen<br/>Role-based view]
+    CreateCruise[Create Cruise Screen]
+
+    %% Actions and Modals
+    FilterMyCruises[Filter/Sort Menu]
+    FilterPublic[Filter/Sort Menu]
+
+    %% Entry Point
+    MainNav --> MyCruises
+
+    %% My Cruises Flow
+    MyCruises -->|Tap cruise card| CruiseDetail
+    MyCruises -->|Tap filter button| FilterMyCruises
+    MyCruises -->|Tap Add button| CreateCruise
+    MyCruises -->|Navigate to All Cruises| AllCruises
+    FilterMyCruises -->|Apply filters| MyCruises
+
+    %% All Cruises Flow
+    AllCruises -->|Tap cruise card| CruiseDetail
+    AllCruises -->|Tap filter button| FilterPublic
+    FilterPublic -->|Apply filters| AllCruises
+
+    %% Create Cruise Flow
+    CreateCruise -->|Save| MyCruises
+    CreateCruise -->|Cancel| MyCruises
+
+    %% Styling
+    classDef screenStyle fill:#4A90E2,stroke:#2E5C8A,stroke-width:2px,color:#fff
+    classDef actionStyle fill:#7ED321,stroke:#5FA319,stroke-width:2px,color:#000
+    classDef noteStyle fill:#F5F5F5,stroke:#999,stroke-width:1px,color:#333,stroke-dasharray: 5 5
+    classDef entryStyle fill:#BD10E0,stroke:#8B0AA8,stroke-width:2px,color:#fff
+
+    class MyCruises,AllCruises,CruiseDetail,CreateCruise screenStyle
+    class FilterMyCruises,FilterPublic actionStyle
+    class RoleNote noteStyle
+    class MainNav entryStyle

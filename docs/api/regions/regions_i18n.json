@@ -1,0 +1,152 @@
+[
+  {
+    "region_code": "MED",
+    "locale": "pl",
+    "localized_name": "Morze Śródziemne",
+    "localized_slug": "morze-srodziemne"
+  },
+  {
+    "region_code": "HR",
+    "locale": "pl",
+    "localized_name": "Chorwacja",
+    "localized_slug": "chorwacja"
+  },
+  {
+    "region_code": "GR",
+    "locale": "pl",
+    "localized_name": "Grecja",
+    "localized_slug": "grecja"
+  },
+  {
+    "region_code": "IT",
+    "locale": "pl",
+    "localized_name": "Włochy",
+    "localized_slug": "wochy"
+  },
+  {
+    "region_code": "IT-SAR",
+    "locale": "pl",
+    "localized_name": "Sardynia",
+    "localized_slug": "sardynia"
+  },
+  {
+    "region_code": "IT-SIC",
+    "locale": "pl",
+    "localized_name": "Sycylia",
+    "localized_slug": "sycylia"
+  },
+  {
+    "region_code": "ES",
+    "locale": "pl",
+    "localized_name": "Hiszpania",
+    "localized_slug": "hiszpania"
+  },
+  {
+    "region_code": "ES-BAL",
+    "locale": "pl",
+    "localized_name": "Balearic Islands",
+    "localized_slug": "balearic-islands"
+  },
+  {
+    "region_code": "FR",
+    "locale": "pl",
+    "localized_name": "Francja",
+    "localized_slug": "francja"
+  },
+  {
+    "region_code": "TR",
+    "locale": "pl",
+    "localized_name": "Turcja",
+    "localized_slug": "turcja"
+  },
+  {
+    "region_code": "ME",
+    "locale": "pl",
+    "localized_name": "Czarnogóra",
+    "localized_slug": "czarnogora"
+  },
+  {
+    "region_code": "BAL",
+    "locale": "pl",
+    "localized_name": "Morze Bałtyckie",
+    "localized_slug": "morze-batyckie"
+  },
+  {
+    "region_code": "SE",
+    "locale": "pl",
+    "localized_name": "Szwecja",
+    "localized_slug": "szwecja"
+  },
+  {
+    "region_code": "DK",
+    "locale": "pl",
+    "localized_name": "Dania",
+    "localized_slug": "dania"
+  },
+  {
+    "region_code": "DE",
+    "locale": "pl",
+    "localized_name": "Niemcy",
+    "localized_slug": "niemcy"
+  },
+  {
+    "region_code": "PL",
+    "locale": "pl",
+    "localized_name": "Polska",
+    "localized_slug": "polska"
+  },
+  {
+    "region_code": "FI",
+    "locale": "pl",
+    "localized_name": "Finland",
+    "localized_slug": "finland"
+  },
+  {
+    "region_code": "CAR",
+    "locale": "pl",
+    "localized_name": "Caribbean Sea",
+    "localized_slug": "caribbean-sea"
+  },
+  {
+    "region_code": "TH",
+    "locale": "pl",
+    "localized_name": "Thailand",
+    "localized_slug": "thailand"
+  },
+  {
+    "region_code": "SC",
+    "locale": "pl",
+    "localized_name": "Seszele",
+    "localized_slug": "seszele"
+  },
+  {
+    "region_code": "MV",
+    "locale": "pl",
+    "localized_name": "Malediwy",
+    "localized_slug": "malediwy"
+  },
+  {
+    "region_code": "PF",
+    "locale": "pl",
+    "localized_name": "Polinezja Francuska",
+    "localized_slug": "polinezja-francuska"
+  },
+  {
+    "region_code": "AU",
+    "locale": "pl",
+    "localized_name": "Australia",
+    "localized_slug": "australia"
+  },
+  {
+    "region_code": "NZ",
+    "locale": "pl",
+    "localized_name": "New Zealand",
+    "localized_slug": "new-zealand"
+  },
+  {
+    "region_code": "IC",
+    "locale": "pl",
+    "localized_name": "Wyspy Kanaryjskie",
+    "localized_slug": "wyspy-kanaryjskie"
+  }
+]

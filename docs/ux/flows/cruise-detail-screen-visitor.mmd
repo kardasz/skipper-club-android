@@ -1,0 +1,27 @@
+flowchart TB
+    %% Screens
+    CruiseDetailVisitor[Cruise Detail Screen <br> Visitor view]
+    JoinConfirmation[Join Confirmation Modal]
+    CancelConfirmation[Cancel Confirmation Modal]
+    ChatQA[Chat Screen]
+    UserProfile[User Profile Screen]
+    AllCruisesFiltered[All Cruises Screen <br> Filtered by hashtag]
+
+    %% Entry Point: directly on Cruise Detail Screen (Visitor view)
+    %% Visitor Actions on Cruise Detail
+    CruiseDetailVisitor -->|Tap Join request| JoinConfirmation
+    CruiseDetailVisitor -->|Tap Cancel request| CancelConfirmation
+    CruiseDetailVisitor -->|Tap Q&A Chat button| ChatQA
+    CruiseDetailVisitor -->|Tap organizer profile| UserProfile
+    CruiseDetailVisitor -->|Tap participant profile| UserProfile
+    CruiseDetailVisitor -->|Tap hashtag| AllCruisesFiltered
+
+    %% Styling
+    classDef screenStyle fill:#4A90E2,stroke:#2E5C8A,stroke-width:2px,color:#fff
+    classDef modalStyle fill:#FF9500,stroke:#CC7700,stroke-width:2px,color:#fff
+    classDef actionStyle fill:#7ED321,stroke:#5FA319,stroke-width:2px,color:#000
+    classDef noteStyle fill:#F5F5F5,stroke:#999,stroke-width:1px,color:#333,stroke-dasharray: 5 5
+    classDef entryStyle fill:#BD10E0,stroke:#8B0AA8,stroke-width:2px,color:#fff
+
+    class CruiseDetailVisitor,ChatQA,UserProfile,AllCruisesFiltered screenStyle
+    class JoinConfirmation,CancelConfirmation modalStyle
