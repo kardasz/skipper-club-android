@@ -34,11 +34,30 @@
     <string name="turnstile_title">Sprawdzanie zabezpieczeń</string>
     <string name="turnstile_subtitle">Potwierdzamy, że nie jesteś robotem…</string>
 
+    <string name="invitation_title">Dołącz do SkipperClub</string>
+    <string name="invitation_subtitle">Wprowadź dane z zaproszenia</string>
+    <string name="invitation_code_placeholder">Kod zaproszenia</string>
+    <string name="invitation_code_content_description">Kod zaproszenia</string>
+    <string name="invitation_code_helper">8 znaków z wiadomości e-mail</string>
+    <string name="invitation_name_placeholder">Imię i nazwisko</string>
+    <string name="invitation_name_content_description">Imię i nazwisko</string>
+    <string name="invitation_email_placeholder">E-mail</string>
+    <string name="invitation_email_content_description">Adres e-mail</string>
+    <string name="invitation_password_placeholder">Hasło</string>
+    <string name="invitation_password_content_description">Hasło</string>
+    <string name="invitation_password_helper">Minimum 8 znaków</string>
+    <string name="invitation_password_show">Pokaż hasło</string>
+    <string name="invitation_password_hide">Ukryj hasło</string>
+    <string name="invitation_submit">Załóż konto</string>
+
     <string name="auth_error_network">Brak połączenia z internetem. Spróbuj ponownie.</string>
     <string name="auth_error_captcha">Weryfikacja bezpieczeństwa nie powiodła się. Spróbuj ponownie.</string>
     <string name="auth_error_rate_limit">Zbyt wiele prób. Spróbuj ponownie później.</string>
     <string name="auth_error_invalid_otp">Kod jest nieprawidłowy lub wygasł.</string>
     <string name="auth_error_invalid_credentials">Nieprawidłowy adres e-mail lub hasło.</string>
     <string name="auth_error_invalid_email">Podaj prawidłowy adres e-mail.</string>
+    <string name="auth_error_invalid_invitation">Zaproszenie jest nieprawidłowe, wygasło lub zostało już wykorzystane.</string>
+    <string name="auth_error_invitation_email_mismatch">Adres e-mail nie zgadza się z zaproszeniem.</string>
+    <string name="auth_error_email_already_registered">Ten adres e-mail jest już zarejestrowany. Zaloguj się.</string>
     <string name="auth_error_generic">Coś poszło nie tak. Spróbuj ponownie.</string>
 </resources>

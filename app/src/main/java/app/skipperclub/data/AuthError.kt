@@ -7,5 +7,8 @@ sealed class AuthError(message: String) : Exception(message) {
     class RateLimited(detail: String?) : AuthError(detail ?: "Too many requests")
     class CaptchaFailed(detail: String?) : AuthError(detail ?: "CAPTCHA verification failed")
     class Validation(detail: String?) : AuthError(detail ?: "Validation failed")
+    class InvalidInvitation(detail: String?) : AuthError(detail ?: "Invalid invitation")
+    class InvitationEmailMismatch(detail: String?) : AuthError(detail ?: "Email doesn't match invitation")
+    class EmailAlreadyRegistered(detail: String?) : AuthError(detail ?: "Email already registered")
     class Server(val statusCode: Int, detail: String?) : AuthError(detail ?: "Server error ($statusCode)")
 }

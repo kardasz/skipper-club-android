@@ -34,11 +34,30 @@
     <string name="turnstile_title">Quick security check</string>
     <string name="turnstile_subtitle">Confirming you\'re human…</string>
 
+    <string name="invitation_title">Join SkipperClub</string>
+    <string name="invitation_subtitle">Enter the details from your invitation</string>
+    <string name="invitation_code_placeholder">Invitation code</string>
+    <string name="invitation_code_content_description">Invitation code</string>
+    <string name="invitation_code_helper">8 characters from your email</string>
+    <string name="invitation_name_placeholder">Full name</string>
+    <string name="invitation_name_content_description">Full name</string>
+    <string name="invitation_email_placeholder">Email</string>
+    <string name="invitation_email_content_description">Email address</string>
+    <string name="invitation_password_placeholder">Password</string>
+    <string name="invitation_password_content_description">Password</string>
+    <string name="invitation_password_helper">Minimum 8 characters</string>
+    <string name="invitation_password_show">Show password</string>
+    <string name="invitation_password_hide">Hide password</string>
+    <string name="invitation_submit">Create account</string>
+
     <string name="auth_error_network">No internet connection. Please try again.</string>
     <string name="auth_error_captcha">Security check failed. Please try again.</string>
     <string name="auth_error_rate_limit">Too many attempts. Please try again later.</string>
     <string name="auth_error_invalid_otp">The code is invalid or has expired.</string>
     <string name="auth_error_invalid_credentials">Incorrect email or password.</string>
     <string name="auth_error_invalid_email">Please enter a valid email address.</string>
+    <string name="auth_error_invalid_invitation">This invitation is invalid, expired, or already used.</string>
+    <string name="auth_error_invitation_email_mismatch">The email doesn\'t match the invitation.</string>
+    <string name="auth_error_email_already_registered">This email is already registered. Please sign in.</string>
     <string name="auth_error_generic">Something went wrong. Please try again.</string>
 </resources>
