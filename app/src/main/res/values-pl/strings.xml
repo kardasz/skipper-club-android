@@ -1,0 +1,33 @@
+<resources>
+    <string name="app_name">SkipperClub</string>
+
+    <string name="app_logo_content_description">Logo SkipperClub</string>
+
+    <string name="action_back">Wstecz</string>
+
+    <string name="login_title">Witaj w SkipperClub</string>
+    <string name="login_subtitle">Połącz się z miłośnikami żeglarstwa na całym świecie</string>
+    <string name="login_email_placeholder">E-mail</string>
+    <string name="login_email_content_description">Adres e-mail</string>
+    <string name="login_continue_with_password">Zaloguj się hasłem</string>
+    <string name="login_or">lub</string>
+    <string name="login_send_login_code">Wyślij kod logowania</string>
+    <string name="login_have_invitation">Masz zaproszenie?</string>
+    <string name="login_join_now">Dołącz teraz</string>
+
+    <string name="password_title">Wpisz hasło</string>
+    <string name="password_subtitle">Logowanie jako %1$s</string>
+    <string name="password_placeholder">Hasło</string>
+    <string name="password_content_description">Hasło</string>
+    <string name="password_show">Pokaż hasło</string>
+    <string name="password_hide">Ukryj hasło</string>
+    <string name="password_continue">Zaloguj się</string>
+    <string name="password_forgot">Nie pamiętasz hasła?</string>
+
+    <string name="otp_title">Wpisz kod weryfikacyjny</string>
+    <string name="otp_subtitle">Wysłaliśmy 6-cyfrowy kod na %1$s</string>
+    <string name="otp_input_content_description">Kod weryfikacyjny</string>
+    <string name="otp_verify">Zweryfikuj</string>
+    <string name="otp_didnt_receive">Nie otrzymałeś kodu?</string>
+    <string name="otp_resend">Wyślij ponownie</string>
+</resources>

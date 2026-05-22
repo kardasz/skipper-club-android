@@ -1,3 +1,33 @@
 <resources>
     <string name="app_name">SkipperClub</string>
+
+    <string name="app_logo_content_description">SkipperClub logo</string>
+
+    <string name="action_back">Back</string>
+
+    <string name="login_title">Welcome to SkipperClub</string>
+    <string name="login_subtitle">Connect with sailing enthusiasts worldwide</string>
+    <string name="login_email_placeholder">Email</string>
+    <string name="login_email_content_description">Email address</string>
+    <string name="login_continue_with_password">Continue with Password</string>
+    <string name="login_or">or</string>
+    <string name="login_send_login_code">Send Login Code</string>
+    <string name="login_have_invitation">Have an invitation?</string>
+    <string name="login_join_now">Join Now</string>
+
+    <string name="password_title">Enter your password</string>
+    <string name="password_subtitle">Signing in as %1$s</string>
+    <string name="password_placeholder">Password</string>
+    <string name="password_content_description">Password</string>
+    <string name="password_show">Show password</string>
+    <string name="password_hide">Hide password</string>
+    <string name="password_continue">Sign In</string>
+    <string name="password_forgot">Forgot password?</string>
+
+    <string name="otp_title">Enter verification code</string>
+    <string name="otp_subtitle">We sent a 6-digit code to %1$s</string>
+    <string name="otp_input_content_description">Verification code</string>
+    <string name="otp_verify">Verify</string>
+    <string name="otp_didnt_receive">Didn\'t receive a code?</string>
+    <string name="otp_resend">Resend</string>
 </resources>
