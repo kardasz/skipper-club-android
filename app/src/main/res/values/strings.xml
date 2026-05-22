@@ -38,6 +38,7 @@
     <string name="auth_error_captcha">Security check failed. Please try again.</string>
     <string name="auth_error_rate_limit">Too many attempts. Please try again later.</string>
     <string name="auth_error_invalid_otp">The code is invalid or has expired.</string>
+    <string name="auth_error_invalid_credentials">Incorrect email or password.</string>
     <string name="auth_error_invalid_email">Please enter a valid email address.</string>
     <string name="auth_error_generic">Something went wrong. Please try again.</string>
 </resources>

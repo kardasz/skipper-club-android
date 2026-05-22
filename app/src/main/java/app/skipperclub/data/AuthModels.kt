@@ -9,6 +9,9 @@ internal data class OtpRequest(val email: String)
 internal data class OtpVerifyRequest(val email: String, val code: String)
 
 @Serializable
+internal data class LoginRequest(val email: String, val password: String)
+
+@Serializable
 data class SessionResponse(
     val id: String,
     val accessToken: String,

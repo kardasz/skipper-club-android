@@ -57,6 +57,7 @@ class MainActivity : ComponentActivity() {
 private sealed class PendingAuthAction(val turnstileAction: String) {
     data class SendOtp(val email: String) : PendingAuthAction("otp")
     data class VerifyOtp(val email: String, val code: String) : PendingAuthAction("otp-verify")
+    data class LoginPassword(val email: String, val password: String) : PendingAuthAction("login")
 }
 
 @PreviewScreenSizes
@@ -75,6 +76,7 @@ fun SkipperClubApp() {
     val captchaErrorMessage = stringResource(R.string.auth_error_captcha)
     val rateLimitErrorMessage = stringResource(R.string.auth_error_rate_limit)
     val invalidOtpErrorMessage = stringResource(R.string.auth_error_invalid_otp)
+    val invalidCredentialsErrorMessage = stringResource(R.string.auth_error_invalid_credentials)
     val validationErrorMessage = stringResource(R.string.auth_error_invalid_email)
     val genericErrorMessage = stringResource(R.string.auth_error_generic)
 
@@ -84,8 +86,8 @@ fun SkipperClubApp() {
             is AuthError.CaptchaFailed -> captchaErrorMessage
             is AuthError.RateLimited -> rateLimitErrorMessage
             is AuthError.InvalidOtpCode -> invalidOtpErrorMessage
+            is AuthError.InvalidCredentials -> invalidCredentialsErrorMessage
             is AuthError.Validation -> validationErrorMessage
-            is AuthError.InvalidCredentials,
             is AuthError.Server -> genericErrorMessage
         }
         scope.launch { snackbarHostState.showSnackbar(message) }
@@ -113,9 +115,8 @@ fun SkipperClubApp() {
                 PasswordScreen(
                     email = destination.email,
                     onBack = { authDestination = AuthDestination.Login },
-                    onContinue = { _, _ ->
-                        // TODO: call POST /auth/login (also requires Turnstile)
-                        isAuthenticated = true
+                    onContinue = { email, password ->
+                        pendingAction = PendingAuthAction.LoginPassword(email, password)
                     },
                     onForgotPassword = { /* TODO */ },
                 )
@@ -168,6 +169,11 @@ fun SkipperClubApp() {
                             }
                             is PendingAuthAction.VerifyOtp -> {
                                 val session = AuthApi.verifyOtp(action.email, action.code, token)
+                                SessionStore.save(session)
+                                isAuthenticated = true
+                            }
+                            is PendingAuthAction.LoginPassword -> {
+                                val session = AuthApi.login(action.email, action.password, token)
                                 SessionStore.save(session)
                                 isAuthenticated = true
                             }

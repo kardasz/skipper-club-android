@@ -38,6 +38,7 @@
     <string name="auth_error_captcha">Weryfikacja bezpieczeństwa nie powiodła się. Spróbuj ponownie.</string>
     <string name="auth_error_rate_limit">Zbyt wiele prób. Spróbuj ponownie później.</string>
     <string name="auth_error_invalid_otp">Kod jest nieprawidłowy lub wygasł.</string>
+    <string name="auth_error_invalid_credentials">Nieprawidłowy adres e-mail lub hasło.</string>
     <string name="auth_error_invalid_email">Podaj prawidłowy adres e-mail.</string>
     <string name="auth_error_generic">Coś poszło nie tak. Spróbuj ponownie.</string>
 </resources>

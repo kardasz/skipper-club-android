@@ -48,6 +48,29 @@ object AuthApi {
         }
     }
 
+    suspend fun login(email: String, password: String, turnstileToken: String): SessionResponse {
+        val body = json.encodeToString(LoginRequest(email, password))
+            .toRequestBody(JSON_MEDIA_TYPE)
+        val request = Request.Builder()
+            .url("${BuildConfig.API_BASE_URL}/v1/auth/login")
+            .post(body)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .header("Accept-Language", Locale.getDefault().toLanguageTag())
+            .header(HEADER_TURNSTILE, turnstileToken)
+            .build()
+
+        execute(request).use { response ->
+            if (!response.isSuccessful) throw response.toAuthError()
+            val payload = response.body?.string().orEmpty()
+            return try {
+                json.decodeFromString<SessionResponse>(payload)
+            } catch (e: SerializationException) {
+                throw AuthError.Server(response.code, "Malformed response")
+            }
+        }
+    }
+
     suspend fun verifyOtp(email: String, code: String, turnstileToken: String): SessionResponse {
         val body = json.encodeToString(OtpVerifyRequest(email, code))
             .toRequestBody(JSON_MEDIA_TYPE)
