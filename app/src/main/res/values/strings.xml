@@ -64,4 +64,12 @@
     <string name="auth_error_invitation_email_mismatch">The email doesn\'t match the invitation.</string>
     <string name="auth_error_email_already_registered">This email is already registered. Please sign in.</string>
     <string name="auth_error_generic">Something went wrong. Please try again.</string>
+
+    <string name="nav_posts">Posts</string>
+    <string name="nav_cruises">Cruises</string>
+    <string name="nav_map">Map</string>
+    <string name="nav_messages">Messages</string>
+    <string name="nav_menu">Menu</string>
+
+    <string name="main_placeholder_subtitle">Coming soon</string>
 </resources>

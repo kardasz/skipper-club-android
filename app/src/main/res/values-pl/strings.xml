@@ -64,4 +64,12 @@
     <string name="auth_error_invitation_email_mismatch">Adres e-mail nie zgadza się z zaproszeniem.</string>
     <string name="auth_error_email_already_registered">Ten adres e-mail jest już zarejestrowany. Zaloguj się.</string>
     <string name="auth_error_generic">Coś poszło nie tak. Spróbuj ponownie.</string>
+
+    <string name="nav_posts">Posty</string>
+    <string name="nav_cruises">Rejsy</string>
+    <string name="nav_map">Mapa</string>
+    <string name="nav_messages">Wiadomości</string>
+    <string name="nav_menu">Menu</string>
+
+    <string name="main_placeholder_subtitle">Wkrótce</string>
 </resources>
