@@ -13,8 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.runtime.Composable
@@ -91,6 +89,22 @@ private sealed class PendingAuthAction(val turnstileAction: String) {
     ) : PendingAuthAction("invitation-register")
 }
 
+private enum class AuthErrorTarget {
+    Form,
+    LoginEmail,
+    Password,
+    OtpCode,
+    InvitationCode,
+    InvitationName,
+    InvitationEmail,
+    InvitationPassword,
+}
+
+private data class AuthUiError(
+    val target: AuthErrorTarget,
+    val message: String,
+)
+
 @PreviewScreenSizes
 @Composable
 fun SkipperClubApp(
@@ -102,7 +116,7 @@ fun SkipperClubApp(
     }
     var pendingAction by remember { mutableStateOf<PendingAuthAction?>(null) }
     var isBusy by remember { mutableStateOf(false) }
-    val snackbarHostState = remember { SnackbarHostState() }
+    var authUiError by remember { mutableStateOf<AuthUiError?>(null) }
     val scope = rememberCoroutineScope()
 
     val networkErrorMessage = stringResource(R.string.auth_error_network)
@@ -111,25 +125,75 @@ fun SkipperClubApp(
     val invalidOtpErrorMessage = stringResource(R.string.auth_error_invalid_otp)
     val invalidCredentialsErrorMessage = stringResource(R.string.auth_error_invalid_credentials)
     val validationErrorMessage = stringResource(R.string.auth_error_invalid_email)
+    val invalidPasswordErrorMessage = stringResource(R.string.auth_error_invalid_password)
+    val invalidNameErrorMessage = stringResource(R.string.auth_error_invalid_name)
+    val invalidInvitationCodeErrorMessage = stringResource(R.string.auth_error_invalid_invitation_code)
+    val invalidOtpFormatErrorMessage = stringResource(R.string.auth_error_invalid_otp_format)
     val invalidInvitationMessage = stringResource(R.string.auth_error_invalid_invitation)
     val invitationEmailMismatchMessage = stringResource(R.string.auth_error_invitation_email_mismatch)
     val emailAlreadyRegisteredMessage = stringResource(R.string.auth_error_email_already_registered)
     val genericErrorMessage = stringResource(R.string.auth_error_generic)
 
-    fun showError(error: AuthError) {
+    fun showError(error: AuthError, action: PendingAuthAction) {
+        fun AuthError.Validation.hasField(name: String): Boolean = fields.contains(name)
+
         val message = when (error) {
             is AuthError.Network -> networkErrorMessage
             is AuthError.CaptchaFailed -> captchaErrorMessage
             is AuthError.RateLimited -> rateLimitErrorMessage
             is AuthError.InvalidOtpCode -> invalidOtpErrorMessage
             is AuthError.InvalidCredentials -> invalidCredentialsErrorMessage
-            is AuthError.Validation -> validationErrorMessage
+            is AuthError.Validation -> when {
+                action is PendingAuthAction.VerifyOtp && error.hasField("code") -> invalidOtpFormatErrorMessage
+                action is PendingAuthAction.RegisterByInvitation && error.hasField("code") -> {
+                    invalidInvitationCodeErrorMessage
+                }
+                action is PendingAuthAction.RegisterByInvitation && error.hasField("name") -> {
+                    invalidNameErrorMessage
+                }
+                action is PendingAuthAction.RegisterByInvitation && error.hasField("email") -> {
+                    validationErrorMessage
+                }
+                action !is PendingAuthAction.SendOtp && error.hasField("password") -> invalidPasswordErrorMessage
+                else -> validationErrorMessage
+            }
             is AuthError.InvalidInvitation -> invalidInvitationMessage
             is AuthError.InvitationEmailMismatch -> invitationEmailMismatchMessage
             is AuthError.EmailAlreadyRegistered -> emailAlreadyRegisteredMessage
             is AuthError.Server -> genericErrorMessage
         }
-        scope.launch { snackbarHostState.showSnackbar(message) }
+        val target = when (action) {
+            is PendingAuthAction.SendOtp -> when (error) {
+                is AuthError.Validation -> AuthErrorTarget.LoginEmail
+                else -> AuthErrorTarget.Form
+            }
+            is PendingAuthAction.VerifyOtp -> when (error) {
+                is AuthError.InvalidOtpCode,
+                is AuthError.Validation -> AuthErrorTarget.OtpCode
+                else -> AuthErrorTarget.Form
+            }
+            is PendingAuthAction.LoginPassword -> when (error) {
+                is AuthError.InvalidCredentials -> AuthErrorTarget.Password
+                is AuthError.Validation -> {
+                    if (error.fields.contains("password")) AuthErrorTarget.Password else AuthErrorTarget.Form
+                }
+                else -> AuthErrorTarget.Form
+            }
+            is PendingAuthAction.RegisterByInvitation -> when (error) {
+                is AuthError.InvalidInvitation -> AuthErrorTarget.InvitationCode
+                is AuthError.InvitationEmailMismatch,
+                is AuthError.EmailAlreadyRegistered -> AuthErrorTarget.InvitationEmail
+                is AuthError.Validation -> when {
+                    error.fields.contains("code") -> AuthErrorTarget.InvitationCode
+                    error.fields.contains("name") -> AuthErrorTarget.InvitationName
+                    error.fields.contains("email") -> AuthErrorTarget.InvitationEmail
+                    error.fields.contains("password") -> AuthErrorTarget.InvitationPassword
+                    else -> AuthErrorTarget.Form
+                }
+                else -> AuthErrorTarget.Form
+            }
+        }
+        authUiError = AuthUiError(target, message)
     }
 
     val pendingCode = invitationCodeFromDeepLink.value
@@ -149,48 +213,94 @@ fun SkipperClubApp(
         when (val destination = authDestination) {
             AuthDestination.Login -> LoginScreen(
                 onContinueWithPassword = { email ->
+                    authUiError = null
                     authDestination = AuthDestination.Password(email)
                 },
                 onSendLoginCode = { email ->
+                    authUiError = null
                     pendingAction = PendingAuthAction.SendOtp(email)
                 },
                 onJoinByInvitation = {
+                    authUiError = null
                     authDestination = AuthDestination.JoinByInvitation()
                 },
+                emailErrorMessage = authUiError
+                    ?.takeIf { it.target == AuthErrorTarget.LoginEmail }
+                    ?.message,
+                formErrorMessage = authUiError
+                    ?.takeIf { it.target == AuthErrorTarget.Form }
+                    ?.message,
+                onClearError = { authUiError = null },
             )
 
             is AuthDestination.Password -> {
-                BackHandler { authDestination = AuthDestination.Login }
+                BackHandler {
+                    authUiError = null
+                    authDestination = AuthDestination.Login
+                }
                 PasswordScreen(
                     email = destination.email,
-                    onBack = { authDestination = AuthDestination.Login },
+                    onBack = {
+                        authUiError = null
+                        authDestination = AuthDestination.Login
+                    },
                     onContinue = { email, password ->
+                        authUiError = null
                         pendingAction = PendingAuthAction.LoginPassword(email, password)
                     },
                     onForgotPassword = { /* TODO */ },
+                    passwordErrorMessage = authUiError
+                        ?.takeIf { it.target == AuthErrorTarget.Password }
+                        ?.message,
+                    formErrorMessage = authUiError
+                        ?.takeIf { it.target == AuthErrorTarget.Form }
+                        ?.message,
+                    onClearError = { authUiError = null },
                 )
             }
 
             is AuthDestination.OtpVerify -> {
-                BackHandler { authDestination = AuthDestination.Login }
+                BackHandler {
+                    authUiError = null
+                    authDestination = AuthDestination.Login
+                }
                 OtpVerifyScreen(
                     email = destination.email,
-                    onBack = { authDestination = AuthDestination.Login },
+                    onBack = {
+                        authUiError = null
+                        authDestination = AuthDestination.Login
+                    },
                     onVerify = { email, code ->
+                        authUiError = null
                         pendingAction = PendingAuthAction.VerifyOtp(email, code)
                     },
                     onResend = { email ->
+                        authUiError = null
                         pendingAction = PendingAuthAction.SendOtp(email)
                     },
+                    codeErrorMessage = authUiError
+                        ?.takeIf { it.target == AuthErrorTarget.OtpCode }
+                        ?.message,
+                    formErrorMessage = authUiError
+                        ?.takeIf { it.target == AuthErrorTarget.Form }
+                        ?.message,
+                    onClearError = { authUiError = null },
                 )
             }
 
             is AuthDestination.JoinByInvitation -> {
-                BackHandler { authDestination = AuthDestination.Login }
+                BackHandler {
+                    authUiError = null
+                    authDestination = AuthDestination.Login
+                }
                 InvitationRegisterScreen(
                     initialCode = destination.code,
-                    onBack = { authDestination = AuthDestination.Login },
+                    onBack = {
+                        authUiError = null
+                        authDestination = AuthDestination.Login
+                    },
                     onSubmit = { code, name, email, password ->
+                        authUiError = null
                         pendingAction = PendingAuthAction.RegisterByInvitation(
                             code = code,
                             name = name,
@@ -198,6 +308,22 @@ fun SkipperClubApp(
                             password = password,
                         )
                     },
+                    codeErrorMessage = authUiError
+                        ?.takeIf { it.target == AuthErrorTarget.InvitationCode }
+                        ?.message,
+                    nameErrorMessage = authUiError
+                        ?.takeIf { it.target == AuthErrorTarget.InvitationName }
+                        ?.message,
+                    emailErrorMessage = authUiError
+                        ?.takeIf { it.target == AuthErrorTarget.InvitationEmail }
+                        ?.message,
+                    passwordErrorMessage = authUiError
+                        ?.takeIf { it.target == AuthErrorTarget.InvitationPassword }
+                        ?.message,
+                    formErrorMessage = authUiError
+                        ?.takeIf { it.target == AuthErrorTarget.Form }
+                        ?.message,
+                    onClearError = { authUiError = null },
                 )
             }
         }
@@ -213,10 +339,6 @@ fun SkipperClubApp(
             }
         }
 
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
     }
 
     pendingAction?.let { action ->
@@ -255,7 +377,7 @@ fun SkipperClubApp(
                             }
                         }
                     } catch (e: AuthError) {
-                        showError(e)
+                        showError(e, action)
                     } finally {
                         isBusy = false
                     }
@@ -263,7 +385,7 @@ fun SkipperClubApp(
             },
             onError = {
                 pendingAction = null
-                scope.launch { snackbarHostState.showSnackbar(captchaErrorMessage) }
+                authUiError = AuthUiError(AuthErrorTarget.Form, captchaErrorMessage)
             },
             onDismiss = { pendingAction = null },
         )

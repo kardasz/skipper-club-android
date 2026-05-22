@@ -37,6 +37,7 @@ fun OtpCodeInput(
     onCodeComplete: (String) -> Unit = {},
     autoFocus: Boolean = true,
     contentDescription: String? = null,
+    isError: Boolean = false,
 ) {
     val focusRequester = remember { FocusRequester() }
     if (autoFocus) {
@@ -73,11 +74,12 @@ fun OtpCodeInput(
                     val isActive = index == value.length
                     val isFilled = char != null
                     val borderColor = when {
+                        isError -> MaterialTheme.colorScheme.error
                         isActive -> MaterialTheme.colorScheme.primary
                         isFilled -> MaterialTheme.colorScheme.outline
                         else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
                     }
-                    val borderWidth = if (isActive) 2.dp else 1.dp
+                    val borderWidth = if (isActive || isError) 2.dp else 1.dp
                     Box(
                         modifier = Modifier
                             .weight(1f)

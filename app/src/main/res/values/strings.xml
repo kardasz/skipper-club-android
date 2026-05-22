@@ -56,6 +56,10 @@
     <string name="auth_error_invalid_otp">The code is invalid or has expired.</string>
     <string name="auth_error_invalid_credentials">Incorrect email or password.</string>
     <string name="auth_error_invalid_email">Please enter a valid email address.</string>
+    <string name="auth_error_invalid_password">Password must be 8-128 characters.</string>
+    <string name="auth_error_invalid_name">Please enter your full name.</string>
+    <string name="auth_error_invalid_invitation_code">Enter the 8-character code from your invitation.</string>
+    <string name="auth_error_invalid_otp_format">Enter the 6-digit code from your email.</string>
     <string name="auth_error_invalid_invitation">This invitation is invalid, expired, or already used.</string>
     <string name="auth_error_invitation_email_mismatch">The email doesn\'t match the invitation.</string>
     <string name="auth_error_email_already_registered">This email is already registered. Please sign in.</string>

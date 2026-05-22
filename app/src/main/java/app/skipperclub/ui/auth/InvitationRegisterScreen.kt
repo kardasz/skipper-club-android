@@ -44,6 +44,12 @@ fun InvitationRegisterScreen(
     initialCode: String = "",
     onBack: () -> Unit,
     onSubmit: (code: String, name: String, email: String, password: String) -> Unit,
+    codeErrorMessage: String? = null,
+    nameErrorMessage: String? = null,
+    emailErrorMessage: String? = null,
+    passwordErrorMessage: String? = null,
+    formErrorMessage: String? = null,
+    onClearError: () -> Unit = {},
 ) {
     var code by rememberSaveable { mutableStateOf(sanitizeCode(initialCode)) }
     var name by rememberSaveable { mutableStateOf("") }
@@ -53,19 +59,36 @@ fun InvitationRegisterScreen(
 
     InvitationRegisterContent(
         code = code,
-        onCodeChange = { code = sanitizeCode(it) },
+        onCodeChange = {
+            code = sanitizeCode(it)
+            onClearError()
+        },
         name = name,
-        onNameChange = { name = it.take(NAME_MAX) },
+        onNameChange = {
+            name = it.take(NAME_MAX)
+            onClearError()
+        },
         email = email,
-        onEmailChange = { email = it.trim().take(EMAIL_MAX) },
+        onEmailChange = {
+            email = it.trim().take(EMAIL_MAX)
+            onClearError()
+        },
         password = password,
-        onPasswordChange = { password = it.take(PASSWORD_MAX) },
+        onPasswordChange = {
+            password = it.take(PASSWORD_MAX)
+            onClearError()
+        },
         passwordVisible = passwordVisible,
         onTogglePasswordVisibility = { passwordVisible = !passwordVisible },
         onBack = onBack,
         onSubmit = {
             onSubmit(code, name.trim(), email.trim(), password)
         },
+        codeErrorMessage = codeErrorMessage,
+        nameErrorMessage = nameErrorMessage,
+        emailErrorMessage = emailErrorMessage,
+        passwordErrorMessage = passwordErrorMessage,
+        formErrorMessage = formErrorMessage,
     )
 }
 
@@ -84,6 +107,11 @@ private fun InvitationRegisterContent(
     onTogglePasswordVisibility: () -> Unit,
     onBack: () -> Unit,
     onSubmit: () -> Unit,
+    codeErrorMessage: String?,
+    nameErrorMessage: String?,
+    emailErrorMessage: String?,
+    passwordErrorMessage: String?,
+    formErrorMessage: String?,
 ) {
     val codeFilled = code.length == CODE_LENGTH
     val nameFilled = name.trim().isNotEmpty()
@@ -106,12 +134,19 @@ private fun InvitationRegisterContent(
         subtitle = stringResource(R.string.invitation_subtitle),
         onBack = onBack,
     ) {
+        if (formErrorMessage != null) {
+            AuthErrorMessage(message = formErrorMessage)
+        }
+
         OutlinedTextField(
             value = code,
             onValueChange = onCodeChange,
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text(stringResource(R.string.invitation_code_placeholder)) },
-            supportingText = { Text(stringResource(R.string.invitation_code_helper)) },
+            isError = codeErrorMessage != null,
+            supportingText = {
+                Text(codeErrorMessage ?: stringResource(R.string.invitation_code_helper))
+            },
             leadingIcon = {
                 Icon(
                     painter = painterResource(R.drawable.ic_key),
@@ -134,6 +169,10 @@ private fun InvitationRegisterContent(
             onValueChange = onNameChange,
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text(stringResource(R.string.invitation_name_placeholder)) },
+            isError = nameErrorMessage != null,
+            supportingText = nameErrorMessage?.let { message ->
+                { Text(message) }
+            },
             leadingIcon = {
                 Icon(
                     painter = painterResource(R.drawable.ic_person),
@@ -155,6 +194,10 @@ private fun InvitationRegisterContent(
             onValueChange = onEmailChange,
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text(stringResource(R.string.invitation_email_placeholder)) },
+            isError = emailErrorMessage != null,
+            supportingText = emailErrorMessage?.let { message ->
+                { Text(message) }
+            },
             leadingIcon = {
                 Icon(
                     painter = painterResource(R.drawable.ic_mail),
@@ -176,7 +219,10 @@ private fun InvitationRegisterContent(
             onValueChange = onPasswordChange,
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text(stringResource(R.string.invitation_password_placeholder)) },
-            supportingText = { Text(stringResource(R.string.invitation_password_helper)) },
+            isError = passwordErrorMessage != null,
+            supportingText = {
+                Text(passwordErrorMessage ?: stringResource(R.string.invitation_password_helper))
+            },
             leadingIcon = {
                 Icon(
                     painter = painterResource(R.drawable.ic_key),
@@ -247,6 +293,11 @@ private fun InvitationRegisterPreviewEmpty() {
             onTogglePasswordVisibility = {},
             onBack = {},
             onSubmit = {},
+            codeErrorMessage = null,
+            nameErrorMessage = null,
+            emailErrorMessage = null,
+            passwordErrorMessage = null,
+            formErrorMessage = null,
         )
     }
 }
@@ -268,6 +319,11 @@ private fun InvitationRegisterPreviewFilled() {
             onTogglePasswordVisibility = {},
             onBack = {},
             onSubmit = {},
+            codeErrorMessage = stringResource(R.string.auth_error_invalid_invitation),
+            nameErrorMessage = null,
+            emailErrorMessage = stringResource(R.string.auth_error_invitation_email_mismatch),
+            passwordErrorMessage = null,
+            formErrorMessage = null,
         )
     }
 }
@@ -289,6 +345,11 @@ private fun InvitationRegisterPreviewDark() {
             onTogglePasswordVisibility = {},
             onBack = {},
             onSubmit = {},
+            codeErrorMessage = null,
+            nameErrorMessage = null,
+            emailErrorMessage = null,
+            passwordErrorMessage = null,
+            formErrorMessage = stringResource(R.string.auth_error_captcha),
         )
     }
 }

@@ -144,11 +144,14 @@ object AuthApi {
             if (payload.isNotBlank()) json.decodeFromString<ProblemDetails>(payload) else null
         }.getOrNull()
         val detail = problem?.detail ?: problem?.title
+        val validationFields = problem?.violations.orEmpty()
+            .mapNotNull { it.propertyPath?.substringBefore('.') }
+            .toSet()
         return when (code) {
             400 -> when (problem?.type) {
                 "/errors/invalid-invitation" -> AuthError.InvalidInvitation(detail)
                 "/errors/invitation-email-mismatch" -> AuthError.InvitationEmailMismatch(detail)
-                else -> AuthError.Validation(detail)
+                else -> AuthError.Validation(detail, validationFields)
             }
             401 -> when (problem?.type) {
                 "/errors/invalid-credentials" -> AuthError.InvalidCredentials(detail)
@@ -157,7 +160,7 @@ object AuthApi {
             }
             403 -> AuthError.CaptchaFailed(detail)
             409 -> AuthError.EmailAlreadyRegistered(detail)
-            422 -> AuthError.Validation(detail)
+            422 -> AuthError.Validation(detail, validationFields)
             429 -> AuthError.RateLimited(detail)
             else -> AuthError.Server(code, detail)
         }

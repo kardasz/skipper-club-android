@@ -42,4 +42,11 @@ internal data class ProblemDetails(
     val title: String? = null,
     val status: Int? = null,
     val detail: String? = null,
+    val violations: List<ProblemViolation> = emptyList(),
+)
+
+@Serializable
+internal data class ProblemViolation(
+    val propertyPath: String? = null,
+    val message: String? = null,
 )

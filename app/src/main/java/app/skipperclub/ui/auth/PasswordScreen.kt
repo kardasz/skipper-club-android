@@ -42,18 +42,26 @@ fun PasswordScreen(
     onBack: () -> Unit,
     onContinue: (email: String, password: String) -> Unit,
     onForgotPassword: (email: String) -> Unit,
+    passwordErrorMessage: String? = null,
+    formErrorMessage: String? = null,
+    onClearError: () -> Unit = {},
 ) {
     var password by rememberSaveable { mutableStateOf("") }
     var visible by rememberSaveable { mutableStateOf(false) }
     PasswordScreenContent(
         email = email,
         password = password,
-        onPasswordChange = { password = it },
+        onPasswordChange = {
+            password = it
+            onClearError()
+        },
         passwordVisible = visible,
         onToggleVisibility = { visible = !visible },
         onBack = onBack,
         onContinue = { onContinue(email, password) },
         onForgotPassword = { onForgotPassword(email) },
+        passwordErrorMessage = passwordErrorMessage,
+        formErrorMessage = formErrorMessage,
     )
 }
 
@@ -68,6 +76,8 @@ private fun PasswordScreenContent(
     onBack: () -> Unit,
     onContinue: () -> Unit,
     onForgotPassword: () -> Unit,
+    passwordErrorMessage: String?,
+    formErrorMessage: String?,
 ) {
     val passwordFilled = password.length >= 8
     val visualTransformation = remember(passwordVisible) {
@@ -79,11 +89,19 @@ private fun PasswordScreenContent(
         subtitle = stringResource(R.string.password_subtitle, email),
         onBack = onBack,
     ) {
+        if (formErrorMessage != null) {
+            AuthErrorMessage(message = formErrorMessage)
+        }
+
         OutlinedTextField(
             value = password,
             onValueChange = onPasswordChange,
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text(stringResource(R.string.password_placeholder)) },
+            isError = passwordErrorMessage != null,
+            supportingText = passwordErrorMessage?.let { message ->
+                { Text(message) }
+            },
             leadingIcon = {
                 Icon(
                     painter = painterResource(R.drawable.ic_key),
@@ -166,6 +184,8 @@ private fun PasswordScreenPreview() {
             onBack = {},
             onContinue = {},
             onForgotPassword = {},
+            passwordErrorMessage = null,
+            formErrorMessage = null,
         )
     }
 }
@@ -183,6 +203,8 @@ private fun PasswordScreenPreviewPl() {
             onBack = {},
             onContinue = {},
             onForgotPassword = {},
+            passwordErrorMessage = stringResource(R.string.auth_error_invalid_credentials),
+            formErrorMessage = null,
         )
     }
 }

@@ -55,14 +55,22 @@ fun LoginScreen(
     onContinueWithPassword: (email: String) -> Unit = {},
     onSendLoginCode: (email: String) -> Unit = {},
     onJoinByInvitation: () -> Unit = {},
+    emailErrorMessage: String? = null,
+    formErrorMessage: String? = null,
+    onClearError: () -> Unit = {},
 ) {
     var email by rememberSaveable { mutableStateOf("") }
     LoginScreenContent(
         email = email,
-        onEmailChange = { email = it },
+        onEmailChange = {
+            email = it
+            onClearError()
+        },
         onContinueWithPassword = { onContinueWithPassword(email.trim()) },
         onSendLoginCode = { onSendLoginCode(email.trim()) },
         onJoinByInvitation = onJoinByInvitation,
+        emailErrorMessage = emailErrorMessage,
+        formErrorMessage = formErrorMessage,
     )
 }
 
@@ -74,6 +82,8 @@ private fun LoginScreenContent(
     onContinueWithPassword: () -> Unit,
     onSendLoginCode: () -> Unit,
     onJoinByInvitation: () -> Unit,
+    emailErrorMessage: String?,
+    formErrorMessage: String?,
 ) {
     val emailFilled = email.isNotBlank()
     Box(
@@ -135,11 +145,19 @@ private fun LoginScreenContent(
                     ),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
+                    if (formErrorMessage != null) {
+                        AuthErrorMessage(message = formErrorMessage)
+                    }
+
                     OutlinedTextField(
                         value = email,
                         onValueChange = onEmailChange,
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text(stringResource(R.string.login_email_placeholder)) },
+                        isError = emailErrorMessage != null,
+                        supportingText = emailErrorMessage?.let { message ->
+                            { Text(message) }
+                        },
                         leadingIcon = {
                             Icon(
                                 painter = painterResource(R.drawable.ic_mail),
@@ -257,6 +275,8 @@ private fun LoginScreenPreviewEn() {
             onContinueWithPassword = {},
             onSendLoginCode = {},
             onJoinByInvitation = {},
+            emailErrorMessage = null,
+            formErrorMessage = null,
         )
     }
 }
@@ -271,6 +291,8 @@ private fun LoginScreenPreviewPl() {
             onContinueWithPassword = {},
             onSendLoginCode = {},
             onJoinByInvitation = {},
+            emailErrorMessage = stringResource(R.string.auth_error_invalid_email),
+            formErrorMessage = null,
         )
     }
 }
@@ -285,6 +307,8 @@ private fun LoginScreenPreviewDark() {
             onContinueWithPassword = {},
             onSendLoginCode = {},
             onJoinByInvitation = {},
+            emailErrorMessage = null,
+            formErrorMessage = null,
         )
     }
 }

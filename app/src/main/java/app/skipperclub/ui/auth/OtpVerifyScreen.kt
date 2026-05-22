@@ -2,6 +2,7 @@ package app.skipperclub.ui.auth
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,15 +33,23 @@ fun OtpVerifyScreen(
     onBack: () -> Unit,
     onVerify: (email: String, code: String) -> Unit,
     onResend: (email: String) -> Unit,
+    codeErrorMessage: String? = null,
+    formErrorMessage: String? = null,
+    onClearError: () -> Unit = {},
 ) {
     var code by rememberSaveable { mutableStateOf("") }
     OtpVerifyScreenContent(
         email = email,
         code = code,
-        onCodeChange = { code = it },
+        onCodeChange = {
+            code = it
+            onClearError()
+        },
         onBack = onBack,
         onVerify = { onVerify(email, code) },
         onResend = { onResend(email) },
+        codeErrorMessage = codeErrorMessage,
+        formErrorMessage = formErrorMessage,
     )
 }
 
@@ -52,6 +61,8 @@ private fun OtpVerifyScreenContent(
     onBack: () -> Unit,
     onVerify: () -> Unit,
     onResend: () -> Unit,
+    codeErrorMessage: String?,
+    formErrorMessage: String?,
 ) {
     val codeComplete = code.length == OTP_LENGTH
 
@@ -60,13 +71,27 @@ private fun OtpVerifyScreenContent(
         subtitle = stringResource(R.string.otp_subtitle, email),
         onBack = onBack,
     ) {
+        if (formErrorMessage != null) {
+            AuthErrorMessage(message = formErrorMessage)
+        }
+
         OtpCodeInput(
             value = code,
             onValueChange = onCodeChange,
             onCodeComplete = { onVerify() },
             contentDescription = stringResource(R.string.otp_input_content_description),
+            isError = codeErrorMessage != null,
             modifier = Modifier.fillMaxWidth(),
         )
+
+        if (codeErrorMessage != null) {
+            Text(
+                text = codeErrorMessage,
+                modifier = Modifier.padding(horizontal = 4.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
 
         Button(
             onClick = onVerify,
@@ -120,6 +145,8 @@ private fun OtpVerifyScreenPreviewEmpty() {
             onBack = {},
             onVerify = {},
             onResend = {},
+            codeErrorMessage = null,
+            formErrorMessage = null,
         )
     }
 }
@@ -135,6 +162,8 @@ private fun OtpVerifyScreenPreviewPartial() {
             onBack = {},
             onVerify = {},
             onResend = {},
+            codeErrorMessage = stringResource(R.string.auth_error_invalid_otp),
+            formErrorMessage = null,
         )
     }
 }
