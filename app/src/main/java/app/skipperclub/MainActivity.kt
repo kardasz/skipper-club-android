@@ -5,27 +5,42 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
+import app.skipperclub.data.AuthApi
+import app.skipperclub.data.AuthError
+import app.skipperclub.data.SessionStore
 import app.skipperclub.ui.auth.AuthDestination
 import app.skipperclub.ui.auth.AuthDestinationSaver
 import app.skipperclub.ui.auth.LoginScreen
 import app.skipperclub.ui.auth.OtpVerifyScreen
 import app.skipperclub.ui.auth.PasswordScreen
 import app.skipperclub.ui.theme.SkipperClubTheme
+import app.skipperclub.ui.turnstile.TurnstileDialog
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -39,6 +54,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private sealed class PendingAuthAction(val turnstileAction: String) {
+    data class SendOtp(val email: String) : PendingAuthAction("otp")
+    data class VerifyOtp(val email: String, val code: String) : PendingAuthAction("otp-verify")
+}
+
 @PreviewScreenSizes
 @Composable
 fun SkipperClubApp() {
@@ -46,49 +66,125 @@ fun SkipperClubApp() {
     var authDestination by rememberSaveable(stateSaver = AuthDestinationSaver) {
         mutableStateOf<AuthDestination>(AuthDestination.Login)
     }
+    var pendingAction by remember { mutableStateOf<PendingAuthAction?>(null) }
+    var isBusy by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    val networkErrorMessage = stringResource(R.string.auth_error_network)
+    val captchaErrorMessage = stringResource(R.string.auth_error_captcha)
+    val rateLimitErrorMessage = stringResource(R.string.auth_error_rate_limit)
+    val invalidOtpErrorMessage = stringResource(R.string.auth_error_invalid_otp)
+    val validationErrorMessage = stringResource(R.string.auth_error_invalid_email)
+    val genericErrorMessage = stringResource(R.string.auth_error_generic)
+
+    fun showError(error: AuthError) {
+        val message = when (error) {
+            is AuthError.Network -> networkErrorMessage
+            is AuthError.CaptchaFailed -> captchaErrorMessage
+            is AuthError.RateLimited -> rateLimitErrorMessage
+            is AuthError.InvalidOtpCode -> invalidOtpErrorMessage
+            is AuthError.Validation -> validationErrorMessage
+            is AuthError.InvalidCredentials,
+            is AuthError.Server -> genericErrorMessage
+        }
+        scope.launch { snackbarHostState.showSnackbar(message) }
+    }
 
     if (isAuthenticated) {
         MainScaffold()
         return
     }
 
-    when (val destination = authDestination) {
-        AuthDestination.Login -> LoginScreen(
-            onContinueWithPassword = { email ->
-                authDestination = AuthDestination.Password(email)
-            },
-            onSendLoginCode = { email ->
-                // TODO: call POST /auth/otp before navigating
-                authDestination = AuthDestination.OtpVerify(email)
-            },
-            onJoinByInvitation = { /* TODO: navigate to invitation flow */ },
+    Box(modifier = Modifier.fillMaxSize()) {
+        when (val destination = authDestination) {
+            AuthDestination.Login -> LoginScreen(
+                onContinueWithPassword = { email ->
+                    authDestination = AuthDestination.Password(email)
+                },
+                onSendLoginCode = { email ->
+                    pendingAction = PendingAuthAction.SendOtp(email)
+                },
+                onJoinByInvitation = { /* TODO: navigate to invitation flow */ },
+            )
+
+            is AuthDestination.Password -> {
+                BackHandler { authDestination = AuthDestination.Login }
+                PasswordScreen(
+                    email = destination.email,
+                    onBack = { authDestination = AuthDestination.Login },
+                    onContinue = { _, _ ->
+                        // TODO: call POST /auth/login (also requires Turnstile)
+                        isAuthenticated = true
+                    },
+                    onForgotPassword = { /* TODO */ },
+                )
+            }
+
+            is AuthDestination.OtpVerify -> {
+                BackHandler { authDestination = AuthDestination.Login }
+                OtpVerifyScreen(
+                    email = destination.email,
+                    onBack = { authDestination = AuthDestination.Login },
+                    onVerify = { email, code ->
+                        pendingAction = PendingAuthAction.VerifyOtp(email, code)
+                    },
+                    onResend = { email ->
+                        pendingAction = PendingAuthAction.SendOtp(email)
+                    },
+                )
+            }
+        }
+
+        if (isBusy) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.25f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
         )
+    }
 
-        is AuthDestination.Password -> {
-            BackHandler { authDestination = AuthDestination.Login }
-            PasswordScreen(
-                email = destination.email,
-                onBack = { authDestination = AuthDestination.Login },
-                onContinue = { _, _ ->
-                    // TODO: call POST /auth/login
-                    isAuthenticated = true
-                },
-                onForgotPassword = { /* TODO */ },
-            )
-        }
-
-        is AuthDestination.OtpVerify -> {
-            BackHandler { authDestination = AuthDestination.Login }
-            OtpVerifyScreen(
-                email = destination.email,
-                onBack = { authDestination = AuthDestination.Login },
-                onVerify = { _, _ ->
-                    // TODO: call POST /auth/otp/verify
-                    isAuthenticated = true
-                },
-                onResend = { /* TODO: call POST /auth/otp again */ },
-            )
-        }
+    pendingAction?.let { action ->
+        TurnstileDialog(
+            action = action.turnstileAction,
+            onSuccess = { token ->
+                pendingAction = null
+                isBusy = true
+                scope.launch {
+                    try {
+                        when (action) {
+                            is PendingAuthAction.SendOtp -> {
+                                AuthApi.sendOtp(action.email, token)
+                                authDestination = AuthDestination.OtpVerify(action.email)
+                            }
+                            is PendingAuthAction.VerifyOtp -> {
+                                val session = AuthApi.verifyOtp(action.email, action.code, token)
+                                SessionStore.save(session)
+                                isAuthenticated = true
+                            }
+                        }
+                    } catch (e: AuthError) {
+                        showError(e)
+                    } finally {
+                        isBusy = false
+                    }
+                }
+            },
+            onError = {
+                pendingAction = null
+                scope.launch { snackbarHostState.showSnackbar(captchaErrorMessage) }
+            },
+            onDismiss = { pendingAction = null },
+        )
     }
 }
 

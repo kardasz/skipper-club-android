@@ -30,4 +30,14 @@
     <string name="otp_verify">Verify</string>
     <string name="otp_didnt_receive">Didn\'t receive a code?</string>
     <string name="otp_resend">Resend</string>
+
+    <string name="turnstile_title">Quick security check</string>
+    <string name="turnstile_subtitle">Confirming you\'re human…</string>
+
+    <string name="auth_error_network">No internet connection. Please try again.</string>
+    <string name="auth_error_captcha">Security check failed. Please try again.</string>
+    <string name="auth_error_rate_limit">Too many attempts. Please try again later.</string>
+    <string name="auth_error_invalid_otp">The code is invalid or has expired.</string>
+    <string name="auth_error_invalid_email">Please enter a valid email address.</string>
+    <string name="auth_error_generic">Something went wrong. Please try again.</string>
 </resources>
