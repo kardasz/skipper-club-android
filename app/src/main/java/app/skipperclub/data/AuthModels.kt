@@ -20,6 +20,16 @@ internal data class InvitationRegisterRequest(
 )
 
 @Serializable
+internal data class RefreshSessionRequest(val refreshToken: String)
+
+@Serializable
+internal data class RefreshSessionResponse(
+    val accessToken: String,
+    val refreshToken: String,
+    val expiresIn: Long,
+)
+
+@Serializable
 data class SessionResponse(
     val id: String,
     val accessToken: String,

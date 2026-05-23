@@ -10,9 +10,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +38,7 @@ import app.skipperclub.ui.auth.PasswordScreen
 import app.skipperclub.ui.main.MainScreen
 import app.skipperclub.ui.theme.SkipperClubTheme
 import app.skipperclub.ui.turnstile.TurnstileDialog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -44,6 +47,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        SessionStore.initialize(applicationContext)
         consumeInvitationLink(intent)
         setContent {
             SkipperClubTheme {
@@ -104,7 +108,9 @@ private data class AuthUiError(
 fun SkipperClubApp(
     invitationCodeFromDeepLink: MutableState<String?> = remember { mutableStateOf(null) },
 ) {
-    var isAuthenticated by rememberSaveable { mutableStateOf(false) }
+    val session by SessionStore.session.collectAsState()
+    val isRestoringSession by SessionStore.isRestoring.collectAsState()
+    val isAuthenticated = session != null
     var authDestination by rememberSaveable(stateSaver = AuthDestinationSaver) {
         mutableStateOf<AuthDestination>(AuthDestination.Login)
     }
@@ -128,6 +134,18 @@ fun SkipperClubApp(
     val emailAlreadyRegisteredMessage = stringResource(R.string.auth_error_email_already_registered)
     val genericErrorMessage = stringResource(R.string.auth_error_generic)
 
+    if (isRestoringSession) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
     fun showError(error: AuthError, action: PendingAuthAction) {
         fun AuthError.Validation.hasField(name: String): Boolean = fields.contains(name)
 
@@ -137,6 +155,9 @@ fun SkipperClubApp(
             is AuthError.RateLimited -> rateLimitErrorMessage
             is AuthError.InvalidOtpCode -> invalidOtpErrorMessage
             is AuthError.InvalidCredentials -> invalidCredentialsErrorMessage
+            is AuthError.InvalidRefreshToken,
+            is AuthError.RefreshTokenExpired,
+            is AuthError.AuthenticationRequired -> genericErrorMessage
             is AuthError.Validation -> when {
                 action is PendingAuthAction.VerifyOtp && error.hasField("code") -> invalidOtpFormatErrorMessage
                 action is PendingAuthAction.RegisterByInvitation && error.hasField("code") -> {
@@ -351,12 +372,10 @@ fun SkipperClubApp(
                             is PendingAuthAction.VerifyOtp -> {
                                 val session = AuthApi.verifyOtp(action.email, action.code, token)
                                 SessionStore.save(session)
-                                isAuthenticated = true
                             }
                             is PendingAuthAction.LoginPassword -> {
                                 val session = AuthApi.login(action.email, action.password, token)
                                 SessionStore.save(session)
-                                isAuthenticated = true
                             }
                             is PendingAuthAction.RegisterByInvitation -> {
                                 val session = AuthApi.registerByInvitation(
@@ -367,11 +386,14 @@ fun SkipperClubApp(
                                     turnstileToken = token,
                                 )
                                 SessionStore.save(session)
-                                isAuthenticated = true
                             }
                         }
                     } catch (e: AuthError) {
                         showError(e, action)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        authUiError = AuthUiError(AuthErrorTarget.Form, genericErrorMessage)
                     } finally {
                         isBusy = false
                     }
@@ -385,4 +407,3 @@ fun SkipperClubApp(
         )
     }
 }
-

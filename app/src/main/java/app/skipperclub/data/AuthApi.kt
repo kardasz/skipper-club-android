@@ -123,6 +123,28 @@ object AuthApi {
         }
     }
 
+    internal suspend fun refreshSession(sessionId: String, refreshToken: String): RefreshSessionResponse {
+        val body = json.encodeToString(RefreshSessionRequest(refreshToken))
+            .toRequestBody(JSON_MEDIA_TYPE)
+        val request = Request.Builder()
+            .url("${BuildConfig.API_BASE_URL}/v1/sessions/$sessionId/refresh")
+            .post(body)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .header("Accept-Language", Locale.getDefault().toLanguageTag())
+            .build()
+
+        execute(request).use { response ->
+            if (!response.isSuccessful) throw response.toAuthError()
+            val payload = response.body?.string().orEmpty()
+            return try {
+                json.decodeFromString<RefreshSessionResponse>(payload)
+            } catch (e: SerializationException) {
+                throw AuthError.Server(response.code, "Malformed response")
+            }
+        }
+    }
+
     private suspend fun execute(request: Request): Response =
         suspendCancellableCoroutine { continuation ->
             val call = client.newCall(request)
@@ -156,7 +178,10 @@ object AuthApi {
             401 -> when (problem?.type) {
                 "/errors/invalid-credentials" -> AuthError.InvalidCredentials(detail)
                 "/errors/invalid-otp-code" -> AuthError.InvalidOtpCode(detail)
-                else -> AuthError.InvalidOtpCode(detail)
+                "/errors/invalid-refresh-token" -> AuthError.InvalidRefreshToken(detail)
+                "/errors/refresh-token-expired" -> AuthError.RefreshTokenExpired(detail)
+                "/errors/authentication-required" -> AuthError.AuthenticationRequired(detail)
+                else -> AuthError.AuthenticationRequired(detail)
             }
             403 -> AuthError.CaptchaFailed(detail)
             409 -> AuthError.EmailAlreadyRegistered(detail)
