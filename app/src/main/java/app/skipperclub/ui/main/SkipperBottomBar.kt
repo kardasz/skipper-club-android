@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,7 +38,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -206,11 +204,11 @@ fun UserAvatar(
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(user.avatarUrl)
-                    .crossfade(true)
+                    .crossfade(enable = true)
                     .build(),
                 contentDescription = user.name,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
             )
         } else {
             Text(
@@ -228,9 +226,11 @@ private fun SessionUser.initials(): String {
     val nameInitials = name
         .trim()
         .split(Regex("\\s+"))
+        .asSequence()
         .filter { it.isNotBlank() }
         .take(2)
         .mapNotNull { it.firstOrNull()?.uppercaseChar()?.toString() }
+        .toList()
         .joinToString("")
     if (nameInitials.isNotBlank()) return nameInitials
 
@@ -246,7 +246,7 @@ private val previewUser = SessionUser(
     id = "preview-user",
     email = "anna.nowak@example.com",
     name = "Anna Nowak",
-    avatarUrl = "https://i.pravatar.cc/150?u=anna"
+    avatarUrl = "https://i.pravatar.cc/150?u=anna",
 )
 
 @Preview(showBackground = true, widthDp = 360, locale = "en")

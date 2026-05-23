@@ -39,15 +39,12 @@ fun MainScreen(
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var current by rememberSaveable { mutableStateOf(MainDestination.MAP) }
+    val currentSelection = rememberSaveable { mutableStateOf(value = MainDestination.MAP) }
+    var current by currentSelection
     MainScreenContent(
         current = current,
         user = user,
-        onSelect = { destination ->
-            if (destination != MainDestination.MENU) {
-                current = destination
-            }
-        },
+        onSelect = { currentSelection.value = it },
         onLogout = onLogout,
         modifier = modifier,
     )
@@ -62,7 +59,8 @@ private fun MainScreenContent(
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var isMenuOpen by rememberSaveable { mutableStateOf(false) }
+    val menuOpenState = rememberSaveable { mutableStateOf(value = false) }
+    var isMenuOpen by menuOpenState
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -72,7 +70,7 @@ private fun MainScreenContent(
                 user = user,
                 onSelect = { destination ->
                     if (destination == MainDestination.MENU) {
-                        isMenuOpen = true
+                        menuOpenState.value = true
                     } else {
                         onSelect(destination)
                     }
@@ -97,13 +95,13 @@ private fun MainScreenContent(
 
     if (isMenuOpen) {
         ModalBottomSheet(
-            onDismissRequest = { isMenuOpen = false },
+            onDismissRequest = { menuOpenState.value = false },
         ) {
             MainMenuSheet(
                 user = user,
-                onClose = { isMenuOpen = false },
+                onClose = { menuOpenState.value = false },
                 onLogout = {
-                    isMenuOpen = false
+                    menuOpenState.value = false
                     onLogout()
                 },
                 modifier = Modifier
