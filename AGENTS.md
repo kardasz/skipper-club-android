@@ -23,12 +23,12 @@ All versions are declared in `gradle/libs.versions.toml`. Do not hardcode versio
 
 | Area              | Choice                                                                              |
 | ----------------- | ----------------------------------------------------------------------------------- |
-| Language          | Kotlin **2.2.10** (K2)                                                              |
+| Language          | Kotlin **2.3.21** (K2)                                                              |
 | Build             | AGP **9.2.1**, Gradle 9.x, JDK 17 toolchain, Java 11 bytecode                       |
 | SDK               | `minSdk 26`, `targetSdk 36`, `compileSdk 36.1`                                      |
-| UI                | Jetpack Compose (BoM `2025.12.00`) + Material 3 + adaptive navigation suite         |
-| Network           | OkHttp 4.12 + kotlinx.serialization 1.9 (Retrofit planned as code grows)            |
-| Concurrency       | Coroutines 1.10 + `Flow`                                                            |
+| UI                | Jetpack Compose (BoM `2026.05.01`) + Material 3 + adaptive navigation suite         |
+| Network           | OkHttp 5.3 + kotlinx.serialization 1.11 (Retrofit planned as code grows)            |
+| Concurrency       | Coroutines 1.11 + `Flow`                                                            |
 | Repos allowed     | `google()` + `mavenCentral()` only (`FAIL_ON_PROJECT_REPOS`)                        |
 | Annotation procs  | **KSP** only — no kapt                                                              |
 

@@ -25,13 +25,13 @@ Everything else (cruises, posts, messages, friends, reviews, notifications, …)
 
 Use these versions when adding dependencies. **All versions live in `gradle/libs.versions.toml`** — never hardcode a version in `app/build.gradle.kts`.
 
-- Kotlin **2.2.10** (K2 compiler, Compose plugin = `org.jetbrains.kotlin.plugin.compose`)
+- Kotlin **2.3.21** (K2 compiler, Compose plugin = `org.jetbrains.kotlin.plugin.compose`)
 - AGP **9.2.1**, Gradle 9.x
 - `minSdk 26`, `targetSdk 36`, `compileSdk 36.1`
-- Compose BoM **`2025.12.00`** (Compose 1.11 core, April '26 release)
+- Compose BoM **`2026.05.01`**
 - Material 3 + `material3-adaptive-navigation-suite`
-- OkHttp **4.12** + `kotlinx.serialization` 1.9
-- Coroutines **1.10**
+- OkHttp **5.3** + `kotlinx.serialization` 1.11
+- Coroutines **1.11**
 - Edge-to-edge is on (`enableEdgeToEdge()` in `MainActivity`)
 - Dynamic color is **off by default** — brand palette wins
 

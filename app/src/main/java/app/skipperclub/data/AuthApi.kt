@@ -62,7 +62,7 @@ object AuthApi {
 
         execute(request).use { response ->
             if (!response.isSuccessful) throw response.toAuthError()
-            val payload = response.body?.string().orEmpty()
+            val payload = response.body.string()
             return try {
                 json.decodeFromString<SessionResponse>(payload)
             } catch (e: SerializationException) {
@@ -91,7 +91,7 @@ object AuthApi {
 
         execute(request).use { response ->
             if (!response.isSuccessful) throw response.toAuthError()
-            val payload = response.body?.string().orEmpty()
+            val payload = response.body.string()
             return try {
                 json.decodeFromString<SessionResponse>(payload)
             } catch (e: SerializationException) {
@@ -114,7 +114,7 @@ object AuthApi {
 
         execute(request).use { response ->
             if (!response.isSuccessful) throw response.toAuthError()
-            val payload = response.body?.string().orEmpty()
+            val payload = response.body.string()
             return try {
                 json.decodeFromString<SessionResponse>(payload)
             } catch (e: SerializationException) {
@@ -136,7 +136,7 @@ object AuthApi {
 
         execute(request).use { response ->
             if (!response.isSuccessful) throw response.toAuthError()
-            val payload = response.body?.string().orEmpty()
+            val payload = response.body.string()
             return try {
                 json.decodeFromString<RefreshSessionResponse>(payload)
             } catch (e: SerializationException) {
@@ -161,7 +161,7 @@ object AuthApi {
         }
 
     private fun Response.toAuthError(): AuthError {
-        val payload = body?.string().orEmpty()
+        val payload = body.string()
         val problem = runCatching {
             if (payload.isNotBlank()) json.decodeFromString<ProblemDetails>(payload) else null
         }.getOrNull()

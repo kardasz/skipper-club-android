@@ -29,7 +29,7 @@ Minimum SDK was chosen to cover the bulk of active Android devices in the sailin
 | Tool                     | Version          | Notes                                                                                             |
 | ------------------------ | ---------------- | ------------------------------------------------------------------------------------------------- |
 | Android Gradle Plugin    | **9.2.1**        | Declared in `gradle/libs.versions.toml`. Uses the new `compileSdk { release(...) }` DSL.          |
-| Kotlin                   | **2.2.10**       | K2 compiler. Compose plugin is `org.jetbrains.kotlin.plugin.compose`.                             |
+| Kotlin                   | **2.3.21**       | K2 compiler. Compose plugin is `org.jetbrains.kotlin.plugin.compose`.                             |
 | Gradle                   | **9.x**          | Wrapper pinned in `gradle/wrapper/`. JDK selection via Foojay toolchain plugin.                   |
 | JDK                      | **21 (toolchain)** + Java 11 source/target | `gradle/gradle-daemon-jvm.properties` pins `toolchainVersion=21`; bytecode targets 11. |
 | KSP                      | To be added when DI / Room is introduced | Prefer KSP over kapt for all annotation processors.                       |
@@ -55,12 +55,12 @@ Minimum SDK was chosen to cover the bulk of active Android devices in the sailin
 
 | Concern                | Choice                                                                                          |
 | ---------------------- | ----------------------------------------------------------------------------------------------- |
-| UI toolkit             | **Jetpack Compose** (BoM `2025.12.00`, core 1.11.x stable as of April '26)                      |
+| UI toolkit             | **Jetpack Compose** (BoM `2026.05.01`)                                                           |
 | Design language        | **Material 3** (`androidx.compose.material3`)                                                   |
 | Adaptive scaffolding   | `material3-adaptive-navigation-suite` → `NavigationSuiteScaffold`                               |
 | Theming                | `app/src/main/java/app/skipperclub/ui/theme/` — `SkipperClubTheme`, brand palette, typography   |
 | Iconography            | Vector drawables in `res/drawable/ic_*.xml`. Prefer Material Symbols where possible.            |
-| Image loading          | **Coil 3** (`io.coil-kt.coil3:coil-compose` + `coil-network-okhttp`) — to be added              |
+| Image loading          | **Coil 3** (`io.coil-kt.coil3:coil-compose` + `coil-network-okhttp`)                            |
 | Activity model         | **Single Activity** (`MainActivity`) hosting all Compose content                                |
 | System UI              | Edge-to-edge with `safeDrawingPadding()`/`imePadding()`; window soft input mode `adjustResize`. |
 
@@ -153,8 +153,8 @@ When the project crosses ~3 features, add an included build at `build-logic/` wi
 
 | Concern             | Today                                       | Target                                                                   |
 | ------------------- | ------------------------------------------- | ------------------------------------------------------------------------ |
-| HTTP engine         | Raw **OkHttp 4.12** with manual `Request.Builder` | OkHttp 4.x **+ Retrofit** with `kotlinx.serialization` converter         |
-| Serialization       | `kotlinx.serialization` 1.9                 | unchanged                                                                |
+| HTTP engine         | Raw **OkHttp 5.3** with manual `Request.Builder` | OkHttp 5.x **+ Retrofit** with `kotlinx.serialization` converter         |
+| Serialization       | `kotlinx.serialization` 1.11                | unchanged                                                                |
 | Error model         | `AuthError` sealed class mapping RFC 7807 `application/problem+json` | Generalise to `ApiError` shared by all features |
 | Auth header         | Per-request bearer (not yet implemented)    | Authenticator/interceptor adding `Authorization: Bearer …` from `SessionStore` + refresh-token flow |
 | Localization        | `Accept-Language: ${Locale.getDefault().toLanguageTag()}` interceptor | unchanged                                          |
@@ -194,7 +194,7 @@ Current `SessionStore` is an in-memory `MutableStateFlow` — replace it with a 
 
 ## 8. Concurrency
 
-- All async work uses **Kotlin Coroutines 1.10+** + **`Flow`**.
+- All async work uses **Kotlin Coroutines 1.11+** + **`Flow`**.
 - ViewModels expose state as `StateFlow<UiState>` using `stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), initial)`.
 - Inject `CoroutineDispatcher`s via a `Dispatchers` wrapper (`AppDispatchers(io, default, main)`) so tests can override with `UnconfinedTestDispatcher`. Do not call `Dispatchers.IO` directly outside `:core:common`.
 - Network calls are `suspend` functions. WebSocket events become `Flow`s via `callbackFlow`.

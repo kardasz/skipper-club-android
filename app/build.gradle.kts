@@ -15,7 +15,9 @@ android {
     defaultConfig {
         applicationId = "app.skipperclub"
         minSdk = 26
-        targetSdk = 36
+        targetSdk {
+            version = release(36)
+        }
         versionCode = 1
         versionName = "1.0"
 

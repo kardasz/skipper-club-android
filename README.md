@@ -23,12 +23,12 @@ For the full technical picture (versions, target architecture, modularization pl
 
 | Area              | Choice                                                            |
 | ----------------- | ----------------------------------------------------------------- |
-| Language          | Kotlin **2.2.10** (K2)                                            |
-| UI                | Jetpack Compose (BoM `2025.12.00`) + Material 3                   |
+| Language          | Kotlin **2.3.21** (K2)                                            |
+| UI                | Jetpack Compose (BoM `2026.05.01`) + Material 3                   |
 | Build             | Android Gradle Plugin **9.2.1**, Gradle 9.x                       |
 | SDK               | `minSdk 26`, `targetSdk 36`, `compileSdk 36.1`                    |
-| Network           | OkHttp 4.12 + kotlinx.serialization 1.9                           |
-| Concurrency       | Coroutines 1.10 + `Flow`                                          |
+| Network           | OkHttp 5.3 + kotlinx.serialization 1.11                           |
+| Concurrency       | Coroutines 1.11 + `Flow`                                          |
 | Architecture      | Unidirectional data flow, ViewModel + StateFlow (planned)         |
 | DI                | Hilt (planned — currently object singletons)                      |
 | Navigation        | Jetpack Navigation 3 (planned)                                    |
