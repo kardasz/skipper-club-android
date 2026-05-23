@@ -1,0 +1,45 @@
+name: Inspect Android runner
+
+on:
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    name: Inspect Android SDK and AVD profiles
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print runner image details
+        run: |
+          echo "Image OS: ${ImageOS:-unknown}"
+          echo "Image version: ${ImageVersion:-unknown}"
+          echo "Runner OS: ${RUNNER_OS:-unknown}"
+          echo "Runner arch: ${RUNNER_ARCH:-unknown}"
+          uname -a
+          lsb_release -a
+
+      - name: Print Android environment
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-unset}"
+          echo "JAVA_HOME=${JAVA_HOME:-unset}"
+          command -v java
+          java -version
+          command -v sdkmanager
+          command -v avdmanager
+          command -v emulator
+          command -v adb
+
+      - name: Print Android tool versions
+        run: |
+          sdkmanager --version
+          adb version
+          emulator -version
+
+      - name: List installed Android SDK packages
+        run: sdkmanager --list_installed
+
+      - name: List available AVD hardware profiles
+        run: avdmanager list device
+
+      - name: Highlight Pixel hardware profiles
+        run: avdmanager list device | grep -i pixel || true
