@@ -48,18 +48,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - device: Pixel
-            slug: pixel
+          - device: Medium Phone
+            slug: medium-phone
             api-level: 34
             target: google_apis
             arch: x86_64
-            profile: pixel_10
-          # - device: Pixel Tablet
-          #   slug: pixel-tablet
-          #   api-level: 34
-          #   target: google_apis
-          #   arch: x86_64
-          #   profile: pixel_tablet
+            profile: medium_phone
+          - device: Medium Tablet
+            slug: medium-tablet
+            api-level: 34
+            target: google_apis
+            arch: x86_64
+            profile: medium_tablet
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -89,7 +89,7 @@ jobs:
           target: ${{ matrix.target }}
           arch: ${{ matrix.arch }}
           profile: ${{ matrix.profile }}
-          force-avd-creation: false
+          force-avd-creation: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: make connected-check
