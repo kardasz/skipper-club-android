@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,11 +40,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import app.skipperclub.data.SessionUser
 import app.skipperclub.ui.theme.SkipperClubTheme
 
 @Composable
 fun SkipperBottomBar(
     selected: MainDestination,
+    user: SessionUser,
     onSelect: (MainDestination) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -78,6 +81,7 @@ fun SkipperBottomBar(
                         SkipperNavItem(
                             destination = destination,
                             selected = destination == selected,
+                            user = user.takeIf { destination == MainDestination.MENU },
                             onSelect = onSelect,
                             modifier = Modifier.weight(1f),
                         )
@@ -93,6 +97,7 @@ fun SkipperBottomBar(
 private fun SkipperNavItem(
     destination: MainDestination,
     selected: Boolean,
+    user: SessionUser?,
     onSelect: (MainDestination) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -153,12 +158,20 @@ private fun SkipperNavItem(
                 .background(indicatorColor),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                painter = painterResource(destination.iconRes),
-                contentDescription = label,
-                tint = iconTint,
-                modifier = Modifier.size(if (destination == MainDestination.MAP) 25.dp else 23.dp),
-            )
+            if (user != null) {
+                UserAvatar(
+                    user = user,
+                    selected = selected,
+                    modifier = Modifier.size(32.dp),
+                )
+            } else {
+                Icon(
+                    painter = painterResource(destination.iconRes),
+                    contentDescription = label,
+                    tint = iconTint,
+                    modifier = Modifier.size(if (destination == MainDestination.MAP) 25.dp else 23.dp),
+                )
+            }
         }
         Spacer(modifier = Modifier.height(4.dp))
         Text(
@@ -173,11 +186,74 @@ private fun SkipperNavItem(
     }
 }
 
+@Composable
+fun UserAvatar(
+    user: SessionUser,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val backgroundColor = if (selected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.secondaryContainer
+    }
+    val contentColor = if (selected) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    }
+    val borderColor = if (selected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)
+    }
+
+    Box(
+        modifier = modifier
+            .clip(MaterialTheme.shapes.extraLarge)
+            .background(backgroundColor)
+            .border(1.dp, borderColor, MaterialTheme.shapes.extraLarge),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = user.initials(),
+            style = MaterialTheme.typography.labelMedium,
+            color = contentColor,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+private fun SessionUser.initials(): String {
+    val nameInitials = name
+        .trim()
+        .split(Regex("\\s+"))
+        .filter { it.isNotBlank() }
+        .take(2)
+        .mapNotNull { it.firstOrNull()?.uppercaseChar()?.toString() }
+        .joinToString("")
+    if (nameInitials.isNotBlank()) return nameInitials
+
+    return email
+        .substringBefore("@")
+        .firstOrNull()
+        ?.uppercaseChar()
+        ?.toString()
+        ?: "SC"
+}
+
+private val previewUser = SessionUser(
+    id = "preview-user",
+    email = "anna.nowak@example.com",
+    name = "Anna Nowak",
+)
+
 @Preview(showBackground = true, widthDp = 360, locale = "en")
 @Composable
 private fun SkipperBottomBarPreviewMapSelected() {
     SkipperClubTheme {
-        SkipperBottomBar(selected = MainDestination.MAP, onSelect = {})
+        SkipperBottomBar(selected = MainDestination.MAP, user = previewUser, onSelect = {})
     }
 }
 
@@ -185,7 +261,7 @@ private fun SkipperBottomBarPreviewMapSelected() {
 @Composable
 private fun SkipperBottomBarPreviewPostsSelected() {
     SkipperClubTheme {
-        SkipperBottomBar(selected = MainDestination.POSTS, onSelect = {})
+        SkipperBottomBar(selected = MainDestination.POSTS, user = previewUser, onSelect = {})
     }
 }
 
@@ -193,7 +269,7 @@ private fun SkipperBottomBarPreviewPostsSelected() {
 @Composable
 private fun SkipperBottomBarPreviewPl() {
     SkipperClubTheme {
-        SkipperBottomBar(selected = MainDestination.MESSAGES, onSelect = {})
+        SkipperBottomBar(selected = MainDestination.MESSAGES, user = previewUser, onSelect = {})
     }
 }
 
@@ -205,6 +281,6 @@ private fun SkipperBottomBarPreviewPl() {
 @Composable
 private fun SkipperBottomBarPreviewDark() {
     SkipperClubTheme {
-        SkipperBottomBar(selected = MainDestination.MAP, onSelect = {})
+        SkipperBottomBar(selected = MainDestination.MAP, user = previewUser, onSelect = {})
     }
 }

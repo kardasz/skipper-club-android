@@ -71,5 +71,10 @@
     <string name="nav_messages">Wiadomości</string>
     <string name="nav_menu">Menu</string>
 
+    <string name="menu_my_profile">Mój profil</string>
+    <string name="menu_saved">Zapisane</string>
+    <string name="menu_settings">Ustawienia</string>
+    <string name="menu_logout">Wyloguj</string>
+
     <string name="main_placeholder_subtitle">Wkrótce</string>
 </resources>

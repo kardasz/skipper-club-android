@@ -219,8 +219,16 @@ fun SkipperClubApp(
         }
     }
 
-    if (isAuthenticated) {
-        MainScreen()
+    val activeSession = session
+    if (activeSession != null) {
+        MainScreen(
+            user = activeSession.user,
+            onLogout = {
+                scope.launch {
+                    SessionStore.clear()
+                }
+            },
+        )
         return
     }
 
