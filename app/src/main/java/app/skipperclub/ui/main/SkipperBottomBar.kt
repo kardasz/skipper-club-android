@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -32,6 +33,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -42,6 +45,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import app.skipperclub.data.SessionUser
 import app.skipperclub.ui.theme.SkipperClubTheme
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 
 @Composable
 fun SkipperBottomBar(
@@ -110,15 +116,6 @@ private fun SkipperNavItem(
         animationSpec = tween(durationMillis = 180),
         label = "Nav icon tint",
     )
-    val labelTint by animateColorAsState(
-        targetValue = if (selected) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        },
-        animationSpec = tween(durationMillis = 180),
-        label = "Nav label tint",
-    )
     val indicatorColor by animateColorAsState(
         targetValue = if (selected) {
             MaterialTheme.colorScheme.primaryContainer
@@ -137,7 +134,7 @@ private fun SkipperNavItem(
     val label = stringResource(destination.labelRes)
     Column(
         modifier = modifier
-            .height(72.dp)
+            .height(64.dp)
             .selectable(
                 selected = selected,
                 interactionSource = remember { MutableInteractionSource() },
@@ -173,16 +170,6 @@ private fun SkipperNavItem(
                 )
             }
         }
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = labelTint,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 
@@ -215,13 +202,25 @@ fun UserAvatar(
             .border(1.dp, borderColor, MaterialTheme.shapes.extraLarge),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = user.initials(),
-            style = MaterialTheme.typography.labelMedium,
-            color = contentColor,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-        )
+        if (!user.avatarUrl.isNullOrEmpty()) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(user.avatarUrl)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = user.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Text(
+                text = user.initials(),
+                style = MaterialTheme.typography.labelMedium,
+                color = contentColor,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 
@@ -247,6 +246,7 @@ private val previewUser = SessionUser(
     id = "preview-user",
     email = "anna.nowak@example.com",
     name = "Anna Nowak",
+    avatarUrl = "https://i.pravatar.cc/150?u=anna"
 )
 
 @Preview(showBackground = true, widthDp = 360, locale = "en")
