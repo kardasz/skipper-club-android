@@ -1,5 +1,15 @@
 # SkipperClub — Android
 
+[![Build platforms](https://github.com/kardasz/skipper-club-android/actions/workflows/build-platforms.yml/badge.svg?event=pull_request)](https://github.com/kardasz/skipper-club-android/actions/workflows/build-platforms.yml)
+[![Unit tests + Lint](https://img.shields.io/github/actions/workflow/status/kardasz/skipper-club-android/build-platforms.yml?event=pull_request&label=unit%20tests%20%2B%20lint&logo=githubactions&logoColor=white)](https://github.com/kardasz/skipper-club-android/actions/workflows/build-platforms.yml)
+[![Android build](https://img.shields.io/github/actions/workflow/status/kardasz/skipper-club-android/build-platforms.yml?event=pull_request&label=debug%20APK%20build&logo=android&logoColor=white)](https://github.com/kardasz/skipper-club-android/actions/workflows/build-platforms.yml)
+[![Instrumented tests](https://img.shields.io/github/actions/workflow/status/kardasz/skipper-club-android/build-platforms.yml?event=pull_request&label=instrumented%20tests&logo=androidstudio&logoColor=white)](https://github.com/kardasz/skipper-club-android/actions/workflows/build-platforms.yml)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.3.21-7F52FF?logo=kotlin&logoColor=white)
+![Compose BoM](https://img.shields.io/badge/Compose%20BoM-2026.05.01-4285F4?logo=jetpackcompose&logoColor=white)
+![AGP](https://img.shields.io/badge/AGP-9.2.1-3DDC84?logo=android&logoColor=white)
+![JDK](https://img.shields.io/badge/JDK-21-007396?logo=openjdk&logoColor=white)
+![SDK](https://img.shields.io/badge/SDK-min%2026%20%7C%20target%2036-3DDC84?logo=android&logoColor=white)
+
 Native Android client for **SkipperClub**, a platform that connects skippers organising sailing cruises with people looking for spots on board. The app combines crew recruitment with a sailing-focused social network: profile-driven trust, post-cruise blind reviews, real-time chat, AI-assisted content, and community-driven regional content.
 
 > Status — **early development.** Only the authentication surface (login, OTP, password sign-in, invitation-based registration) is implemented. Everything else is documented in [`docs/`](./docs/) and waiting to be built.
@@ -132,7 +142,7 @@ A `Makefile` wraps the most common Gradle commands for ergonomics:
 The `Build platforms` workflow (`.github/workflows/build-platforms.yml`) runs on every pull request:
 
 - **Unit tests & Lint** on `ubuntu-latest` with JDK 21 (`make test`, `make lint`).
-- **Build** matrix that assembles a debug APK and runs `make connected-check` on emulator profiles `pixel_10` and `pixel_tablet` (API 34, `google_apis`, `x86_64`) via `reactivecircus/android-emulator-runner`.
+- **Build Medium Phone / Medium Tablet** matrix that assembles a debug APK and runs `make connected-check` on emulator profiles `medium_phone` and `medium_tablet` (API 34, `google_apis`, `x86_64`) via `reactivecircus/android-emulator-runner`.
 
 Reports (unit tests, lint, instrumented tests) and the debug APKs are uploaded as workflow artifacts.
 
