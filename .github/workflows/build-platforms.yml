@@ -54,12 +54,12 @@ jobs:
             target: google_apis
             arch: x86_64
             profile: pixel_10
-          - device: Pixel Tablet
-            slug: pixel-tablet
-            api-level: 34
-            target: google_apis
-            arch: x86_64
-            profile: pixel_tablet
+          # - device: Pixel Tablet
+          #   slug: pixel-tablet
+          #   api-level: 34
+          #   target: google_apis
+          #   arch: x86_64
+          #   profile: pixel_tablet
     steps:
       - name: Checkout
         uses: actions/checkout@v6
