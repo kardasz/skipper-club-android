@@ -161,7 +161,7 @@ private fun SkipperNavItem(
                 )
             } else {
                 Icon(
-                    painter = painterResource(destination.iconRes),
+                    imageVector = if (selected) destination.selectedIcon else destination.unselectedIcon,
                     contentDescription = label,
                     tint = iconTint,
                     modifier = Modifier.size(if (destination == MainDestination.MAP) 25.dp else 23.dp),
