@@ -52,5 +52,3 @@ jobs:
       - name: List available AVD hardware profiles
         run: avdmanager list device || true
 
-      - name: Highlight Pixel hardware profiles
-        run: avdmanager list device | grep -i pixel || true
