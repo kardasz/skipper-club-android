@@ -20,7 +20,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -111,12 +110,12 @@ fun SkipperClubApp(
     val session by SessionStore.session.collectAsState()
     val isRestoringSession by SessionStore.isRestoring.collectAsState()
     val isAuthenticated = session != null
-    var authDestination by rememberSaveable(stateSaver = AuthDestinationSaver) {
+    val authDestinationState = rememberSaveable(stateSaver = AuthDestinationSaver) {
         mutableStateOf(AuthDestination.Login)
     }
-    var pendingAction by remember { mutableStateOf<PendingAuthAction?>(null) }
-    var isBusy by remember { mutableStateOf(value = false) }
-    var authUiError by remember { mutableStateOf<AuthUiError?>(null) }
+    val pendingActionState = remember { mutableStateOf<PendingAuthAction?>(null) }
+    val isBusyState = remember { mutableStateOf(value = false) }
+    val authUiErrorState = remember { mutableStateOf<AuthUiError?>(null) }
     val scope = rememberCoroutineScope()
 
     val networkErrorMessage = stringResource(R.string.auth_error_network)
@@ -216,13 +215,13 @@ fun SkipperClubApp(
                 else -> AuthErrorTarget.Form
             }
         }
-        authUiError = AuthUiError(target, message)
+        authUiErrorState.value = AuthUiError(target, message)
     }
 
     val pendingCode = invitationCodeFromDeepLink.value
     LaunchedEffect(pendingCode, isAuthenticated) {
         if ((pendingCode != null) && !isAuthenticated) {
-            authDestination = AuthDestination.JoinByInvitation(pendingCode)
+            authDestinationState.value = AuthDestination.JoinByInvitation(pendingCode)
             invitationCodeFromDeepLink.value = null
         }
     }
@@ -241,133 +240,129 @@ fun SkipperClubApp(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        when (val destination = authDestination) {
+        when (val destination = authDestinationState.value) {
             AuthDestination.Login -> LoginScreen(
                 onContinueWithPassword = { email ->
-                    authUiError = null
-                    authDestination = AuthDestination.Password(email)
+                    authUiErrorState.value = null
+                    authDestinationState.value = AuthDestination.Password(email)
                 },
                 onSendLoginCode = { email ->
-                    authUiError = null
-                    pendingAction = PendingAuthAction.SendOtp(email)
+                    authUiErrorState.value = null
+                    pendingActionState.value = PendingAuthAction.SendOtp(email)
                 },
                 onJoinByInvitation = {
-                    authUiError = null
-                    authDestination = AuthDestination.JoinByInvitation()
+                    authUiErrorState.value = null
+                    authDestinationState.value = AuthDestination.JoinByInvitation()
                 },
-                emailErrorMessage = authUiError
+                emailErrorMessage = authUiErrorState.value
                     ?.takeIf { it.target == AuthErrorTarget.LoginEmail }
                     ?.message,
-                formErrorMessage = authUiError
+                formErrorMessage = authUiErrorState.value
                     ?.takeIf { it.target == AuthErrorTarget.Form }
                     ?.message,
-                onClearError = {
-                    authUiError = null
-                },
-            )
+            ) {
+                authUiErrorState.value = null
+            }
 
             is AuthDestination.Password -> {
                 BackHandler {
-                    authUiError = null
-                    authDestination = AuthDestination.Login
+                    authUiErrorState.value = null
+                    authDestinationState.value = AuthDestination.Login
                 }
                 PasswordScreen(
                     email = destination.email,
                     onBack = {
-                        authUiError = null
-                        authDestination = AuthDestination.Login
+                        authUiErrorState.value = null
+                        authDestinationState.value = AuthDestination.Login
                     },
                     onContinue = { email, password ->
-                        authUiError = null
-                        pendingAction = PendingAuthAction.LoginPassword(email, password)
+                        authUiErrorState.value = null
+                        pendingActionState.value = PendingAuthAction.LoginPassword(email, password)
                     },
                     onForgotPassword = { /* TODO */ },
-                    passwordErrorMessage = authUiError
+                    passwordErrorMessage = authUiErrorState.value
                         ?.takeIf { it.target == AuthErrorTarget.Password }
                         ?.message,
-                    formErrorMessage = authUiError
+                    formErrorMessage = authUiErrorState.value
                         ?.takeIf { it.target == AuthErrorTarget.Form }
                         ?.message,
-                    onClearError = {
-                        authUiError = null
-                    },
-                )
+                ) {
+                    authUiErrorState.value = null
+                }
             }
 
             is AuthDestination.OtpVerify -> {
                 BackHandler {
-                    authUiError = null
-                    authDestination = AuthDestination.Login
+                    authUiErrorState.value = null
+                    authDestinationState.value = AuthDestination.Login
                 }
                 OtpVerifyScreen(
                     email = destination.email,
                     onBack = {
-                        authUiError = null
-                        authDestination = AuthDestination.Login
+                        authUiErrorState.value = null
+                        authDestinationState.value = AuthDestination.Login
                     },
                     onVerify = { email, code ->
-                        authUiError = null
-                        pendingAction = PendingAuthAction.VerifyOtp(email, code)
+                        authUiErrorState.value = null
+                        pendingActionState.value = PendingAuthAction.VerifyOtp(email, code)
                     },
                     onResend = { email ->
-                        authUiError = null
-                        pendingAction = PendingAuthAction.SendOtp(email)
+                        authUiErrorState.value = null
+                        pendingActionState.value = PendingAuthAction.SendOtp(email)
                     },
-                    codeErrorMessage = authUiError
+                    codeErrorMessage = authUiErrorState.value
                         ?.takeIf { it.target == AuthErrorTarget.OtpCode }
                         ?.message,
-                    formErrorMessage = authUiError
+                    formErrorMessage = authUiErrorState.value
                         ?.takeIf { it.target == AuthErrorTarget.Form }
                         ?.message,
-                    onClearError = {
-                        authUiError = null
-                    },
-                )
+                ) {
+                    authUiErrorState.value = null
+                }
             }
 
             is AuthDestination.JoinByInvitation -> {
                 BackHandler {
-                    authUiError = null
-                    authDestination = AuthDestination.Login
+                    authUiErrorState.value = null
+                    authDestinationState.value = AuthDestination.Login
                 }
                 InvitationRegisterScreen(
                     initialCode = destination.code,
                     onBack = {
-                        authUiError = null
-                        authDestination = AuthDestination.Login
+                        authUiErrorState.value = null
+                        authDestinationState.value = AuthDestination.Login
                     },
                     onSubmit = { code, name, email, password ->
-                        authUiError = null
-                        pendingAction = PendingAuthAction.RegisterByInvitation(
+                        authUiErrorState.value = null
+                        pendingActionState.value = PendingAuthAction.RegisterByInvitation(
                             code = code,
                             name = name,
                             email = email,
                             password = password,
                         )
                     },
-                    codeErrorMessage = authUiError
+                    codeErrorMessage = authUiErrorState.value
                         ?.takeIf { it.target == AuthErrorTarget.InvitationCode }
                         ?.message,
-                    nameErrorMessage = authUiError
+                    nameErrorMessage = authUiErrorState.value
                         ?.takeIf { it.target == AuthErrorTarget.InvitationName }
                         ?.message,
-                    emailErrorMessage = authUiError
+                    emailErrorMessage = authUiErrorState.value
                         ?.takeIf { it.target == AuthErrorTarget.InvitationEmail }
                         ?.message,
-                    passwordErrorMessage = authUiError
+                    passwordErrorMessage = authUiErrorState.value
                         ?.takeIf { it.target == AuthErrorTarget.InvitationPassword }
                         ?.message,
-                    formErrorMessage = authUiError
+                    formErrorMessage = authUiErrorState.value
                         ?.takeIf { it.target == AuthErrorTarget.Form }
                         ?.message,
-                    onClearError = {
-                        authUiError = null
-                    },
-                )
+                ) {
+                    authUiErrorState.value = null
+                }
             }
         }
 
-        if (isBusy) {
+        if (isBusyState.value) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -380,17 +375,17 @@ fun SkipperClubApp(
 
     }
 
-    pendingAction?.let { action ->
+    pendingActionState.value?.let { action ->
         TurnstileDialog(
             action = action.turnstileAction,
             onSuccess = { token ->
                 scope.launch {
                     try {
-                        isBusy = true
+                        isBusyState.value = true
                         when (action) {
                             is PendingAuthAction.SendOtp -> {
                                 AuthApi.sendOtp(action.email, token)
-                                authDestination = AuthDestination.OtpVerify(action.email)
+                                authDestinationState.value = AuthDestination.OtpVerify(action.email)
                             }
 
                             is PendingAuthAction.VerifyOtp -> {
@@ -419,18 +414,19 @@ fun SkipperClubApp(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (_: Exception) {
-                        authUiError = AuthUiError(AuthErrorTarget.Form, genericErrorMessage)
+                        authUiErrorState.value = AuthUiError(AuthErrorTarget.Form, genericErrorMessage)
                     } finally {
-                        pendingAction = null
-                        isBusy = false
+                        pendingActionState.value = null
+                        isBusyState.value = false
                     }
                 }
             },
             onError = {
-                authUiError = AuthUiError(AuthErrorTarget.Form, captchaErrorMessage)
-                pendingAction = null
+                authUiErrorState.value = AuthUiError(AuthErrorTarget.Form, captchaErrorMessage)
+                pendingActionState.value = null
             },
-            onDismiss = { pendingAction = null },
-        )
+        ) {
+            pendingActionState.value = null
+        }
     }
 }
