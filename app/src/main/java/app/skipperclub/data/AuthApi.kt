@@ -8,7 +8,6 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.SerializationException
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.Call
 import okhttp3.Callback
@@ -65,7 +64,7 @@ object AuthApi {
             val payload = response.body.string()
             return try {
                 json.decodeFromString<SessionResponse>(payload)
-            } catch (e: SerializationException) {
+            } catch (_: SerializationException) {
                 throw AuthError.Server(response.code, "Malformed response")
             }
         }
@@ -94,7 +93,7 @@ object AuthApi {
             val payload = response.body.string()
             return try {
                 json.decodeFromString<SessionResponse>(payload)
-            } catch (e: SerializationException) {
+            } catch (_: SerializationException) {
                 throw AuthError.Server(response.code, "Malformed response")
             }
         }
@@ -117,7 +116,7 @@ object AuthApi {
             val payload = response.body.string()
             return try {
                 json.decodeFromString<SessionResponse>(payload)
-            } catch (e: SerializationException) {
+            } catch (_: SerializationException) {
                 throw AuthError.Server(response.code, "Malformed response")
             }
         }
@@ -139,7 +138,7 @@ object AuthApi {
             val payload = response.body.string()
             return try {
                 json.decodeFromString<RefreshSessionResponse>(payload)
-            } catch (e: SerializationException) {
+            } catch (_: SerializationException) {
                 throw AuthError.Server(response.code, "Malformed response")
             }
         }
@@ -149,15 +148,17 @@ object AuthApi {
         suspendCancellableCoroutine { continuation ->
             val call = client.newCall(request)
             continuation.invokeOnCancellation { runCatching { call.cancel() } }
-            call.enqueue(object : Callback {
-                override fun onFailure(call: Call, e: IOException) {
-                    continuation.resumeWithException(AuthError.Network(e))
-                }
+            call.enqueue(
+                object : Callback {
+                    override fun onFailure(call: Call, e: IOException) {
+                        continuation.resumeWithException(AuthError.Network(e))
+                    }
 
-                override fun onResponse(call: Call, response: Response) {
-                    continuation.resume(response)
-                }
-            })
+                    override fun onResponse(call: Call, response: Response) {
+                        continuation.resume(response)
+                    }
+                },
+            )
         }
 
     private fun Response.toAuthError(): AuthError {
@@ -167,6 +168,7 @@ object AuthApi {
         }.getOrNull()
         val detail = problem?.detail ?: problem?.title
         val validationFields = problem?.violations.orEmpty()
+            .asSequence()
             .mapNotNull { it.propertyPath?.substringBefore('.') }
             .toSet()
         return when (code) {

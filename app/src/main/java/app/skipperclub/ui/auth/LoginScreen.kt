@@ -65,8 +65,8 @@ fun LoginScreen(
     var email by rememberSaveable { mutableStateOf("") }
     LoginScreenContent(
         email = email,
-        onEmailChange = {
-            email = it
+        onEmailChange = { newValue ->
+            email = newValue
             onClearError()
         },
         onContinueWithPassword = { onContinueWithPassword(email.trim()) },
@@ -97,8 +97,8 @@ private fun LoginScreenContent(
                 Brush.verticalGradient(
                     0f to BackgroundTintLight,
                     0.6f to MaterialTheme.colorScheme.background,
-                )
-            )
+                ),
+            ),
     ) {
         Column(
             modifier = Modifier
@@ -147,12 +147,12 @@ private fun LoginScreenContent(
             ) {
                 Column(
                     modifier = Modifier.padding(
-                        PaddingValues(horizontal = 20.dp, vertical = 24.dp)
+                        PaddingValues(horizontal = 20.dp, vertical = 24.dp),
                     ),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    if (formErrorMessage != null) {
-                        AuthErrorMessage(message = formErrorMessage)
+                    formErrorMessage?.let {
+                        AuthErrorMessage(message = it)
                     }
 
                     OutlinedTextField(

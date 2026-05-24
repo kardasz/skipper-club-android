@@ -112,10 +112,10 @@ fun SkipperClubApp(
     val isRestoringSession by SessionStore.isRestoring.collectAsState()
     val isAuthenticated = session != null
     var authDestination by rememberSaveable(stateSaver = AuthDestinationSaver) {
-        mutableStateOf<AuthDestination>(AuthDestination.Login)
+        mutableStateOf(AuthDestination.Login)
     }
     var pendingAction by remember { mutableStateOf<PendingAuthAction?>(null) }
-    var isBusy by remember { mutableStateOf(false) }
+    var isBusy by remember { mutableStateOf(value = false) }
     var authUiError by remember { mutableStateOf<AuthUiError?>(null) }
     val scope = rememberCoroutineScope()
 
@@ -157,20 +157,25 @@ fun SkipperClubApp(
             is AuthError.InvalidCredentials -> invalidCredentialsErrorMessage
             is AuthError.InvalidRefreshToken,
             is AuthError.RefreshTokenExpired,
-            is AuthError.AuthenticationRequired -> genericErrorMessage
-            is AuthError.Validation -> when {
-                action is PendingAuthAction.VerifyOtp && error.hasField("code") -> invalidOtpFormatErrorMessage
-                action is PendingAuthAction.RegisterByInvitation && error.hasField("code") -> {
-                    invalidInvitationCodeErrorMessage
+            is AuthError.AuthenticationRequired,
+            -> {
+                genericErrorMessage
+            }
+            is AuthError.Validation -> when (action) {
+                is PendingAuthAction.VerifyOtp -> {
+                    if (error.hasField("code")) invalidOtpFormatErrorMessage else validationErrorMessage
                 }
-                action is PendingAuthAction.RegisterByInvitation && error.hasField("name") -> {
-                    invalidNameErrorMessage
+                is PendingAuthAction.RegisterByInvitation -> when {
+                    error.hasField("code") -> invalidInvitationCodeErrorMessage
+                    error.hasField("name") -> invalidNameErrorMessage
+                    error.hasField("email") -> validationErrorMessage
+                    error.hasField("password") -> invalidPasswordErrorMessage
+                    else -> validationErrorMessage
                 }
-                action is PendingAuthAction.RegisterByInvitation && error.hasField("email") -> {
-                    validationErrorMessage
+                is PendingAuthAction.LoginPassword -> {
+                    if (error.hasField("password")) invalidPasswordErrorMessage else validationErrorMessage
                 }
-                action !is PendingAuthAction.SendOtp && error.hasField("password") -> invalidPasswordErrorMessage
-                else -> validationErrorMessage
+                is PendingAuthAction.SendOtp -> validationErrorMessage
             }
             is AuthError.InvalidInvitation -> invalidInvitationMessage
             is AuthError.InvitationEmailMismatch -> invitationEmailMismatchMessage
@@ -184,7 +189,9 @@ fun SkipperClubApp(
             }
             is PendingAuthAction.VerifyOtp -> when (error) {
                 is AuthError.InvalidOtpCode,
-                is AuthError.Validation -> AuthErrorTarget.OtpCode
+                is AuthError.Validation,
+                -> AuthErrorTarget.OtpCode
+
                 else -> AuthErrorTarget.Form
             }
             is PendingAuthAction.LoginPassword -> when (error) {
@@ -197,7 +204,8 @@ fun SkipperClubApp(
             is PendingAuthAction.RegisterByInvitation -> when (error) {
                 is AuthError.InvalidInvitation -> AuthErrorTarget.InvitationCode
                 is AuthError.InvitationEmailMismatch,
-                is AuthError.EmailAlreadyRegistered -> AuthErrorTarget.InvitationEmail
+                is AuthError.EmailAlreadyRegistered,
+                -> AuthErrorTarget.InvitationEmail
                 is AuthError.Validation -> when {
                     error.fields.contains("code") -> AuthErrorTarget.InvitationCode
                     error.fields.contains("name") -> AuthErrorTarget.InvitationName
@@ -213,7 +221,7 @@ fun SkipperClubApp(
 
     val pendingCode = invitationCodeFromDeepLink.value
     LaunchedEffect(pendingCode, isAuthenticated) {
-        if (pendingCode != null && !isAuthenticated) {
+        if ((pendingCode != null) && !isAuthenticated) {
             authDestination = AuthDestination.JoinByInvitation(pendingCode)
             invitationCodeFromDeepLink.value = null
         }
@@ -253,7 +261,9 @@ fun SkipperClubApp(
                 formErrorMessage = authUiError
                     ?.takeIf { it.target == AuthErrorTarget.Form }
                     ?.message,
-                onClearError = { authUiError = null },
+                onClearError = {
+                    authUiError = null
+                },
             )
 
             is AuthDestination.Password -> {
@@ -278,7 +288,9 @@ fun SkipperClubApp(
                     formErrorMessage = authUiError
                         ?.takeIf { it.target == AuthErrorTarget.Form }
                         ?.message,
-                    onClearError = { authUiError = null },
+                    onClearError = {
+                        authUiError = null
+                    },
                 )
             }
 
@@ -307,7 +319,9 @@ fun SkipperClubApp(
                     formErrorMessage = authUiError
                         ?.takeIf { it.target == AuthErrorTarget.Form }
                         ?.message,
-                    onClearError = { authUiError = null },
+                    onClearError = {
+                        authUiError = null
+                    },
                 )
             }
 
@@ -346,7 +360,9 @@ fun SkipperClubApp(
                     formErrorMessage = authUiError
                         ?.takeIf { it.target == AuthErrorTarget.Form }
                         ?.message,
-                    onClearError = { authUiError = null },
+                    onClearError = {
+                        authUiError = null
+                    },
                 )
             }
         }
@@ -368,23 +384,25 @@ fun SkipperClubApp(
         TurnstileDialog(
             action = action.turnstileAction,
             onSuccess = { token ->
-                pendingAction = null
-                isBusy = true
                 scope.launch {
                     try {
+                        isBusy = true
                         when (action) {
                             is PendingAuthAction.SendOtp -> {
                                 AuthApi.sendOtp(action.email, token)
                                 authDestination = AuthDestination.OtpVerify(action.email)
                             }
+
                             is PendingAuthAction.VerifyOtp -> {
                                 val session = AuthApi.verifyOtp(action.email, action.code, token)
                                 SessionStore.save(session)
                             }
+
                             is PendingAuthAction.LoginPassword -> {
                                 val session = AuthApi.login(action.email, action.password, token)
                                 SessionStore.save(session)
                             }
+
                             is PendingAuthAction.RegisterByInvitation -> {
                                 val session = AuthApi.registerByInvitation(
                                     code = action.code,
@@ -400,16 +418,17 @@ fun SkipperClubApp(
                         showError(e, action)
                     } catch (e: CancellationException) {
                         throw e
-                    } catch (e: Exception) {
+                    } catch (_: Exception) {
                         authUiError = AuthUiError(AuthErrorTarget.Form, genericErrorMessage)
                     } finally {
+                        pendingAction = null
                         isBusy = false
                     }
                 }
             },
             onError = {
-                pendingAction = null
                 authUiError = AuthUiError(AuthErrorTarget.Form, captchaErrorMessage)
+                pendingAction = null
             },
             onDismiss = { pendingAction = null },
         )

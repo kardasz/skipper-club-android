@@ -58,7 +58,7 @@ fun TurnstileDialog(
     val onSuccessState by rememberUpdatedState(onSuccess)
     val onErrorState by rememberUpdatedState(onError)
     val parser = remember { Json { ignoreUnknownKeys = true } }
-    var loading by remember { mutableStateOf(true) }
+    var loading by remember { mutableStateOf(value = true) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -106,19 +106,15 @@ fun TurnstileDialog(
                     if (loading) {
                         CircularProgressIndicator()
                     }
-                    TurnstileWebView(
-                        action = action,
-                        onLoaded = { loading = false },
-                        onMessage = { raw ->
-                            val message = runCatching {
-                                parser.decodeFromString<TurnstileMessage>(raw)
-                            }.getOrNull() ?: return@TurnstileWebView
-                            when (message.event) {
-                                "turnstile-success" -> message.token?.let(onSuccessState)
-                                "turnstile-error" -> onErrorState(message.code)
-                            }
-                        },
-                    )
+                    TurnstileWebView(action = action, onLoaded = { loading = false }) { raw ->
+                        val message = runCatching {
+                            parser.decodeFromString<TurnstileMessage>(raw)
+                        }.getOrNull() ?: return@TurnstileWebView
+                        when (message.event) {
+                            "turnstile-success" -> message.token?.let(onSuccessState)
+                            "turnstile-error" -> onErrorState(message.code)
+                        }
+                    }
                 }
             }
         }
@@ -165,12 +161,16 @@ private fun TurnstileWebView(
                 settings.domStorageEnabled = true
                 setBackgroundColor(0)
 
-                addJavascriptInterface(object {
-                    @JavascriptInterface
-                    fun onTurnstileMessage(payload: String) {
-                        mainHandler.post { onMessageState(payload) }
-                    }
-                }, JS_INTERFACE_NAME)
+                addJavascriptInterface(
+                    object {
+                        @Suppress("unused")
+                        @JavascriptInterface
+                        fun onTurnstileMessage(payload: String) {
+                            mainHandler.post { onMessageState(payload) }
+                        }
+                    },
+                    JS_INTERFACE_NAME,
+                )
 
                 webViewClient = object : WebViewClient() {
                     override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
