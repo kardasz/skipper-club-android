@@ -56,7 +56,7 @@
     <string name="auth_error_invalid_otp">Kod jest nieprawidłowy lub wygasł.</string>
     <string name="auth_error_invalid_credentials">Nieprawidłowy adres e-mail lub hasło.</string>
     <string name="auth_error_invalid_email">Podaj prawidłowy adres e-mail.</string>
-    <string name="auth_error_invalid_password">Hasło musi mieć 8-128 znaków.</string>
+    <string name="auth_error_invalid_password">Hasło musi mieć od 8 do 128 znaków.</string>
     <string name="auth_error_invalid_name">Podaj imię i nazwisko.</string>
     <string name="auth_error_invalid_invitation_code">Wpisz 8-znakowy kod z zaproszenia.</string>
     <string name="auth_error_invalid_otp_format">Wpisz 6-cyfrowy kod z wiadomości e-mail.</string>

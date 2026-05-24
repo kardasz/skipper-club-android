@@ -44,6 +44,13 @@ android {
         compose = true
         buildConfig = true
     }
+    lint {
+        disable += setOf(
+            "AndroidGradlePluginVersion",
+            "GradleDependency",
+            "OldTargetApi",
+        )
+    }
 }
 
 dependencies {
