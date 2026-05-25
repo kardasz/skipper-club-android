@@ -6,8 +6,8 @@ import okhttp3.logging.HttpLoggingInterceptor
 
 /**
  * Debug variant — wires an OkHttp logging interceptor that prints full request /
- * response bodies under the `SkipperHttp` logcat tag. Secrets (`Authorization`,
- * `X-Turnstile-Token`) are redacted.
+ * response bodies under the `SkipperHttp` logcat tag. Secrets and API key
+ * identity headers are redacted.
  *
  * The release variant of this file is a no-op, so neither the interceptor nor the
  * `logging-interceptor` artifact ship to production.
@@ -20,6 +20,8 @@ internal object HttpLoggingProvider {
             level = HttpLoggingInterceptor.Level.BODY
             redactHeader("Authorization")
             redactHeader("X-Turnstile-Token")
+            redactHeader("X-Goog-Api-Key")
+            redactHeader("X-Android-Cert")
         }
         return builder.addInterceptor(interceptor)
     }

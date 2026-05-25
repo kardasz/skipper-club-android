@@ -10,6 +10,7 @@ import android.location.Location
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import app.skipperclub.data.PlacesApi
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
@@ -63,6 +64,8 @@ suspend fun Context.fetchCurrentLocation(): Location? {
  * device has no geocoder backend or the lookup fails.
  */
 suspend fun Context.reverseGeocode(lat: Double, lng: Double): String? {
+    PlacesApi.findBestNearbyPlace(this, lat, lng)?.let { return it }
+
     if (!Geocoder.isPresent()) return null
     val geocoder = Geocoder(this, Locale.getDefault())
     val addresses = withContext(Dispatchers.IO) {

@@ -52,6 +52,7 @@ android {
 
         buildConfigField("String", "API_BASE_URL", "\"https://api.skipperclub.app\"")
         buildConfigField("String", "TURNSTILE_URL", "\"https://skipperclub.app/turnstile\"")
+        buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.get()}\"")
         manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = googleMapsApiKey.get()
     }
 
