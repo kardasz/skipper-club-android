@@ -248,7 +248,7 @@ private fun CheckInOverlayActivePreviewPl() {
     SkipperClubTheme {
         CheckInOverlay(
             state = CheckInUiState.Active(
-                locationName = "Marina Gdańsk",
+                locationLabel = LocationLabel(placeName = "Marina Gdańsk"),
                 isResolvingName = false,
                 isSubmitting = false,
             ),
@@ -272,7 +272,7 @@ private fun CheckInOverlayActivePreviewDark() {
     SkipperClubTheme {
         CheckInOverlay(
             state = CheckInUiState.Active(
-                locationName = "Gen. Mariana C. Coopera 3",
+                locationLabel = LocationLabel(addressLine = "Gen. Mariana C. Coopera 3"),
                 isResolvingName = true,
                 isSubmitting = false,
             ),

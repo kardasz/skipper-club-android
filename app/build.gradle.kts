@@ -91,6 +91,8 @@ android {
         disable += setOf(
             "AndroidGradlePluginVersion",
             "GradleDependency",
+            // Places SDK pulls in Glide's NotificationTarget, but this app does not post system notifications.
+            "NotificationPermission",
             "OldTargetApi",
         )
     }
@@ -116,6 +118,7 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.maps.compose)
     implementation(libs.play.services.location)
+    implementation(libs.places)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

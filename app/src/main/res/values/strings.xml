@@ -96,9 +96,7 @@
     <string name="map_check_in">Check-in</string>
     <string name="map_check_in_confirm">Confirm</string>
     <string name="map_check_in_cancel">Cancel</string>
-    <string name="map_check_in_location_label">Location</string>
-    <string name="map_check_in_location_name_placeholder">Location name (optional)</string>
-    <string name="map_check_in_location_resolving">Finding this place...</string>
+    <string name="map_check_in_location_resolving">Finding this place&#8230;</string>
     <string name="map_check_in_location_unknown">Selected location</string>
     <string name="map_check_in_pin_content_description">Check-in pin centred on map</string>
     <string name="map_check_in_success">Checked in at %1$s.</string>

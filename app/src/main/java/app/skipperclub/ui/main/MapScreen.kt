@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -48,6 +49,7 @@ import app.skipperclub.data.SessionStore
 import app.skipperclub.ui.main.checkin.CheckInOverlay
 import app.skipperclub.ui.main.checkin.CheckInUiState
 import app.skipperclub.ui.main.checkin.fetchCurrentLocation
+import app.skipperclub.ui.main.checkin.LocationLabel
 import app.skipperclub.ui.main.checkin.reverseGeocode
 import app.skipperclub.ui.notification.InAppNotificationHost
 import app.skipperclub.ui.notification.InAppNotificationType
@@ -143,7 +145,7 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                     .getOrNull()
                 val latest = checkInState as? CheckInUiState.Active ?: return@collect
                 checkInState = latest.copy(
-                    locationName = resolved.orEmpty(),
+                    locationLabel = resolved ?: LocationLabel(),
                     isResolvingName = false,
                 )
             }
@@ -175,7 +177,7 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
             val active = checkInState as? CheckInUiState.Active
             Box(modifier = Modifier.fillMaxSize()) {
                 LocationTargetOverlay(
-                    locationName = active?.locationName.orEmpty(),
+                    locationLabel = active?.locationLabel ?: LocationLabel(),
                     isResolvingName = active?.isResolvingName == true,
                     modifier = Modifier.align(Alignment.Center),
                 )
@@ -195,7 +197,7 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                     }
                     val target = LatLng(location.latitude, location.longitude)
                     checkInState = CheckInUiState.Active(
-                        locationName = "",
+                        locationLabel = LocationLabel(),
                         isResolvingName = true,
                         isSubmitting = false,
                     )
@@ -209,7 +211,7 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                         .getOrNull()
                     val latest = checkInState as? CheckInUiState.Active ?: return@launch
                     checkInState = latest.copy(
-                        locationName = resolved.orEmpty(),
+                        locationLabel = resolved ?: LocationLabel(),
                         isResolvingName = false,
                     )
                 }
@@ -230,10 +232,11 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                             accessToken = token,
                             lat = target.latitude,
                             lng = target.longitude,
-                            locationName = active.locationName.trim().ifEmpty { null },
+                            locationName = active.locationLabel.submissionLabel,
                         )
-                        val message = if (active.locationName.isNotBlank()) {
-                            successMessageTemplate.format(active.locationName.trim())
+                        val submittedLabel = active.locationLabel.submissionLabel
+                        val message = if (submittedLabel != null) {
+                            successMessageTemplate.format(submittedLabel)
                         } else {
                             successNoNameMessage
                         }
@@ -300,13 +303,13 @@ private fun CenterMapPin(modifier: Modifier = Modifier) {
 
 @Composable
 private fun LocationTargetOverlay(
-    locationName: String,
+    locationLabel: LocationLabel,
     isResolvingName: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier) {
         LocationSummaryPill(
-            value = locationName,
+            label = locationLabel,
             isResolving = isResolvingName,
             modifier = Modifier
                 .align(Alignment.Center)
@@ -318,15 +321,16 @@ private fun LocationTargetOverlay(
 
 @Composable
 private fun LocationSummaryPill(
-    value: String,
+    label: LocationLabel,
     isResolving: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val text = when {
-        value.isNotBlank() -> value
-        isResolving -> stringResource(R.string.map_check_in_location_resolving)
-        else -> stringResource(R.string.map_check_in_location_unknown)
+    val title = label.title ?: if (isResolving) {
+        stringResource(R.string.map_check_in_location_resolving)
+    } else {
+        stringResource(R.string.map_check_in_location_unknown)
     }
+    val subtitle = label.subtitle
 
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
@@ -348,13 +352,24 @@ private fun LocationSummaryPill(
                         .size(16.dp),
                 )
             }
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Column {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
     }
 }

@@ -96,9 +96,7 @@
     <string name="map_check_in">Zamelduj się</string>
     <string name="map_check_in_confirm">Potwierdź</string>
     <string name="map_check_in_cancel">Anuluj</string>
-    <string name="map_check_in_location_label">Lokalizacja</string>
-    <string name="map_check_in_location_name_placeholder">Nazwa miejsca (opcjonalnie)</string>
-    <string name="map_check_in_location_resolving">Ustalamy miejsce...</string>
+    <string name="map_check_in_location_resolving">Ustalamy miejsce&#8230;</string>
     <string name="map_check_in_location_unknown">Wybrana lokalizacja</string>
     <string name="map_check_in_pin_content_description">Pinezka zameldowania na środku mapy</string>
     <string name="map_check_in_success">Zameldowano w: %1$s.</string>

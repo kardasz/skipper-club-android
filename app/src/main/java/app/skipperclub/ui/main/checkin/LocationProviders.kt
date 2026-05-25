@@ -10,6 +10,7 @@ import android.location.Location
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import app.skipperclub.data.NearbyPlace
 import app.skipperclub.data.PlacesApi
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
@@ -63,8 +64,8 @@ suspend fun Context.fetchCurrentLocation(): Location? {
  * place names (locality / feature name) over a full address. Returns `null` if the
  * device has no geocoder backend or the lookup fails.
  */
-suspend fun Context.reverseGeocode(lat: Double, lng: Double): String? {
-    PlacesApi.findBestNearbyPlace(this, lat, lng)?.let { return it }
+suspend fun Context.reverseGeocode(lat: Double, lng: Double): LocationLabel? {
+    PlacesApi.findBestNearbyPlace(this, lat, lng)?.toLocationLabel()?.let { return it }
 
     if (!Geocoder.isPresent()) return null
     val geocoder = Geocoder(this, Locale.getDefault())
@@ -75,8 +76,13 @@ suspend fun Context.reverseGeocode(lat: Double, lng: Double): String? {
             geocodeSync(geocoder, lat, lng)
         }
     }
-    return addresses?.bestLabel()
+    return addresses?.bestLabel()?.let { LocationLabel(addressLine = it) }
 }
+
+private fun NearbyPlace.toLocationLabel(): LocationLabel = LocationLabel(
+    placeName = name,
+    addressLine = addressLine,
+)
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 private suspend fun geocodeAsync(geocoder: Geocoder, lat: Double, lng: Double): List<Address>? =

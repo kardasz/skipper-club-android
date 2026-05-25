@@ -9,7 +9,7 @@ sealed interface CheckInUiState {
     data object Idle : CheckInUiState
     data object Locating : CheckInUiState
     data class Active(
-        val locationName: String,
+        val locationLabel: LocationLabel,
         val isResolvingName: Boolean,
         val isSubmitting: Boolean,
     ) : CheckInUiState
