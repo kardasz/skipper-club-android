@@ -1,24 +1,31 @@
 package app.skipperclub.ui.main
 
 import android.content.res.Configuration
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -38,7 +45,6 @@ import app.skipperclub.ui.main.checkin.fetchCurrentLocation
 import app.skipperclub.ui.main.checkin.reverseGeocode
 import app.skipperclub.ui.theme.SkipperClubTheme
 import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.ComposeMapColorScheme
@@ -46,8 +52,6 @@ import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.MapType
 import com.google.maps.android.compose.MapUiSettings
-import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.rememberCameraPositionState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -101,30 +105,36 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
     }
 
     var checkInState by remember { mutableStateOf<CheckInUiState>(CheckInUiState.Idle) }
-    val markerState = remember { MarkerState() }
-    val activePin by remember {
-        derivedStateOf { (checkInState as? CheckInUiState.Active)?.pin }
-    }
+    val isActive = checkInState is CheckInUiState.Active
 
-    // Re-geocode when the user finishes dragging the pin (debounced).
-    LaunchedEffect(activePin != null) {
-        if (activePin == null) return@LaunchedEffect
-        snapshotFlow { markerState.position }
+    // Re-geocode when the map stops moving (camera target = pin position).
+    // While the camera is moving the user is still aiming; only fire after a brief
+    // settle delay so we don't burn quota on every micro-pan.
+    LaunchedEffect(isActive) {
+        if (!isActive) return@LaunchedEffect
+        // Mark resolving immediately so the spinner appears as soon as the user
+        // starts dragging the map.
+        (checkInState as? CheckInUiState.Active)?.let {
+            checkInState = it.copy(isResolvingName = true)
+        }
+        snapshotFlow { cameraPositionState.isMoving }
             .distinctUntilChanged()
-            .collect { position ->
+            .collect { moving ->
                 val current = checkInState as? CheckInUiState.Active ?: return@collect
-                if (current.pin == position) return@collect
-                checkInState = current.copy(
-                    pin = position,
-                    isResolvingName = true,
-                )
-                delay(350)
-                val resolved = runCatching { context.reverseGeocode(position.latitude, position.longitude) }
+                if (moving) {
+                    if (!current.isResolvingName) {
+                        checkInState = current.copy(isResolvingName = true)
+                    }
+                    return@collect
+                }
+                // Camera settled — debounce a touch, then geocode the new target.
+                delay(300)
+                val target = cameraPositionState.position.target
+                val resolved = runCatching { context.reverseGeocode(target.latitude, target.longitude) }
                     .getOrNull()
                 val latest = checkInState as? CheckInUiState.Active ?: return@collect
-                if (latest.pin != position) return@collect
                 checkInState = latest.copy(
-                    locationName = resolved ?: latest.locationName,
+                    locationName = resolved.orEmpty(),
                     isResolvingName = false,
                 )
             }
@@ -139,15 +149,22 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
             mapColorScheme = ComposeMapColorScheme.FOLLOW_SYSTEM,
             properties = mapProperties,
             uiSettings = mapUiSettings,
+        )
+
+        // Static pin overlay, fixed to the centre of the *visible* map area
+        // (= the area not covered by our bottom bar). The map's contentPadding
+        // makes `cameraPositionState.position.target` resolve to this same point,
+        // so what the user sees is what we send.
+        AnimatedVisibility(
+            visible = isActive,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = BottomBarMapPadding),
         ) {
-            if (activePin != null) {
-                Marker(
-                    state = markerState,
-                    draggable = true,
-                    icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE),
-                    title = (checkInState as? CheckInUiState.Active)?.locationName?.takeIf { it.isNotBlank() },
-                    snippet = stringResource(R.string.map_check_in_pin_snippet),
-                )
+            Box(modifier = Modifier.fillMaxSize()) {
+                CenterMapPin(modifier = Modifier.align(Alignment.Center))
             }
         }
 
@@ -162,22 +179,21 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                         snackbarHostState.showSnackbar(locationErrorMessage)
                         return@launch
                     }
-                    val pin = LatLng(location.latitude, location.longitude)
-                    markerState.position = pin
+                    val target = LatLng(location.latitude, location.longitude)
                     checkInState = CheckInUiState.Active(
-                        pin = pin,
                         locationName = "",
                         isResolvingName = true,
                         isSubmitting = false,
                     )
                     cameraPositionState.animate(
-                        update = CameraUpdateFactory.newLatLngZoom(pin, ACTIVE_ZOOM),
+                        update = CameraUpdateFactory.newLatLngZoom(target, ACTIVE_ZOOM),
                         durationMs = 600,
                     )
-                    val resolved = runCatching { context.reverseGeocode(pin.latitude, pin.longitude) }
+                    // After animate() returns the camera has settled, which means
+                    // snapshotFlow above won't re-trigger; kick off geocoding now.
+                    val resolved = runCatching { context.reverseGeocode(target.latitude, target.longitude) }
                         .getOrNull()
                     val latest = checkInState as? CheckInUiState.Active ?: return@launch
-                    if (latest.pin != pin) return@launch
                     checkInState = latest.copy(
                         locationName = resolved.orEmpty(),
                         isResolvingName = false,
@@ -186,6 +202,7 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
             },
             onConfirm = {
                 val active = checkInState as? CheckInUiState.Active ?: return@CheckInOverlay
+                val target = cameraPositionState.position.target
                 checkInState = active.copy(isSubmitting = true)
                 scope.launch {
                     val token = SessionStore.validSession()?.accessToken
@@ -197,8 +214,8 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                     try {
                         CheckInsApi.upsert(
                             accessToken = token,
-                            lat = active.pin.latitude,
-                            lng = active.pin.longitude,
+                            lat = target.latitude,
+                            lng = target.longitude,
                             locationName = active.locationName.trim().ifEmpty { null },
                         )
                         val message = if (active.locationName.isNotBlank()) {
@@ -210,7 +227,9 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                         snackbarHostState.showSnackbar(message)
                     } catch (e: CheckInError) {
                         checkInState = active.copy(isSubmitting = false)
-                        snackbarHostState.showSnackbar(e.userMessage(networkErrorMessage, authErrorMessage, genericErrorMessage))
+                        snackbarHostState.showSnackbar(
+                            e.userMessage(networkErrorMessage, authErrorMessage, genericErrorMessage),
+                        )
                     } catch (e: CancellationException) {
                         throw e
                     } catch (_: Exception) {
@@ -230,6 +249,36 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
             },
             snackbarHostState = snackbarHostState,
             bottomInset = BottomBarMapPadding + 12.dp,
+        )
+    }
+}
+
+/**
+ * The pin used to mark the camera target. The icon's "tip" points downward, so we
+ * shift the whole icon up by half its height — that way the geometric centre of the
+ * map (= the camera's target LatLng) sits exactly under the tip.
+ */
+@Composable
+private fun CenterMapPin(modifier: Modifier = Modifier) {
+    val pinSize = 56.dp
+    Box(modifier = modifier.size(pinSize)) {
+        // Small ground anchor at the true centre so the user can see exactly which
+        // pixel will be sent as their location.
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)),
+        )
+        Icon(
+            imageVector = Icons.Filled.LocationOn,
+            contentDescription = stringResource(R.string.map_check_in_pin_content_description),
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .offset(y = -(pinSize / 2))
+                .size(pinSize),
         )
     }
 }

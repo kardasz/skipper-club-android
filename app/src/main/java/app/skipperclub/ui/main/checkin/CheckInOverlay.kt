@@ -299,7 +299,6 @@ private fun CheckInOverlayActivePreviewPl() {
         }
         CheckInOverlay(
             state = CheckInUiState.Active(
-                pin = com.google.android.gms.maps.model.LatLng(54.352, 18.6466),
                 locationName = "Marina Gdańsk",
                 isResolvingName = false,
                 isSubmitting = false,
@@ -327,7 +326,6 @@ private fun CheckInOverlayActivePreviewDark() {
         val snackbar = remember { SnackbarHostState() }
         CheckInOverlay(
             state = CheckInUiState.Active(
-                pin = com.google.android.gms.maps.model.LatLng(54.352, 18.6466),
                 locationName = "Gen. Mariana C. Coopera 3",
                 isResolvingName = true,
                 isSubmitting = false,
