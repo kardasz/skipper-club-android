@@ -91,6 +91,19 @@
     <string name="nav_menu">Menu</string>
 
     <string name="map_content_description">Mapa SkipperClub</string>
+    <string name="map_check_in">Zamelduj się</string>
+    <string name="map_check_in_confirm">Potwierdź</string>
+    <string name="map_check_in_cancel">Anuluj</string>
+    <string name="map_check_in_location_label">Lokalizacja</string>
+    <string name="map_check_in_location_name_placeholder">Nazwa miejsca (opcjonalnie)</string>
+    <string name="map_check_in_pin_snippet">Przeciągnij, aby dostosować</string>
+    <string name="map_check_in_success">Zameldowano w: %1$s.</string>
+    <string name="map_check_in_success_no_name">Zameldowano.</string>
+    <string name="map_check_in_error_permission">Wymagane jest uprawnienie do lokalizacji.</string>
+    <string name="map_check_in_error_location">Nie udało się ustalić Twojej lokalizacji. Upewnij się, że GPS jest włączony.</string>
+    <string name="map_check_in_error_network">Brak połączenia z internetem. Spróbuj ponownie.</string>
+    <string name="map_check_in_error_auth">Zaloguj się ponownie, aby się zameldować.</string>
+    <string name="map_check_in_error_generic">Nie udało się zameldować. Spróbuj ponownie.</string>
 
     <string name="menu_my_profile">Mój profil</string>
     <string name="menu_saved">Zapisane</string>

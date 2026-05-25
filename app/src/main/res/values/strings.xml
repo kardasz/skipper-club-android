@@ -91,6 +91,19 @@
     <string name="nav_menu">Menu</string>
 
     <string name="map_content_description">SkipperClub map</string>
+    <string name="map_check_in">Check-in</string>
+    <string name="map_check_in_confirm">Confirm</string>
+    <string name="map_check_in_cancel">Cancel</string>
+    <string name="map_check_in_location_label">Location</string>
+    <string name="map_check_in_location_name_placeholder">Location name (optional)</string>
+    <string name="map_check_in_pin_snippet">Drag to adjust</string>
+    <string name="map_check_in_success">Checked in at %1$s.</string>
+    <string name="map_check_in_success_no_name">You\'re checked in.</string>
+    <string name="map_check_in_error_permission">Location permission is required to check in.</string>
+    <string name="map_check_in_error_location">Couldn\'t determine your location. Make sure GPS is enabled.</string>
+    <string name="map_check_in_error_network">No internet connection. Please try again.</string>
+    <string name="map_check_in_error_auth">Please sign in again to check in.</string>
+    <string name="map_check_in_error_generic">Couldn\'t check in. Please try again.</string>
 
     <string name="menu_my_profile">My profile</string>
     <string name="menu_saved">Saved</string>

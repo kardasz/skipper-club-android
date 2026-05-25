@@ -29,6 +29,7 @@ object AuthApi {
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
+        .let { HttpLoggingProvider.apply(it) }
         .build()
 
     suspend fun sendOtp(email: String, turnstileToken: String) {

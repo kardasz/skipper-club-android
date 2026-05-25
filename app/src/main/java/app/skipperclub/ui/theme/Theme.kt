@@ -3,55 +3,28 @@ package app.skipperclub.ui.theme
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 
-private val LightColorScheme = lightColorScheme(
-    primary = BrandBlue,
-    onPrimary = Color.White,
-    primaryContainer = BrandBlueContainer,
-    onPrimaryContainer = BrandBlueOnContainer,
-    secondary = BrandAmber,
-    onSecondary = Color.White,
-    secondaryContainer = BrandAmberContainer,
-    onSecondaryContainer = BrandAmberOnContainer,
-    background = SurfaceLight,
-    onBackground = OnSurfaceLight,
-    surface = SurfaceLight,
-    onSurface = OnSurfaceLight,
-    surfaceVariant = SurfaceVariantLight,
-    onSurfaceVariant = OnSurfaceVariantLight,
-    outline = OutlineLight,
-)
-
-private val DarkColorScheme = darkColorScheme(
-    primary = BrandBlueOnDark,
-    onPrimary = Color.White,
-    primaryContainer = BrandBlueContainerDark,
-    onPrimaryContainer = BrandBlueContainer,
-    secondary = BrandAmberOnDark,
-    onSecondary = Color.Black,
-    secondaryContainer = BrandAmberContainerDark,
-    onSecondaryContainer = BrandAmberContainer,
-    background = SurfaceDark,
-    onBackground = OnSurfaceDark,
-    surface = SurfaceDark,
-    onSurface = OnSurfaceDark,
-    surfaceVariant = SurfaceVariantDark,
-    onSurfaceVariant = OnSurfaceVariantDark,
-    outline = OutlineDark,
-)
+/** Currently active [SkipperPalette]. Defaults to [SkipperPalettes.Default]. */
+val LocalSkipperPalette = staticCompositionLocalOf { SkipperPalettes.Default }
 
 @Composable
 fun SkipperClubTheme(
+    palette: SkipperPalette = LocalSkipperPalette.current,
     darkTheme: Boolean = isSystemInDarkTheme(),
+    /**
+     * When true on Android 12+, Material You wallpaper colors replace the palette's
+     * [androidx.compose.material3.ColorScheme]. [ExtendedColors] always come from the
+     * palette so the brand's success/etc. semantics survive dynamic colour.
+     */
     dynamicColor: Boolean = false,
-    content: @Composable () -> Unit
+    content: @Composable () -> Unit,
 ) {
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
@@ -59,13 +32,25 @@ fun SkipperClubTheme(
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
 
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+        darkTheme -> palette.dark
+        else -> palette.light
     }
+    val extended = if (darkTheme) palette.extendedDark else palette.extendedLight
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    CompositionLocalProvider(
+        LocalSkipperPalette provides palette,
+        LocalExtendedColors provides extended,
+    ) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            content = content,
+        )
+    }
 }
+
+/** Access brand-specific semantic colors: `MaterialTheme.extended.success`. */
+val MaterialTheme.extended: ExtendedColors
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalExtendedColors.current

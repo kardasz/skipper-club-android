@@ -19,6 +19,12 @@ val OnSurfaceVariantLight = Color(0xFF6B7280)
 val OutlineLight = Color(0xFFC3C7CF)
 val BackgroundTintLight = Color(0xFFE8F1FA)
 
+val SuccessGreen = Color(0xFF2E7D32)
+val SuccessGreenContainer = Color(0xFFCDEACB)
+val SuccessGreenOnContainer = Color(0xFF0F3C12)
+val SuccessGreenOnDark = Color(0xFF7BC97F)
+val SuccessGreenContainerDark = Color(0xFF1B4A1E)
+
 val BrandBlueOnDark = Color(0xFF82B6E0)
 val BrandBlueContainerDark = Color(0xFF2A4D6B)
 val BrandAmberOnDark = Color(0xFFF5B85F)
