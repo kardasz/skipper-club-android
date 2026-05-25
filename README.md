@@ -137,6 +137,12 @@ A `Makefile` wraps the most common Gradle commands for ergonomics:
 | `make clean`          | `./gradlew clean`                                     |
 | `make dependencies`   | `./gradlew :app:dependencies`                         |
 
+Release version metadata can be overridden without editing Gradle files:
+
+```bash
+make bundle-release VERSION_CODE=3 VERSION_NAME=0.2.1
+```
+
 ### Continuous integration
 
 The `Build platforms` workflow (`.github/workflows/build-platforms.yml`) runs on every pull request:

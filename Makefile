@@ -12,6 +12,7 @@ help:
 	@echo "  assemble-debug     Build debug APK"
 	@echo "  assemble-release   Build release APK (unsigned)"
 	@echo "  bundle-release     Build release AAB for Play Store"
+	@echo "                     Override with VERSION_CODE=3 VERSION_NAME=0.2.1"
 	@echo "  install-debug      Install debug APK on the connected device"
 	@echo "  uninstall          Uninstall app from the connected device"
 	@echo "  run                Install debug APK and launch MainActivity"
@@ -25,10 +26,10 @@ assemble-debug:
 	$(GRADLEW) $(MODULE):assembleDebug
 
 assemble-release:
-	$(GRADLEW) $(MODULE):assembleRelease
+	$(GRADLEW) $(MODULE):assembleRelease $(if $(VERSION_CODE),-PVERSION_CODE=$(VERSION_CODE),) $(if $(VERSION_NAME),-PVERSION_NAME=$(VERSION_NAME),)
 
 bundle-release:
-	$(GRADLEW) $(MODULE):bundleRelease
+	$(GRADLEW) $(MODULE):bundleRelease $(if $(VERSION_CODE),-PVERSION_CODE=$(VERSION_CODE),) $(if $(VERSION_NAME),-PVERSION_NAME=$(VERSION_NAME),)
 
 install-debug:
 	$(GRADLEW) $(MODULE):installDebug

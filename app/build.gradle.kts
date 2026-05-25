@@ -23,6 +23,13 @@ val localProperties = Properties().apply {
 val googleMapsApiKey = providers.gradleProperty("GOOGLE_MAPS_API_KEY")
     .orElse(providers.environmentVariable("GOOGLE_MAPS_API_KEY"))
     .orElse(localProperties.getProperty("GOOGLE_MAPS_API_KEY") ?: "")
+val appVersionCode = providers.gradleProperty("VERSION_CODE")
+    .orElse(providers.environmentVariable("VERSION_CODE"))
+    .map(String::toInt)
+    .orElse(2)
+val appVersionName = providers.gradleProperty("VERSION_NAME")
+    .orElse(providers.environmentVariable("VERSION_NAME"))
+    .orElse("0.2.0")
 
 android {
     namespace = "app.skipperclub"
@@ -38,8 +45,8 @@ android {
         targetSdk {
             version = release(36)
         }
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = appVersionCode.get()
+        versionName = appVersionName.get()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
