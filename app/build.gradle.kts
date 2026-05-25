@@ -1,8 +1,18 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
+
+val releaseSigningPropertiesFile = rootProject.file("release-signing.properties")
+val releaseSigningProperties = Properties().apply {
+    if (releaseSigningPropertiesFile.isFile) {
+        releaseSigningPropertiesFile.inputStream().use(::load)
+    }
+}
+val hasReleaseSigningConfig = releaseSigningPropertiesFile.isFile
 
 android {
     namespace = "app.skipperclub"
@@ -19,7 +29,7 @@ android {
             version = release(36)
         }
         versionCode = 1
-        versionName = "1.0"
+        versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -27,8 +37,22 @@ android {
         buildConfigField("String", "TURNSTILE_URL", "\"https://skipperclub.app/turnstile\"")
     }
 
+    signingConfigs {
+        if (hasReleaseSigningConfig) {
+            create("release") {
+                storeFile = rootProject.file(releaseSigningProperties.getProperty("storeFile"))
+                storePassword = releaseSigningProperties.getProperty("storePassword")
+                keyAlias = releaseSigningProperties.getProperty("keyAlias")
+                keyPassword = releaseSigningProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (hasReleaseSigningConfig) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
