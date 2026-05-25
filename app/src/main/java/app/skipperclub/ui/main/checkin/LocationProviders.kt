@@ -72,14 +72,14 @@ suspend fun Context.reverseGeocode(lat: Double, lng: Double): String? {
             geocodeSync(geocoder, lat, lng)
         }
     }
-    return addresses?.firstOrNull()?.bestLabel()
+    return addresses?.bestLabel()
 }
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 private suspend fun geocodeAsync(geocoder: Geocoder, lat: Double, lng: Double): List<Address>? =
     suspendCancellableCoroutine { continuation ->
         try {
-            geocoder.getFromLocation(lat, lng, 1) { results ->
+            geocoder.getFromLocation(lat, lng, ReverseGeocodeMaxResults) { results ->
                 continuation.resume(results)
             }
         } catch (_: IOException) {
@@ -90,35 +90,57 @@ private suspend fun geocodeAsync(geocoder: Geocoder, lat: Double, lng: Double): 
 @Suppress("DEPRECATION")
 private fun geocodeSync(geocoder: Geocoder, lat: Double, lng: Double): List<Address>? =
     try {
-        geocoder.getFromLocation(lat, lng, 1)
+        geocoder.getFromLocation(lat, lng, ReverseGeocodeMaxResults)
     } catch (_: IOException) {
         null
     }
 
-private fun Address.bestLabel(): String? {
-    // 1) Named place (POI / business / building). Many residential geocoder hits
+private fun List<Address>.bestLabel(): String? {
+    firstNotNullOfOrNull { it.namedPlaceLabel() }?.let { return it }
+    firstNotNullOfOrNull { it.streetAddressLabel() }?.let { return it }
+    firstNotNullOfOrNull { it.areaLabel() }?.let { return it }
+    return firstNotNullOfOrNull { it.getAddressLine(0)?.takeIf(String::isUsefulLabel) }
+}
+
+private fun Address.namedPlaceLabel(): String? {
+    // Named place (POI / business / building). Many residential geocoder hits
     //    put the house number into featureName, which we skip — we want a place
     //    name like "Marina Gdańsk", not "3".
-    premises?.takeIf { it.isNotBlank() }?.let { return it }
+    premises?.takeIf { it.isUsefulLabel() }?.let { return it }
     featureName?.takeIf { name ->
-        name.isNotBlank() &&
+        name.isUsefulLabel() &&
             !name.looksLikeStreetNumber() &&
             !name.equals(thoroughfare, ignoreCase = true) &&
-            !name.equals(subThoroughfare, ignoreCase = true)
+            !name.equals(subThoroughfare, ignoreCase = true) &&
+            !name.matchesStreetAddressLine()
     }?.let { return it }
 
-    // 2) Street (+ house number).
-    val street = thoroughfare?.takeIf { it.isNotBlank() }
+    getAddressLine(0)
+        ?.substringBefore(",")
+        ?.takeIf { candidate ->
+            candidate.isUsefulLabel() &&
+                !candidate.equals(thoroughfare, ignoreCase = true) &&
+                !candidate.matchesStreetAddressLine()
+        }
+        ?.let { return it }
+
+    return null
+}
+
+private fun Address.streetAddressLabel(): String? {
+    val street = thoroughfare?.takeIf { it.isUsefulLabel() }
     if (street != null) {
-        val number = subThoroughfare?.takeIf { it.isNotBlank() }
+        val number = subThoroughfare?.takeIf { it.isUsefulLabel() }
         return if (number != null) "$street $number" else street
     }
+    return null
+}
 
-    // 3) Neighbourhood / city / region fallbacks, then the formatted address line.
-    subLocality?.takeIf { it.isNotBlank() }?.let { return it }
-    locality?.takeIf { it.isNotBlank() }?.let { return it }
-    adminArea?.takeIf { it.isNotBlank() }?.let { return it }
-    return getAddressLine(0)?.takeIf { it.isNotBlank() }
+private fun Address.areaLabel(): String? {
+    subLocality?.takeIf { it.isUsefulLabel() }?.let { return it }
+    locality?.takeIf { it.isUsefulLabel() }?.let { return it }
+    adminArea?.takeIf { it.isUsefulLabel() }?.let { return it }
+    return null
 }
 
 /** Matches values like "3", "12A", "3/5", "12 B" that should not be used as a place name. */
@@ -129,3 +151,13 @@ private fun String.looksLikeStreetNumber(): Boolean {
         trimmed.any { it.isDigit() } &&
         trimmed.count { it.isLetter() } <= 2
 }
+
+private fun String.isUsefulLabel(): Boolean = trim().isNotEmpty()
+
+private fun String.matchesStreetAddressLine(): Boolean {
+    val trimmed = trim()
+    return trimmed.any { it.isDigit() } &&
+        Regex("""\b\d+[A-Za-z]?\b""").containsMatchIn(trimmed)
+}
+
+private const val ReverseGeocodeMaxResults = 5

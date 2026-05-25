@@ -7,15 +7,20 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,6 +36,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -165,8 +172,13 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                 .fillMaxSize()
                 .padding(bottom = BottomBarMapPadding),
         ) {
+            val active = checkInState as? CheckInUiState.Active
             Box(modifier = Modifier.fillMaxSize()) {
-                CenterMapPin(modifier = Modifier.align(Alignment.Center))
+                LocationTargetOverlay(
+                    locationName = active?.locationName.orEmpty(),
+                    isResolvingName = active?.isResolvingName == true,
+                    modifier = Modifier.align(Alignment.Center),
+                )
             }
         }
 
@@ -283,6 +295,67 @@ private fun CenterMapPin(modifier: Modifier = Modifier) {
                 .offset(y = -(pinSize / 2))
                 .size(pinSize),
         )
+    }
+}
+
+@Composable
+private fun LocationTargetOverlay(
+    locationName: String,
+    isResolvingName: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier) {
+        LocationSummaryPill(
+            value = locationName,
+            isResolving = isResolvingName,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .offset(y = (-96).dp),
+        )
+        CenterMapPin(modifier = Modifier.align(Alignment.Center))
+    }
+}
+
+@Composable
+private fun LocationSummaryPill(
+    value: String,
+    isResolving: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val text = when {
+        value.isNotBlank() -> value
+        isResolving -> stringResource(R.string.map_check_in_location_resolving)
+        else -> stringResource(R.string.map_check_in_location_unknown)
+    }
+
+    Surface(
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = 3.dp,
+        shadowElevation = 8.dp,
+        modifier = modifier.widthIn(max = 300.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (isResolving) {
+                CircularProgressIndicator(
+                    strokeWidth = 2.dp,
+                    modifier = Modifier
+                        .padding(end = 8.dp)
+                        .size(16.dp),
+                )
+            }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
