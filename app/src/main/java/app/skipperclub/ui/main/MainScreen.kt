@@ -16,13 +16,13 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -62,27 +62,10 @@ private fun MainScreenContent(
     val menuOpenState = rememberSaveable { mutableStateOf(value = false) }
     var isMenuOpen by menuOpenState
 
-    Scaffold(
+    Box(
         modifier = modifier.fillMaxSize(),
-        bottomBar = {
-            SkipperBottomBar(
-                selected = current,
-                user = user,
-                onSelect = { destination ->
-                    if (destination == MainDestination.MENU) {
-                        menuOpenState.value = true
-                    } else {
-                        onSelect(destination)
-                    }
-                },
-            )
-        },
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-        ) {
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
             when (current) {
                 MainDestination.POSTS -> PostsScreen()
                 MainDestination.CRUISES -> CruisesScreen()
@@ -91,6 +74,19 @@ private fun MainScreenContent(
                 MainDestination.MENU -> MenuScreen()
             }
         }
+
+        SkipperBottomBar(
+            selected = current,
+            user = user,
+            onSelect = { destination ->
+                if (destination == MainDestination.MENU) {
+                    menuOpenState.value = true
+                } else {
+                    onSelect(destination)
+                }
+            },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 
     if (isMenuOpen) {

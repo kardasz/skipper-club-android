@@ -53,17 +53,15 @@ fun SkipperBottomBar(
     onSelect: (MainDestination) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 24.dp),
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 24.dp),
+                .fillMaxWidth(),
             shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceVariant,
             tonalElevation = 0.dp,

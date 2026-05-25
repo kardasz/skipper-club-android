@@ -3,7 +3,7 @@ package app.skipperclub.ui.main
 import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
@@ -62,11 +62,11 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
             zoomControlsEnabled = false,
         )
     }
-
     GoogleMap(
         modifier = modifier.fillMaxSize(),
         cameraPositionState = cameraPositionState,
         contentDescription = stringResource(R.string.map_content_description),
+        contentPadding = PaddingValues(bottom = BottomBarMapPadding),
         mapColorScheme = ComposeMapColorScheme.FOLLOW_SYSTEM,
         properties = mapProperties,
         uiSettings = mapUiSettings,
@@ -98,10 +98,7 @@ private fun MapPreviewSurface(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun BoxScope.PreviewPoint(
-    modifier: Modifier,
-    color: Color,
-) {
+private fun PreviewPoint(modifier: Modifier, color: Color) {
     Box(
         modifier = modifier
             .size(16.dp)
@@ -141,3 +138,4 @@ private fun MapScreenPreviewDark() {
 
 private val GDANSK_BAY = LatLng(54.4877, 18.6654)
 private const val DEFAULT_ZOOM = 10f
+private val BottomBarMapPadding = 114.dp
