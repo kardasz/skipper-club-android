@@ -70,6 +70,38 @@ object AuthApi {
         }
     }
 
+    suspend fun requestPasswordReset(email: String, turnstileToken: String) {
+        val body = json.encodeToString(PasswordResetRequest(email)).toRequestBody(JSON_MEDIA_TYPE)
+        val request = Request.Builder()
+            .url("${BuildConfig.API_BASE_URL}/v1/auth/password-reset-request")
+            .post(body)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .header("Accept-Language", Locale.getDefault().toLanguageTag())
+            .header(HEADER_TURNSTILE, turnstileToken)
+            .build()
+
+        execute(request).use { response ->
+            if (!response.isSuccessful) throw response.toAuthError()
+        }
+    }
+
+    suspend fun resetPassword(email: String, code: String, password: String) {
+        val body = json.encodeToString(PasswordResetConfirmRequest(email, code, password))
+            .toRequestBody(JSON_MEDIA_TYPE)
+        val request = Request.Builder()
+            .url("${BuildConfig.API_BASE_URL}/v1/auth/password-reset")
+            .post(body)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .header("Accept-Language", Locale.getDefault().toLanguageTag())
+            .build()
+
+        execute(request).use { response ->
+            if (!response.isSuccessful) throw response.toAuthError()
+        }
+    }
+
     suspend fun registerByInvitation(
         code: String,
         name: String,
@@ -180,6 +212,7 @@ object AuthApi {
             401 -> when (problem?.type) {
                 "/errors/invalid-credentials" -> AuthError.InvalidCredentials(detail)
                 "/errors/invalid-otp-code" -> AuthError.InvalidOtpCode(detail)
+                "/errors/invalid-password-reset-code" -> AuthError.InvalidPasswordResetCode(detail)
                 "/errors/invalid-refresh-token" -> AuthError.InvalidRefreshToken(detail)
                 "/errors/refresh-token-expired" -> AuthError.RefreshTokenExpired(detail)
                 "/errors/authentication-required" -> AuthError.AuthenticationRequired(detail)

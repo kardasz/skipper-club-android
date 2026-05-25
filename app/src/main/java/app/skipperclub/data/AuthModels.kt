@@ -12,6 +12,16 @@ internal data class OtpVerifyRequest(val email: String, val code: String)
 internal data class LoginRequest(val email: String, val password: String)
 
 @Serializable
+internal data class PasswordResetRequest(val email: String)
+
+@Serializable
+internal data class PasswordResetConfirmRequest(
+    val email: String,
+    val code: String,
+    val password: String,
+)
+
+@Serializable
 internal data class InvitationRegisterRequest(
     val code: String,
     val name: String,

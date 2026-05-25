@@ -33,6 +33,9 @@ import app.skipperclub.ui.auth.AuthDestinationSaver
 import app.skipperclub.ui.auth.InvitationRegisterScreen
 import app.skipperclub.ui.auth.LoginScreen
 import app.skipperclub.ui.auth.OtpVerifyScreen
+import app.skipperclub.ui.auth.PasswordResetCompleteScreen
+import app.skipperclub.ui.auth.PasswordResetRequestScreen
+import app.skipperclub.ui.auth.PasswordResetScreen
 import app.skipperclub.ui.auth.PasswordScreen
 import app.skipperclub.ui.main.MainScreen
 import app.skipperclub.ui.theme.SkipperClubTheme
@@ -42,15 +45,16 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val pendingInvitationCode = mutableStateOf<String?>(null)
+    private val pendingPasswordResetLink = mutableStateOf<PasswordResetDeepLink?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         SessionStore.initialize(applicationContext)
-        consumeInvitationLink(intent)
+        consumeAuthLink(intent)
         setContent {
             SkipperClubTheme {
-                SkipperClubApp(pendingInvitationCode)
+                SkipperClubApp(pendingInvitationCode, pendingPasswordResetLink)
             }
         }
     }
@@ -58,13 +62,19 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        consumeInvitationLink(intent)
+        consumeAuthLink(intent)
     }
 
-    private fun consumeInvitationLink(intent: Intent?) {
+    private fun consumeAuthLink(intent: Intent?) {
         intent.extractInvitationCode()?.let { pendingInvitationCode.value = it }
+        intent.extractPasswordResetLink()?.let { pendingPasswordResetLink.value = it }
     }
 }
+
+data class PasswordResetDeepLink(
+    val email: String,
+    val code: String,
+)
 
 private fun Intent?.extractInvitationCode(): String? {
     if (this == null) return null
@@ -74,10 +84,22 @@ private fun Intent?.extractInvitationCode(): String? {
     return uri.getQueryParameter("invitation")?.takeIf { it.isNotBlank() }
 }
 
-private sealed class PendingAuthAction(val turnstileAction: String) {
+private fun Intent?.extractPasswordResetLink(): PasswordResetDeepLink? {
+    if (this == null) return null
+    if (action != Intent.ACTION_VIEW) return null
+    val uri = data ?: return null
+    if (!uri.path.orEmpty().endsWith("/password-reset")) return null
+    val email = uri.getQueryParameter("email")?.takeIf { it.isNotBlank() } ?: return null
+    val code = uri.getQueryParameter("code")?.takeIf { it.isNotBlank() } ?: return null
+    return PasswordResetDeepLink(email = email, code = code)
+}
+
+private sealed class PendingAuthAction(val turnstileAction: String?) {
     data class SendOtp(val email: String) : PendingAuthAction("otp")
     data class VerifyOtp(val email: String, val code: String) : PendingAuthAction("otp-verify")
     data class LoginPassword(val email: String, val password: String) : PendingAuthAction("login")
+    data class RequestPasswordReset(val email: String) : PendingAuthAction("password-reset-request")
+    data class ResetPassword(val email: String, val code: String, val password: String) : PendingAuthAction(null)
     data class RegisterByInvitation(
         val code: String,
         val name: String,
@@ -90,6 +112,9 @@ private enum class AuthErrorTarget {
     Form,
     LoginEmail,
     Password,
+    PasswordResetRequestEmail,
+    PasswordResetCode,
+    PasswordResetPassword,
     OtpCode,
     InvitationCode,
     InvitationName,
@@ -106,6 +131,9 @@ private data class AuthUiError(
 @Composable
 fun SkipperClubApp(
     invitationCodeFromDeepLink: MutableState<String?> = remember { mutableStateOf(null) },
+    passwordResetLinkFromDeepLink: MutableState<PasswordResetDeepLink?> = remember {
+        mutableStateOf(null)
+    },
 ) {
     val session by SessionStore.session.collectAsState()
     val isRestoringSession by SessionStore.isRestoring.collectAsState()
@@ -122,6 +150,7 @@ fun SkipperClubApp(
     val captchaErrorMessage = stringResource(R.string.auth_error_captcha)
     val rateLimitErrorMessage = stringResource(R.string.auth_error_rate_limit)
     val invalidOtpErrorMessage = stringResource(R.string.auth_error_invalid_otp)
+    val invalidPasswordResetCodeErrorMessage = stringResource(R.string.auth_error_invalid_password_reset_code)
     val invalidCredentialsErrorMessage = stringResource(R.string.auth_error_invalid_credentials)
     val validationErrorMessage = stringResource(R.string.auth_error_invalid_email)
     val invalidPasswordErrorMessage = stringResource(R.string.auth_error_invalid_password)
@@ -153,6 +182,7 @@ fun SkipperClubApp(
             is AuthError.CaptchaFailed -> captchaErrorMessage
             is AuthError.RateLimited -> rateLimitErrorMessage
             is AuthError.InvalidOtpCode -> invalidOtpErrorMessage
+            is AuthError.InvalidPasswordResetCode -> invalidPasswordResetCodeErrorMessage
             is AuthError.InvalidCredentials -> invalidCredentialsErrorMessage
             is AuthError.InvalidRefreshToken,
             is AuthError.RefreshTokenExpired,
@@ -173,6 +203,12 @@ fun SkipperClubApp(
                 }
                 is PendingAuthAction.LoginPassword -> {
                     if (error.hasField("password")) invalidPasswordErrorMessage else validationErrorMessage
+                }
+                is PendingAuthAction.RequestPasswordReset -> validationErrorMessage
+                is PendingAuthAction.ResetPassword -> when {
+                    error.hasField("code") -> invalidPasswordResetCodeErrorMessage
+                    error.hasField("password") -> invalidPasswordErrorMessage
+                    else -> validationErrorMessage
                 }
                 is PendingAuthAction.SendOtp -> validationErrorMessage
             }
@@ -200,6 +236,20 @@ fun SkipperClubApp(
                 }
                 else -> AuthErrorTarget.Form
             }
+            is PendingAuthAction.RequestPasswordReset -> when (error) {
+                is AuthError.Validation -> AuthErrorTarget.PasswordResetRequestEmail
+                else -> AuthErrorTarget.Form
+            }
+            is PendingAuthAction.ResetPassword -> when (error) {
+                is AuthError.InvalidPasswordResetCode -> AuthErrorTarget.PasswordResetCode
+                is AuthError.Validation -> when {
+                    error.fields.contains("code") -> AuthErrorTarget.PasswordResetCode
+                    error.fields.contains("password") -> AuthErrorTarget.PasswordResetPassword
+                    error.fields.contains("email") -> AuthErrorTarget.Form
+                    else -> AuthErrorTarget.Form
+                }
+                else -> AuthErrorTarget.Form
+            }
             is PendingAuthAction.RegisterByInvitation -> when (error) {
                 is AuthError.InvalidInvitation -> AuthErrorTarget.InvitationCode
                 is AuthError.InvitationEmailMismatch,
@@ -223,6 +273,21 @@ fun SkipperClubApp(
         if ((pendingCode != null) && !isAuthenticated) {
             authDestinationState.value = AuthDestination.JoinByInvitation(pendingCode)
             invitationCodeFromDeepLink.value = null
+        }
+    }
+
+    val pendingPasswordResetLink = passwordResetLinkFromDeepLink.value
+    LaunchedEffect(pendingPasswordResetLink) {
+        if (pendingPasswordResetLink != null) {
+            authUiErrorState.value = null
+            if (isAuthenticated) {
+                SessionStore.clear()
+            }
+            authDestinationState.value = AuthDestination.PasswordReset(
+                email = pendingPasswordResetLink.email,
+                code = pendingPasswordResetLink.code,
+            )
+            passwordResetLinkFromDeepLink.value = null
         }
     }
 
@@ -279,7 +344,10 @@ fun SkipperClubApp(
                         authUiErrorState.value = null
                         pendingActionState.value = PendingAuthAction.LoginPassword(email, password)
                     },
-                    onForgotPassword = { /* TODO */ },
+                    onForgotPassword = { email ->
+                        authUiErrorState.value = null
+                        authDestinationState.value = AuthDestination.PasswordResetRequest(email = email)
+                    },
                     passwordErrorMessage = authUiErrorState.value
                         ?.takeIf { it.target == AuthErrorTarget.Password }
                         ?.message,
@@ -289,6 +357,93 @@ fun SkipperClubApp(
                 ) {
                     authUiErrorState.value = null
                 }
+            }
+
+            is AuthDestination.PasswordResetRequest -> {
+                BackHandler {
+                    authUiErrorState.value = null
+                    authDestinationState.value = if (destination.email.isNotBlank()) {
+                        AuthDestination.Password(destination.email)
+                    } else {
+                        AuthDestination.Login
+                    }
+                }
+                PasswordResetRequestScreen(
+                    initialEmail = destination.email,
+                    linkSent = destination.linkSent,
+                    onBack = {
+                        authUiErrorState.value = null
+                        authDestinationState.value = if (destination.email.isNotBlank()) {
+                            AuthDestination.Password(destination.email)
+                        } else {
+                            AuthDestination.Login
+                        }
+                    },
+                    onSubmit = { email ->
+                        authUiErrorState.value = null
+                        pendingActionState.value = PendingAuthAction.RequestPasswordReset(email)
+                    },
+                    onSignIn = { email ->
+                        authUiErrorState.value = null
+                        authDestinationState.value = if (email.isNotBlank()) {
+                            AuthDestination.Password(email)
+                        } else {
+                            AuthDestination.Login
+                        }
+                    },
+                    emailErrorMessage = authUiErrorState.value
+                        ?.takeIf { it.target == AuthErrorTarget.PasswordResetRequestEmail }
+                        ?.message,
+                    formErrorMessage = authUiErrorState.value
+                        ?.takeIf { it.target == AuthErrorTarget.Form }
+                        ?.message,
+                ) {
+                    authUiErrorState.value = null
+                }
+            }
+
+            is AuthDestination.PasswordReset -> {
+                BackHandler {
+                    authUiErrorState.value = null
+                    authDestinationState.value = AuthDestination.Login
+                }
+                PasswordResetScreen(
+                    email = destination.email,
+                    code = destination.code,
+                    onBack = {
+                        authUiErrorState.value = null
+                        authDestinationState.value = AuthDestination.Login
+                    },
+                    onSubmit = { email, code, password ->
+                        authUiErrorState.value = null
+                        pendingActionState.value = PendingAuthAction.ResetPassword(email, code, password)
+                    },
+                    passwordErrorMessage = authUiErrorState.value
+                        ?.takeIf { it.target == AuthErrorTarget.PasswordResetPassword }
+                        ?.message,
+                    codeErrorMessage = authUiErrorState.value
+                        ?.takeIf { it.target == AuthErrorTarget.PasswordResetCode }
+                        ?.message,
+                    formErrorMessage = authUiErrorState.value
+                        ?.takeIf { it.target == AuthErrorTarget.Form }
+                        ?.message,
+                ) {
+                    authUiErrorState.value = null
+                }
+            }
+
+            is AuthDestination.PasswordResetComplete -> {
+                BackHandler {
+                    authUiErrorState.value = null
+                    authDestinationState.value = AuthDestination.Password(destination.email)
+                }
+                PasswordResetCompleteScreen(
+                    email = destination.email,
+                    onSignIn = { email ->
+                        authUiErrorState.value = null
+                        authDestinationState.value = AuthDestination.Password(email)
+                    },
+                )
             }
 
             is AuthDestination.OtpVerify -> {
@@ -375,50 +530,76 @@ fun SkipperClubApp(
 
     }
 
+    suspend fun executeAuthAction(action: PendingAuthAction, turnstileToken: String? = null) {
+        try {
+            isBusyState.value = true
+            when (action) {
+                is PendingAuthAction.SendOtp -> {
+                    AuthApi.sendOtp(action.email, checkNotNull(turnstileToken))
+                    authDestinationState.value = AuthDestination.OtpVerify(action.email)
+                }
+
+                is PendingAuthAction.VerifyOtp -> {
+                    val session = AuthApi.verifyOtp(action.email, action.code, checkNotNull(turnstileToken))
+                    SessionStore.save(session)
+                }
+
+                is PendingAuthAction.LoginPassword -> {
+                    val session = AuthApi.login(action.email, action.password, checkNotNull(turnstileToken))
+                    SessionStore.save(session)
+                }
+
+                is PendingAuthAction.RequestPasswordReset -> {
+                    AuthApi.requestPasswordReset(action.email, checkNotNull(turnstileToken))
+                    authDestinationState.value = AuthDestination.PasswordResetRequest(
+                        email = action.email,
+                        linkSent = true,
+                    )
+                }
+
+                is PendingAuthAction.ResetPassword -> {
+                    AuthApi.resetPassword(action.email, action.code, action.password)
+                    SessionStore.clear()
+                    authDestinationState.value = AuthDestination.PasswordResetComplete(action.email)
+                }
+
+                is PendingAuthAction.RegisterByInvitation -> {
+                    val session = AuthApi.registerByInvitation(
+                        code = action.code,
+                        name = action.name,
+                        email = action.email,
+                        password = action.password,
+                        turnstileToken = checkNotNull(turnstileToken),
+                    )
+                    SessionStore.save(session)
+                }
+            }
+        } catch (e: AuthError) {
+            showError(e, action)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            authUiErrorState.value = AuthUiError(AuthErrorTarget.Form, genericErrorMessage)
+        } finally {
+            pendingActionState.value = null
+            isBusyState.value = false
+        }
+    }
+
+    val pendingAction = pendingActionState.value
+    LaunchedEffect(pendingAction) {
+        if ((pendingAction != null) && (pendingAction.turnstileAction == null)) {
+            executeAuthAction(pendingAction)
+        }
+    }
+
     pendingActionState.value?.let { action ->
+        val turnstileAction = action.turnstileAction ?: return@let
         TurnstileDialog(
-            action = action.turnstileAction,
+            action = turnstileAction,
             onSuccess = { token ->
                 scope.launch {
-                    try {
-                        isBusyState.value = true
-                        when (action) {
-                            is PendingAuthAction.SendOtp -> {
-                                AuthApi.sendOtp(action.email, token)
-                                authDestinationState.value = AuthDestination.OtpVerify(action.email)
-                            }
-
-                            is PendingAuthAction.VerifyOtp -> {
-                                val session = AuthApi.verifyOtp(action.email, action.code, token)
-                                SessionStore.save(session)
-                            }
-
-                            is PendingAuthAction.LoginPassword -> {
-                                val session = AuthApi.login(action.email, action.password, token)
-                                SessionStore.save(session)
-                            }
-
-                            is PendingAuthAction.RegisterByInvitation -> {
-                                val session = AuthApi.registerByInvitation(
-                                    code = action.code,
-                                    name = action.name,
-                                    email = action.email,
-                                    password = action.password,
-                                    turnstileToken = token,
-                                )
-                                SessionStore.save(session)
-                            }
-                        }
-                    } catch (e: AuthError) {
-                        showError(e, action)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        authUiErrorState.value = AuthUiError(AuthErrorTarget.Form, genericErrorMessage)
-                    } finally {
-                        pendingActionState.value = null
-                        isBusyState.value = false
-                    }
+                    executeAuthAction(action, token)
                 }
             },
             onError = {

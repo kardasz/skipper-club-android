@@ -24,6 +24,24 @@
     <string name="password_continue">Zaloguj się</string>
     <string name="password_forgot">Nie pamiętasz hasła?</string>
 
+    <string name="password_reset_request_title">Zresetuj hasło</string>
+    <string name="password_reset_request_subtitle">Podaj e-mail konta, a wyślemy link do zmiany hasła.</string>
+    <string name="password_reset_request_submit">Wyślij link resetujący</string>
+    <string name="password_reset_request_sent_title">Sprawdź pocztę</string>
+    <string name="password_reset_request_sent_subtitle">Wysłaliśmy link do zmiany hasła na %1$s.</string>
+    <string name="password_reset_request_sent_body">Otwórz link z wiadomości e-mail, aby ustawić nowe hasło.</string>
+    <string name="password_reset_title">Ustaw nowe hasło</string>
+    <string name="password_reset_subtitle">Zmiana hasła dla %1$s</string>
+    <string name="password_reset_new_password_placeholder">Nowe hasło</string>
+    <string name="password_reset_repeat_password_placeholder">Powtórz nowe hasło</string>
+    <string name="password_reset_password_helper">Minimum 8 znaków, w tym litera, cyfra i znak specjalny.</string>
+    <string name="password_reset_submit">Zmień hasło</string>
+    <string name="password_reset_complete_title">Hasło zmienione</string>
+    <string name="password_reset_complete_subtitle">Twoje poprzednie sesje zostały unieważnione.</string>
+    <string name="password_reset_complete_body">Zaloguj się ponownie nowym hasłem.</string>
+    <string name="password_reset_back_to_sign_in">Wróć do logowania</string>
+    <string name="password_reset_error_password_mismatch">Hasła nie są takie same.</string>
+
     <string name="otp_title">Wpisz kod weryfikacyjny</string>
     <string name="otp_subtitle">Wysłaliśmy 6-cyfrowy kod na %1$s</string>
     <string name="otp_input_content_description">Kod weryfikacyjny</string>
@@ -54,6 +72,7 @@
     <string name="auth_error_captcha">Weryfikacja bezpieczeństwa nie powiodła się. Spróbuj ponownie.</string>
     <string name="auth_error_rate_limit">Zbyt wiele prób. Spróbuj ponownie później.</string>
     <string name="auth_error_invalid_otp">Kod jest nieprawidłowy lub wygasł.</string>
+    <string name="auth_error_invalid_password_reset_code">Ten link do zmiany hasła jest nieprawidłowy lub wygasł.</string>
     <string name="auth_error_invalid_credentials">Nieprawidłowy adres e-mail lub hasło.</string>
     <string name="auth_error_invalid_email">Podaj prawidłowy adres e-mail.</string>
     <string name="auth_error_invalid_password">Hasło musi mieć od 8 do 128 znaków.</string>

@@ -34,6 +34,7 @@
                 <data android:scheme="https" />
                 <data android:host="skipperclub.app" />
                 <data android:pathPattern="/.*/register" />
+                <data android:pathPattern="/.*/password-reset" />
             </intent-filter>
         </activity>
     </application>

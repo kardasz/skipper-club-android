@@ -24,6 +24,24 @@
     <string name="password_continue">Sign In</string>
     <string name="password_forgot">Forgot password?</string>
 
+    <string name="password_reset_request_title">Reset your password</string>
+    <string name="password_reset_request_subtitle">Enter your account email and we\'ll send a reset link.</string>
+    <string name="password_reset_request_submit">Send reset link</string>
+    <string name="password_reset_request_sent_title">Check your email</string>
+    <string name="password_reset_request_sent_subtitle">We sent a password reset link to %1$s.</string>
+    <string name="password_reset_request_sent_body">Open the link from your email to set a new password.</string>
+    <string name="password_reset_title">Set a new password</string>
+    <string name="password_reset_subtitle">Resetting password for %1$s</string>
+    <string name="password_reset_new_password_placeholder">New password</string>
+    <string name="password_reset_repeat_password_placeholder">Repeat new password</string>
+    <string name="password_reset_password_helper">Minimum 8 characters, including a letter, a digit, and a special character.</string>
+    <string name="password_reset_submit">Change password</string>
+    <string name="password_reset_complete_title">Password changed</string>
+    <string name="password_reset_complete_subtitle">Your old sessions have been revoked.</string>
+    <string name="password_reset_complete_body">Sign in again using your new password.</string>
+    <string name="password_reset_back_to_sign_in">Back to sign in</string>
+    <string name="password_reset_error_password_mismatch">Passwords don\'t match.</string>
+
     <string name="otp_title">Enter verification code</string>
     <string name="otp_subtitle">We sent a 6-digit code to %1$s</string>
     <string name="otp_input_content_description">Verification code</string>
@@ -54,6 +72,7 @@
     <string name="auth_error_captcha">Security check failed. Please try again.</string>
     <string name="auth_error_rate_limit">Too many attempts. Please try again later.</string>
     <string name="auth_error_invalid_otp">The code is invalid or has expired.</string>
+    <string name="auth_error_invalid_password_reset_code">This password reset link is invalid or has expired.</string>
     <string name="auth_error_invalid_credentials">Incorrect email or password.</string>
     <string name="auth_error_invalid_email">Please enter a valid email address.</string>
     <string name="auth_error_invalid_password">Password must be 8 to 128 characters.</string>
