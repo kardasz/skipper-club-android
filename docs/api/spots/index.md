@@ -27,8 +27,8 @@ Spot
 
 ## Deduplication Rules
 
-| Constraint                         | Scope              | HTTP |
-| ---------------------------------- | ------------------ | ---- |
+| Constraint                         | Scope            | HTTP |
+| ---------------------------------- | ---------------- | ---- |
 | Same `nameNormalized` within 100 m | Active spots     | 409  |
 | Same `phoneIdentity`               | Per spot, active | 409  |
 | Same `channelNormalized`           | Per spot, active | 409  |
@@ -38,11 +38,11 @@ Spot
 
 ### Direct CRUD
 
-| Method   | Endpoint          | Description                                   |
-| -------- | ----------------- | --------------------------------------------- |
-| `POST`   | `/v1/spots`     | Create spot with optional contacts/channels |
-| `PATCH`  | `/v1/spots/:id` | Update name, coordinates, contacts, channels  |
-| `DELETE` | `/v1/spots/:id` | Soft-delete spot and all its sub-records    |
+| Method   | Endpoint        | Description                                  |
+| -------- | --------------- | -------------------------------------------- |
+| `POST`   | `/v1/spots`     | Create spot with optional contacts/channels  |
+| `PATCH`  | `/v1/spots/:id` | Update name, coordinates, contacts, channels |
+| `DELETE` | `/v1/spots/:id` | Soft-delete spot and all its sub-records     |
 
 ### Change Request Approval
 
@@ -88,15 +88,15 @@ Users may only cancel their own pending requests. Attempting to cancel another u
 
 ## API Endpoints
 
-| Method   | Path                         | Auth       | Summary                              |
-| -------- | ---------------------------- | ---------- | ------------------------------------ |
+| Method   | Path                       | Auth       | Summary                            |
+| -------- | -------------------------- | ---------- | ---------------------------------- |
 | `GET`    | `/v1/spots`                | User       | List spots (+ optional geo search) |
 | `GET`    | `/v1/spots/:id`            | User       | Get spot by ID                     |
 | `POST`   | `/v1/spots`                | Admin      | Create spot                        |
 | `PATCH`  | `/v1/spots/:id`            | Admin      | Update spot aggregate              |
 | `DELETE` | `/v1/spots/:id`            | Admin      | Soft-delete spot                   |
-| `POST`   | `/v1/spot-change-requests` | User       | Propose a change                     |
-| `GET`    | `/v1/spot-change-requests` | User/Admin | List change requests                 |
-| `PATCH`  | `/v1/spot-change-requests` | User/Admin | Batch approve/reject/cancel          |
+| `POST`   | `/v1/spot-change-requests` | User       | Propose a change                   |
+| `GET`    | `/v1/spot-change-requests` | User/Admin | List change requests               |
+| `PATCH`  | `/v1/spot-change-requests` | User/Admin | Batch approve/reject/cancel        |
 
 See [`docs/openapi.yaml`](../openapi.yaml) for the full specification.

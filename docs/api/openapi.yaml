@@ -3799,6 +3799,201 @@ paths:
                 status: 503
                 detail: 'The CAPTCHA verification service is temporarily unavailable'
 
+  /auth/password-reset-request:
+    post:
+      operationId: requestPasswordReset
+      tags: [auth]
+      summary: Request password reset code
+      description: |
+        Sends a 6-digit password reset code to the user's email.
+        Always returns 204 regardless of whether the email exists to prevent user enumeration.
+        Rate limited to 3 requests per minute per IP and one outstanding code per user per 15 minutes.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - $ref: '#/components/parameters/XTurnstileToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  maxLength: 320
+                  example: jan.kowalski@email.com
+      responses:
+        '204':
+          description: Reset code email queued (or silently ignored if email doesn't exist)
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+        '422':
+          description: Validation error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+              examples:
+                missingEmail:
+                  value:
+                    type: '/errors/validation'
+                    title: 'Validation Failed'
+                    status: 422
+                    detail: 'The request contains invalid data'
+                    violations:
+                      - propertyPath: 'email'
+                        message: 'email is required'
+                invalidEmailFormat:
+                  value:
+                    type: '/errors/validation'
+                    title: 'Validation Failed'
+                    status: 422
+                    detail: 'The request contains invalid data'
+                    violations:
+                      - propertyPath: 'email'
+                        message: 'email must be a valid email address'
+        '403':
+          description: CAPTCHA verification failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/AuthProblem'
+              examples:
+                tokenMissing:
+                  value:
+                    type: '/errors/captcha-token-missing'
+                    title: 'CAPTCHA Token Required'
+                    status: 403
+                    detail: 'A CAPTCHA verification token is required'
+                verificationFailed:
+                  value:
+                    type: '/errors/captcha-verification-failed'
+                    title: 'CAPTCHA Verification Failed'
+                    status: 403
+                    detail: 'The CAPTCHA verification failed. Please try again.'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          description: CAPTCHA service unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/AuthProblem'
+              example:
+                type: '/errors/captcha-service-unavailable'
+                title: 'CAPTCHA Service Unavailable'
+                status: 503
+                detail: 'The CAPTCHA verification service is temporarily unavailable'
+
+  /auth/password-reset:
+    post:
+      operationId: resetPassword
+      tags: [auth]
+      summary: Reset password using verification code
+      description: |
+        Sets a new password for the user identified by the supplied email and reset code.
+        On success, all existing sessions for the user are revoked and the user must log in again
+        with the new password. Always returns 401 for invalid code, expired code, or unknown user
+        to prevent enumeration.
+
+        Password requirements:
+
+        - 8-128 characters
+        - At least one letter
+        - At least one digit
+        - At least one special character (any non-alphanumeric, non-whitespace character)
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  maxLength: 320
+                  example: jan.kowalski@email.com
+                code:
+                  type: string
+                  pattern: '^\d{6}$'
+                  minLength: 6
+                  maxLength: 6
+                  description: 6-digit password reset code received by email
+                  example: '123456'
+                password:
+                  type: string
+                  minLength: 8
+                  maxLength: 128
+                  description: |
+                    New password. Must contain at least one letter, one digit, and one
+                    special character.
+                  example: NewSecurePass123!
+      responses:
+        '204':
+          description: Password reset successful; existing sessions revoked
+        '401':
+          description: Invalid, expired, or unknown reset code
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/AuthProblem'
+              examples:
+                invalidCode:
+                  value:
+                    type: '/errors/invalid-password-reset-code'
+                    title: 'Invalid Reset Code'
+                    status: 401
+                    detail: 'The password reset code is invalid or has expired'
+        '422':
+          description: Validation error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
+              examples:
+                weakPassword:
+                  value:
+                    type: '/errors/validation'
+                    title: 'Validation Failed'
+                    status: 422
+                    detail: 'The request contains invalid data'
+                    violations:
+                      - propertyPath: 'password'
+                        message: 'password must contain at least one letter, one digit and one special character'
+                missingCode:
+                  value:
+                    type: '/errors/validation'
+                    title: 'Validation Failed'
+                    status: 422
+                    detail: 'The request contains invalid data'
+                    violations:
+                      - propertyPath: 'code'
+                        message: 'code is required'
+        '429':
+          description: Too many failed attempts
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/AuthProblem'
+              example:
+                type: '/errors/password-reset-rate-limit'
+                title: 'Too Many Requests'
+                status: 429
+                detail: 'Please wait before requesting another password reset'
+
   /auth/login:
     post:
       operationId: login
@@ -5654,6 +5849,8 @@ paths:
                   type: string
                   minLength: 8
                   maxLength: 128
+                  description: |
+                    Must contain at least one letter, one digit, and one special character.
                   example: securePassword123!
       responses:
         '200':
@@ -5804,7 +6001,8 @@ paths:
                   type: string
                   minLength: 8
                   maxLength: 128
-                  description: User's password
+                  description: |
+                    User's password. Must contain at least one letter, one digit, and one special character.
                   example: SecurePass123!
       responses:
         '201':
@@ -10237,7 +10435,7 @@ components:
             - '/errors/session-access-forbidden'
             - '/errors/authentication-required'
             - '/errors/invalid-otp-code'
-            - '/errors/magic-link-rate-limit'
+            - '/errors/otp-rate-limit'
             - '/errors/forbidden-role'
             - '/errors/captcha-token-missing'
             - '/errors/captcha-verification-failed'
@@ -11684,7 +11882,7 @@ components:
           examples:
             rateLimitExceeded:
               value:
-                type: '/errors/magic-link-rate-limit'
+                type: '/errors/otp-rate-limit'
                 title: 'Rate Limit Exceeded'
                 status: 429
                 detail: 'Too many requests. Please try again later.'

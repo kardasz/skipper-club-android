@@ -51,11 +51,11 @@ Accept-Language: en
 
 ### Parameters
 
-| Field      | Type   | Required | Constraints                                     |
-| ---------- | ------ | -------- | ----------------------------------------------- |
-| `name`     | string | Yes      | 1-100 characters                                |
-| `email`    | string | Yes      | Valid email, max 320 characters, must be unique |
-| `password` | string | Yes      | 8-128 characters                                |
+| Field      | Type   | Required | Constraints                                                                                                                                    |
+| ---------- | ------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`     | string | Yes      | 1-100 characters                                                                                                                               |
+| `email`    | string | Yes      | Valid email, max 320 characters, must be unique                                                                                                |
+| `password` | string | Yes      | 8-128 characters; must contain at least one letter, one digit, and one special character (see [Password Requirements](#password-requirements)) |
 
 ### Success Response
 
@@ -148,6 +148,108 @@ sequenceDiagram
     end
 ```
 
+## Password Reset
+
+Users can recover access to their account by requesting a one-time password reset code by email.
+
+### Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    participant DB
+    participant Email
+
+    Client->>API: POST /auth/password-reset-request {email}
+    API->>DB: Look up user by email
+    alt User exists
+        API->>DB: Persist 6-digit code (hashed)
+        API->>Email: Queue password-reset email
+    else User missing or deleted
+        Note over API: Skip code generation
+    end
+    API-->>Client: 204 No Content
+
+    Note over Client: User receives email with code/link
+
+    Client->>API: POST /auth/password-reset {email, code, password}
+    API->>DB: Validate code (timing-safe, max attempts)
+    alt Valid code
+        API->>DB: Update password hash
+        API->>DB: Delete all user sessions
+        API-->>Client: 204 No Content
+    else Invalid / expired
+        API-->>Client: 401 invalid-password-reset-code
+    end
+```
+
+### Endpoints
+
+#### Request reset code
+
+```http
+POST /auth/password-reset-request
+Content-Type: application/json
+Accept-Language: en
+
+{
+  "email": "jan.kowalski@email.com"
+}
+```
+
+| Field   | Type   | Required | Constraints                     |
+| ------- | ------ | -------- | ------------------------------- |
+| `email` | string | Yes      | Valid email, max 320 characters |
+
+Responses:
+
+- `204 No Content` — Always returned for valid email payloads, regardless of whether the address is registered (prevents enumeration).
+- `422` — Email missing or malformed.
+- `403` — CAPTCHA verification failed.
+- `429` — Per-IP request rate limit exceeded.
+
+Behaviour notes:
+
+- A 6-digit numeric code is generated and stored hashed (`sha256`) in `auth_challenges` with type `password_reset`.
+- Codes expire after 15 minutes by default (`PASSWORD_RESET_CODE_EXPIRATION_MINUTES`).
+- Re-requesting within the per-user rate limit window (`PASSWORD_RESET_RATE_LIMIT_MINUTES`, default 15 minutes) is silently ignored — the original code stays valid.
+- The reset email contains both the code and a deep link `https://{webapp}/{lang}/password-reset?email=...&code=...`.
+
+#### Reset password
+
+```http
+POST /auth/password-reset
+Content-Type: application/json
+Accept-Language: en
+
+{
+  "email": "jan.kowalski@email.com",
+  "code": "123456",
+  "password": "NewSecurePass123!"
+}
+```
+
+| Field      | Type   | Required | Constraints                                                                 |
+| ---------- | ------ | -------- | --------------------------------------------------------------------------- |
+| `email`    | string | Yes      | Valid email, max 320 characters                                             |
+| `code`     | string | Yes      | Exactly 6 digits                                                            |
+| `password` | string | Yes      | 8-128 characters; at least one letter, one digit, and one special character |
+
+Responses:
+
+- `204 No Content` — Password updated, all existing sessions revoked. The client must log in again with the new password.
+- `401 /errors/invalid-password-reset-code` — Code is invalid, expired, used, or the user does not exist (single uniform response to prevent enumeration).
+- `422` — Validation failure (missing fields, weak password, malformed email).
+- `429 /errors/password-reset-rate-limit` — Too many failed attempts for this IP/email pair.
+
+### Security Considerations
+
+- Codes are hashed before persistence and verified using `timingSafeEqual`.
+- Each successful reset revokes **every** existing session for the user — clients should treat tokens as invalidated and prompt for a fresh login.
+- Failed attempts are tracked per IP+email in Redis; after 10 failures the request is throttled for `PASSWORD_RESET_LOCKOUT_MINUTES` (default 15).
+- Response timing is normalized (`PASSWORD_RESET_RESPONSE_DELAY_MS`, default 500ms) to limit timing-based enumeration.
+
 ## Session Management
 
 ### Multiple Device Sessions
@@ -202,14 +304,16 @@ This prevents token reuse and limits exposure from stolen tokens.
 
 ## Authentication Endpoints Summary
 
-| Endpoint                 | Method | Auth Required | Description                    |
-| ------------------------ | ------ | ------------- | ------------------------------ |
-| `/users`                 | POST   | No            | Register new user              |
-| `/auth/login`            | POST   | No            | Login with email and password  |
-| `/auth/otp`              | POST   | No            | Request OTP code via email     |
-| `/auth/otp/verify`       | POST   | No            | Verify OTP code and get tokens |
-| `/sessions/{id}/refresh` | POST   | No            | Refresh tokens                 |
-| `/sessions/{id}`         | DELETE | Yes           | Logout (delete session)        |
+| Endpoint                       | Method | Auth Required | Description                           |
+| ------------------------------ | ------ | ------------- | ------------------------------------- |
+| `/users`                       | POST   | No            | Register new user                     |
+| `/auth/login`                  | POST   | No            | Login with email and password         |
+| `/auth/otp`                    | POST   | No            | Request OTP code via email            |
+| `/auth/otp/verify`             | POST   | No            | Verify OTP code and get tokens        |
+| `/auth/password-reset-request` | POST   | No            | Request password reset code via email |
+| `/auth/password-reset`         | POST   | No            | Reset password with code              |
+| `/sessions/{id}/refresh`       | POST   | No            | Refresh tokens                        |
+| `/sessions/{id}`               | DELETE | Yes           | Logout (delete session)               |
 
 ## Token Specifications
 
@@ -263,7 +367,16 @@ This prevents token reuse and limits exposure from stolen tokens.
 
 - Minimum 8 characters
 - Maximum 128 characters
+- At least one letter (A-Z or a-z)
+- At least one digit (0-9)
+- At least one special character (any non-alphanumeric, non-whitespace character)
 - Stored using bcrypt hashing (cost factor 10)
+
+These requirements apply to every endpoint that accepts a password, including:
+
+- `POST /users` — Register new user
+- `POST /invitations/register` — Register using invitation code
+- `POST /auth/password-reset` — Reset password using verification code
 
 ### Email Handling
 
@@ -400,6 +513,8 @@ For testing purposes, Cloudflare provides test keys that always pass or always f
 | `/errors/invalid-credentials`         | 401    | Wrong email or password (login)                         |
 | `/errors/invalid-otp-code`            | 401    | OTP code is invalid or expired                          |
 | `/errors/otp-rate-limit`              | 429    | Too many OTP requests or failed attempts                |
+| `/errors/invalid-password-reset-code` | 401    | Password reset code is invalid, expired, or unknown     |
+| `/errors/password-reset-rate-limit`   | 429    | Too many failed password-reset attempts                 |
 | `/errors/invalid-refresh-token`       | 401    | Refresh token is invalid or doesn't match session       |
 | `/errors/refresh-token-expired`       | 401    | Refresh token has expired                               |
 | `/errors/session-not-found`           | 404    | Session doesn't exist                                   |
