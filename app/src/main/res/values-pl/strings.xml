@@ -90,6 +90,8 @@
     <string name="nav_messages">Wiadomości</string>
     <string name="nav_menu">Menu</string>
 
+    <string name="map_content_description">Mapa SkipperClub</string>
+
     <string name="menu_my_profile">Mój profil</string>
     <string name="menu_saved">Zapisane</string>
     <string name="menu_settings">Ustawienia</string>

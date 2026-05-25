@@ -14,6 +14,16 @@ val releaseSigningProperties = Properties().apply {
 }
 val hasReleaseSigningConfig = releaseSigningPropertiesFile.isFile
 
+val localPropertiesFile = rootProject.file("local.properties")
+val localProperties = Properties().apply {
+    if (localPropertiesFile.isFile) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+val googleMapsApiKey = providers.gradleProperty("GOOGLE_MAPS_API_KEY")
+    .orElse(providers.environmentVariable("GOOGLE_MAPS_API_KEY"))
+    .orElse(localProperties.getProperty("GOOGLE_MAPS_API_KEY") ?: "")
+
 android {
     namespace = "app.skipperclub"
     compileSdk {
@@ -35,6 +45,7 @@ android {
 
         buildConfigField("String", "API_BASE_URL", "\"https://api.skipperclub.app\"")
         buildConfigField("String", "TURNSTILE_URL", "\"https://skipperclub.app/turnstile\"")
+        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = googleMapsApiKey.get()
     }
 
     signingConfigs {
@@ -95,6 +106,7 @@ dependencies {
     implementation(libs.tink.android)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    implementation(libs.maps.compose)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

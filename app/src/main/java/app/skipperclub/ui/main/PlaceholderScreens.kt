@@ -29,11 +29,6 @@ fun CruisesScreen(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun MapScreen(modifier: Modifier = Modifier) {
-    PlaceholderScreen(R.string.nav_map, modifier)
-}
-
-@Composable
 fun MessagesScreen(modifier: Modifier = Modifier) {
     PlaceholderScreen(R.string.nav_messages, modifier)
 }
