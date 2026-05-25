@@ -16,7 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,6 +42,9 @@ import app.skipperclub.ui.main.checkin.CheckInOverlay
 import app.skipperclub.ui.main.checkin.CheckInUiState
 import app.skipperclub.ui.main.checkin.fetchCurrentLocation
 import app.skipperclub.ui.main.checkin.reverseGeocode
+import app.skipperclub.ui.notification.InAppNotificationHost
+import app.skipperclub.ui.notification.InAppNotificationType
+import app.skipperclub.ui.notification.rememberInAppNotificationHostState
 import app.skipperclub.ui.theme.SkipperClubTheme
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
@@ -72,7 +74,7 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val notificationHostState = rememberInAppNotificationHostState()
 
     val permissionErrorMessage = stringResource(R.string.map_check_in_error_permission)
     val locationErrorMessage = stringResource(R.string.map_check_in_error_location)
@@ -176,7 +178,7 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                     val location = runCatching { context.fetchCurrentLocation() }.getOrNull()
                     if (location == null) {
                         checkInState = CheckInUiState.Idle
-                        snackbarHostState.showSnackbar(locationErrorMessage)
+                        notificationHostState.show(locationErrorMessage, InAppNotificationType.Error)
                         return@launch
                     }
                     val target = LatLng(location.latitude, location.longitude)
@@ -208,7 +210,7 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                     val token = SessionStore.validSession()?.accessToken
                     if (token.isNullOrBlank()) {
                         checkInState = active.copy(isSubmitting = false)
-                        snackbarHostState.showSnackbar(authErrorMessage)
+                        notificationHostState.show(authErrorMessage, InAppNotificationType.Error)
                         return@launch
                     }
                     try {
@@ -224,31 +226,32 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                             successNoNameMessage
                         }
                         checkInState = CheckInUiState.Idle
-                        snackbarHostState.showSnackbar(message)
+                        notificationHostState.show(message, InAppNotificationType.Success)
                     } catch (e: CheckInError) {
                         checkInState = active.copy(isSubmitting = false)
-                        snackbarHostState.showSnackbar(
+                        notificationHostState.show(
                             e.userMessage(networkErrorMessage, authErrorMessage, genericErrorMessage),
+                            InAppNotificationType.Error,
                         )
                     } catch (e: CancellationException) {
                         throw e
                     } catch (_: Exception) {
                         checkInState = active.copy(isSubmitting = false)
-                        snackbarHostState.showSnackbar(genericErrorMessage)
+                        notificationHostState.show(genericErrorMessage, InAppNotificationType.Error)
                     }
                 }
             },
             onCancel = { checkInState = CheckInUiState.Idle },
-            onLocationNameChanged = { newName ->
-                val active = checkInState as? CheckInUiState.Active ?: return@CheckInOverlay
-                checkInState = active.copy(locationName = newName)
-            },
             onPermissionDenied = {
                 checkInState = CheckInUiState.Idle
-                scope.launch { snackbarHostState.showSnackbar(permissionErrorMessage) }
+                notificationHostState.show(permissionErrorMessage, InAppNotificationType.Error)
             },
-            snackbarHostState = snackbarHostState,
-            bottomInset = BottomBarMapPadding + 12.dp,
+            bottomInset = BottomBarMapPadding + 28.dp,
+        )
+
+        InAppNotificationHost(
+            hostState = notificationHostState,
+            modifier = Modifier.align(Alignment.TopCenter),
         )
     }
 }

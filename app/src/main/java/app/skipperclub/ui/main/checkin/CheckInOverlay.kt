@@ -9,18 +9,20 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
@@ -28,25 +30,17 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Snackbar
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -55,9 +49,8 @@ import app.skipperclub.ui.theme.SkipperClubTheme
 import app.skipperclub.ui.theme.extended
 
 /**
- * Bottom-aligned overlay that hosts the check-in flow. A single [Column] stacks
- * (snackbar → location-name card → action button) so the right-side button shifts
- * up cleanly when the card appears and the snackbar never overlaps either.
+ * Bottom-aligned overlay that hosts the check-in flow. It keeps the action stack
+ * above global navigation while leaving the map visible.
  *
  * Pass [bottomInset] equal to the bottom-bar height (plus desired gap) so nothing
  * collides with global navigation.
@@ -68,9 +61,7 @@ fun CheckInOverlay(
     onStart: () -> Unit,
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
-    onLocationNameChanged: (String) -> Unit,
     onPermissionDenied: () -> Unit,
-    snackbarHostState: SnackbarHostState,
     bottomInset: Dp,
     modifier: Modifier = Modifier,
 ) {
@@ -94,37 +85,23 @@ fun CheckInOverlay(
                 .padding(bottom = bottomInset),
             horizontalAlignment = Alignment.End,
         ) {
-            SnackbarHost(
-                hostState = snackbarHostState,
-                modifier = Modifier.fillMaxWidth(),
-            ) { data ->
-                Snackbar(snackbarData = data)
-            }
-
             AnimatedVisibility(
                 visible = state is CheckInUiState.Active,
                 enter = fadeIn() + slideInVertically { it / 2 },
                 exit = fadeOut() + slideOutVertically { it / 2 },
-                modifier = Modifier.fillMaxWidth(),
             ) {
                 val active = state as? CheckInUiState.Active
                 if (active != null) {
-                    Column {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        LocationNameCard(
-                            value = active.locationName,
-                            isResolving = active.isResolvingName,
-                            onValueChange = onLocationNameChanged,
-                            onCancel = onCancel,
-                            cancelEnabled = !active.isSubmitting,
-                        )
-                    }
+                    LocationSummaryPill(
+                        value = active.locationName,
+                        isResolving = active.isResolvingName,
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            CheckInActionButton(
+            CheckInActions(
                 state = state,
                 onStart = {
                     if (context.hasLocationPermission()) {
@@ -139,6 +116,36 @@ fun CheckInOverlay(
                     }
                 },
                 onConfirm = onConfirm,
+                onCancel = onCancel,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CheckInActions(
+    state: CheckInUiState,
+    onStart: () -> Unit,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    Column(
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        CheckInActionButton(
+            state = state,
+            onStart = onStart,
+            onConfirm = onConfirm,
+        )
+        AnimatedVisibility(
+            visible = state is CheckInUiState.Active,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
+        ) {
+            CancelCheckInButton(
+                enabled = (state as? CheckInUiState.Active)?.isSubmitting != true,
+                onClick = onCancel,
             )
         }
     }
@@ -155,11 +162,11 @@ private fun CheckInActionButton(
         (state is CheckInUiState.Active && state.isSubmitting)
 
     val containerColor by animateColorAsState(
-        targetValue = if (isActive) MaterialTheme.extended.success else MaterialTheme.colorScheme.secondary,
+        targetValue = if (isActive) MaterialTheme.extended.success else MaterialTheme.colorScheme.primary,
         label = "Check-in button container",
     )
     val contentColor by animateColorAsState(
-        targetValue = if (isActive) MaterialTheme.extended.onSuccess else MaterialTheme.colorScheme.onSecondary,
+        targetValue = if (isActive) MaterialTheme.extended.onSuccess else MaterialTheme.colorScheme.onPrimary,
         label = "Check-in button content",
     )
 
@@ -179,18 +186,21 @@ private fun CheckInActionButton(
             disabledContainerColor = containerColor,
             disabledContentColor = contentColor,
         ),
+        modifier = Modifier
+            .widthIn(min = 224.dp, max = 320.dp)
+            .defaultMinSize(minHeight = 60.dp),
     ) {
         if (isBusy) {
             CircularProgressIndicator(
                 color = contentColor,
                 strokeWidth = 2.dp,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(22.dp),
             )
         } else {
             Icon(
                 imageVector = Icons.Filled.LocationOn,
                 contentDescription = null,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(22.dp),
             )
         }
         Text(
@@ -198,74 +208,88 @@ private fun CheckInActionButton(
                 if (isActive) R.string.map_check_in_confirm else R.string.map_check_in,
             ),
             modifier = Modifier.padding(start = 8.dp),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
         )
     }
 }
 
 @Composable
-private fun LocationNameCard(
+private fun CancelCheckInButton(
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(50),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+            disabledContainerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.58f),
+            disabledContentColor = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.62f),
+        ),
+        modifier = Modifier
+            .widthIn(min = 224.dp, max = 320.dp)
+            .defaultMinSize(minHeight = 56.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Close,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            text = stringResource(R.string.map_check_in_cancel),
+            modifier = Modifier.padding(start = 8.dp),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+@Composable
+private fun LocationSummaryPill(
     value: String,
     isResolving: Boolean,
-    onValueChange: (String) -> Unit,
-    onCancel: () -> Unit,
-    cancelEnabled: Boolean,
 ) {
+    val text = when {
+        value.isNotBlank() -> value
+        isResolving -> stringResource(R.string.map_check_in_location_resolving)
+        else -> stringResource(R.string.map_check_in_location_unknown)
+    }
+
     Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp,
-        shadowElevation = 6.dp,
-        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = 3.dp,
+        shadowElevation = 8.dp,
+        modifier = Modifier.widthIn(max = 340.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 12.dp),
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = stringResource(R.string.map_check_in_location_label),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
+            if (isResolving) {
+                CircularProgressIndicator(
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(16.dp),
                 )
-                if (isResolving) {
-                    CircularProgressIndicator(
-                        strokeWidth = 2.dp,
-                        modifier = Modifier
-                            .size(14.dp)
-                            .padding(end = 8.dp),
-                    )
-                }
-                IconButton(
-                    onClick = onCancel,
-                    enabled = cancelEnabled,
-                    modifier = Modifier.size(32.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = stringResource(R.string.map_check_in_cancel),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.LocationOn,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
             }
-            OutlinedTextField(
-                value = value,
-                onValueChange = onValueChange,
-                placeholder = {
-                    Text(text = stringResource(R.string.map_check_in_location_name_placeholder))
-                },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Sentences,
-                    imeAction = ImeAction.Done,
-                ),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surface,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(end = 8.dp, top = 4.dp),
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -275,15 +299,12 @@ private fun LocationNameCard(
 @Composable
 private fun CheckInOverlayIdlePreview() {
     SkipperClubTheme {
-        val snackbar = remember { SnackbarHostState() }
         CheckInOverlay(
             state = CheckInUiState.Idle,
             onStart = {},
             onConfirm = {},
             onCancel = {},
-            onLocationNameChanged = {},
             onPermissionDenied = {},
-            snackbarHostState = snackbar,
             bottomInset = 8.dp,
         )
     }
@@ -293,10 +314,6 @@ private fun CheckInOverlayIdlePreview() {
 @Composable
 private fun CheckInOverlayActivePreviewPl() {
     SkipperClubTheme {
-        val snackbar = remember { SnackbarHostState() }
-        LaunchedEffect(Unit) {
-            snackbar.showSnackbar("Nie udało się ustalić lokalizacji.")
-        }
         CheckInOverlay(
             state = CheckInUiState.Active(
                 locationName = "Marina Gdańsk",
@@ -306,9 +323,7 @@ private fun CheckInOverlayActivePreviewPl() {
             onStart = {},
             onConfirm = {},
             onCancel = {},
-            onLocationNameChanged = {},
             onPermissionDenied = {},
-            snackbarHostState = snackbar,
             bottomInset = 8.dp,
         )
     }
@@ -323,7 +338,6 @@ private fun CheckInOverlayActivePreviewPl() {
 @Composable
 private fun CheckInOverlayActivePreviewDark() {
     SkipperClubTheme {
-        val snackbar = remember { SnackbarHostState() }
         CheckInOverlay(
             state = CheckInUiState.Active(
                 locationName = "Gen. Mariana C. Coopera 3",
@@ -333,9 +347,7 @@ private fun CheckInOverlayActivePreviewDark() {
             onStart = {},
             onConfirm = {},
             onCancel = {},
-            onLocationNameChanged = {},
             onPermissionDenied = {},
-            snackbarHostState = snackbar,
             bottomInset = 8.dp,
         )
     }

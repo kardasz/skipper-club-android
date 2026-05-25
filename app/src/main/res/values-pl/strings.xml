@@ -90,12 +90,16 @@
     <string name="nav_messages">Wiadomości</string>
     <string name="nav_menu">Menu</string>
 
+    <string name="notification_dismiss">Zamknij powiadomienie</string>
+
     <string name="map_content_description">Mapa SkipperClub</string>
     <string name="map_check_in">Zamelduj się</string>
     <string name="map_check_in_confirm">Potwierdź</string>
     <string name="map_check_in_cancel">Anuluj</string>
     <string name="map_check_in_location_label">Lokalizacja</string>
     <string name="map_check_in_location_name_placeholder">Nazwa miejsca (opcjonalnie)</string>
+    <string name="map_check_in_location_resolving">Ustalamy miejsce...</string>
+    <string name="map_check_in_location_unknown">Wybrana lokalizacja</string>
     <string name="map_check_in_pin_content_description">Pinezka zameldowania na środku mapy</string>
     <string name="map_check_in_success">Zameldowano w: %1$s.</string>
     <string name="map_check_in_success_no_name">Zameldowano.</string>
