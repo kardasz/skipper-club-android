@@ -112,10 +112,12 @@ The **target** multi-module layout (`:app`, `:core:common`, `:core:designsystem`
 ./gradlew :app:lintDebug                        # Android Lint
 ./gradlew :app:testDebugUnitTest                # JVM unit tests
 ./gradlew :app:connectedDebugAndroidTest        # instrumented tests (device required)
+./gradlew :app:debugUnitTestCoverage            # JaCoCo HTML/XML coverage for JVM unit tests
+./gradlew :app:debugCombinedTestCoverage        # JaCoCo coverage for unit + connected tests
 ./gradlew --refresh-dependencies                # force a clean dependency resolution
 ```
 
-A `Makefile` exposes the same commands as `make assemble-debug`, `make install-debug`, `make run`, `make test`, `make connected-check`, `make lint`, `make clean`, `make dependencies`. Run `make help` for the full list. The `Build platforms` workflow (`.github/workflows/build-platforms.yml`) drives CI through these `make` targets on JDK 21 with `pixel_10` and `pixel_tablet` emulators (API 34) — keep them in sync when adding new CI checks.
+A `Makefile` exposes the same commands as `make assemble-debug`, `make install-debug`, `make run`, `make test`, `make connected-check`, `make coverage`, `make coverage-connected`, `make lint`, `make clean`, `make dependencies`. Run `make help` for the full list. The `Build platforms` workflow (`.github/workflows/build-platforms.yml`) drives CI through these `make` targets on JDK 21 with `pixel_10` and `pixel_tablet` emulators (API 34) — keep them in sync when adding new CI checks.
 
 A UI change is not "done" until at least:
 

@@ -3,7 +3,7 @@ MODULE = :app
 APP_ID = app.skipperclub
 LAUNCHER = $(APP_ID)/$(APP_ID).MainActivity
 
-.PHONY: help assemble-debug assemble-release bundle-release install-debug uninstall run test connected-check lint clean dependencies
+.PHONY: help assemble-debug assemble-release bundle-release install-debug uninstall run test connected-check coverage coverage-connected lint clean dependencies
 
 help:
 	@echo "SkipperClub — Android Makefile"
@@ -18,6 +18,8 @@ help:
 	@echo "  run                Install debug APK and launch MainActivity"
 	@echo "  test               Run unit tests (testDebugUnitTest)"
 	@echo "  connected-check    Run instrumented tests on the connected device"
+	@echo "  coverage           Run unit tests and generate JaCoCo coverage report"
+	@echo "  coverage-connected Run unit + connected tests and generate combined coverage report"
 	@echo "  lint               Run Android lint on the debug variant"
 	@echo "  clean              Gradle clean"
 	@echo "  dependencies       Print resolved dependencies"
@@ -45,6 +47,12 @@ test:
 
 connected-check:
 	$(GRADLEW) $(MODULE):connectedDebugAndroidTest
+
+coverage:
+	$(GRADLEW) $(MODULE):debugUnitTestCoverage
+
+coverage-connected:
+	$(GRADLEW) $(MODULE):debugCombinedTestCoverage
 
 lint:
 	$(GRADLEW) $(MODULE):lintDebug

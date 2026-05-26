@@ -1,9 +1,13 @@
 import java.util.Properties
+import org.gradle.api.tasks.testing.Test
+import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
+import org.gradle.testing.jacoco.tasks.JacocoReport
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    jacoco
 }
 
 val releaseSigningPropertiesFile = rootProject.file("release-signing.properties")
@@ -78,6 +82,10 @@ android {
                 "proguard-rules.pro"
             )
         }
+        debug {
+            enableUnitTestCoverage = true
+            enableAndroidTestCoverage = true
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -120,6 +128,7 @@ dependencies {
     implementation(libs.play.services.location)
     implementation(libs.places)
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -127,4 +136,78 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.okhttp.logging.interceptor)
+}
+
+jacoco {
+    toolVersion = libs.versions.jacoco.get()
+}
+
+val debugCoverageExclusions = listOf(
+    "**/R.class",
+    "**/R$*.class",
+    "**/BuildConfig.*",
+    "**/Manifest*.*",
+    "**/*ComposableSingletons*.*",
+    "**/*Preview*.*",
+    "**/*PreviewParameterProvider*.*",
+)
+
+tasks.withType<Test>().configureEach {
+    extensions.configure<JacocoTaskExtension> {
+        isIncludeNoLocationClasses = true
+        excludes = listOf("jdk.internal.*")
+    }
+}
+
+fun JacocoReport.configureDebugCoverageReport() {
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        csv.required.set(false)
+    }
+    classDirectories.setFrom(
+        files(
+            fileTree(layout.buildDirectory.dir("tmp/kotlin-classes/debug")) {
+                exclude(debugCoverageExclusions)
+            },
+            fileTree(layout.buildDirectory.dir("intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes")) {
+                exclude(debugCoverageExclusions)
+            },
+            fileTree(layout.buildDirectory.dir("intermediates/javac/debug/compileDebugJavaWithJavac/classes")) {
+                exclude(debugCoverageExclusions)
+            },
+        ),
+    )
+    sourceDirectories.setFrom(files("src/main/java"))
+}
+
+tasks.register<JacocoReport>("debugUnitTestCoverage") {
+    group = "verification"
+    description = "Generates JaCoCo HTML and XML coverage reports for debug unit tests."
+    dependsOn("testDebugUnitTest")
+    configureDebugCoverageReport()
+    executionData.setFrom(
+        fileTree(layout.buildDirectory) {
+            include(
+                "jacoco/testDebugUnitTest.exec",
+                "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec",
+            )
+        },
+    )
+}
+
+tasks.register<JacocoReport>("debugCombinedTestCoverage") {
+    group = "verification"
+    description = "Generates JaCoCo HTML and XML coverage reports for debug unit and connected UI tests."
+    dependsOn("testDebugUnitTest", "connectedDebugAndroidTest")
+    configureDebugCoverageReport()
+    executionData.setFrom(
+        fileTree(layout.buildDirectory) {
+            include(
+                "jacoco/testDebugUnitTest.exec",
+                "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec",
+                "outputs/code_coverage/debugAndroidTest/connected/**/*.ec",
+            )
+        },
+    )
 }
