@@ -28,6 +28,42 @@ jobs:
       - name: Run unit tests with coverage
         run: make coverage
 
+      - name: Summarize unit coverage
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          report = Path("app/build/reports/jacoco/debugUnitTestCoverage/debugUnitTestCoverage.xml")
+          if not report.is_file():
+              raise SystemExit(f"Coverage report not found: {report}")
+
+          root = ET.parse(report).getroot()
+          counters = {
+              counter.attrib["type"]: counter.attrib
+              for counter in root.findall("counter")
+          }
+
+          def row(label, counter_type):
+              counter = counters[counter_type]
+              missed = int(counter["missed"])
+              covered = int(counter["covered"])
+              total = missed + covered
+              percent = 0.0 if total == 0 else covered * 100.0 / total
+              return f"| {label} | {percent:.2f}% | {covered} / {total} |"
+
+          summary = Path(__import__("os").environ["GITHUB_STEP_SUMMARY"])
+          with summary.open("a", encoding="utf-8") as output:
+              output.write("### Unit Test Coverage\n\n")
+              output.write("| Metric | Covered | Count |\n")
+              output.write("| --- | ---: | ---: |\n")
+              output.write(row("Lines", "LINE") + "\n")
+              output.write(row("Branches", "BRANCH") + "\n")
+              output.write(row("Instructions", "INSTRUCTION") + "\n")
+              output.write("\n")
+              output.write("Full JaCoCo HTML/XML reports are uploaded as workflow artifacts.\n")
+          PY
+
       - name: Run lint
         run: make lint
 
