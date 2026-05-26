@@ -32,9 +32,9 @@ object AuthApi {
         .let { HttpLoggingProvider.apply(it) }
         .build()
 
-    suspend fun sendOtp(email: String, turnstileToken: String) {
+    internal fun sendOtpRequest(email: String, turnstileToken: String): Request {
         val body = json.encodeToString(OtpRequest(email)).toRequestBody(JSON_MEDIA_TYPE)
-        val request = Request.Builder()
+        return Request.Builder()
             .url("${BuildConfig.API_BASE_URL}/v1/auth/otp")
             .post(body)
             .header("Content-Type", "application/json")
@@ -42,16 +42,18 @@ object AuthApi {
             .header("Accept-Language", Locale.getDefault().toLanguageTag())
             .header(HEADER_TURNSTILE, turnstileToken)
             .build()
+    }
 
-        execute(request).use { response ->
+    suspend fun sendOtp(email: String, turnstileToken: String) {
+        execute(sendOtpRequest(email, turnstileToken)).use { response ->
             if (!response.isSuccessful) throw response.toAuthError()
         }
     }
 
-    suspend fun login(email: String, password: String, turnstileToken: String): SessionResponse {
+    internal fun loginRequest(email: String, password: String, turnstileToken: String): Request {
         val body = json.encodeToString(LoginRequest(email, password))
             .toRequestBody(JSON_MEDIA_TYPE)
-        val request = Request.Builder()
+        return Request.Builder()
             .url("${BuildConfig.API_BASE_URL}/v1/auth/login")
             .post(body)
             .header("Content-Type", "application/json")
@@ -59,8 +61,10 @@ object AuthApi {
             .header("Accept-Language", Locale.getDefault().toLanguageTag())
             .header(HEADER_TURNSTILE, turnstileToken)
             .build()
+    }
 
-        execute(request).use { response ->
+    suspend fun login(email: String, password: String, turnstileToken: String): SessionResponse {
+        execute(loginRequest(email, password, turnstileToken)).use { response ->
             if (!response.isSuccessful) throw response.toAuthError()
             val payload = response.body.string()
             return try {
@@ -71,9 +75,9 @@ object AuthApi {
         }
     }
 
-    suspend fun requestPasswordReset(email: String, turnstileToken: String) {
+    internal fun passwordResetRequest(email: String, turnstileToken: String): Request {
         val body = json.encodeToString(PasswordResetRequest(email)).toRequestBody(JSON_MEDIA_TYPE)
-        val request = Request.Builder()
+        return Request.Builder()
             .url("${BuildConfig.API_BASE_URL}/v1/auth/password-reset-request")
             .post(body)
             .header("Content-Type", "application/json")
@@ -81,26 +85,49 @@ object AuthApi {
             .header("Accept-Language", Locale.getDefault().toLanguageTag())
             .header(HEADER_TURNSTILE, turnstileToken)
             .build()
+    }
 
-        execute(request).use { response ->
+    suspend fun requestPasswordReset(email: String, turnstileToken: String) {
+        execute(passwordResetRequest(email, turnstileToken)).use { response ->
             if (!response.isSuccessful) throw response.toAuthError()
         }
     }
 
-    suspend fun resetPassword(email: String, code: String, password: String) {
+    internal fun resetPasswordRequest(email: String, code: String, password: String): Request {
         val body = json.encodeToString(PasswordResetConfirmRequest(email, code, password))
             .toRequestBody(JSON_MEDIA_TYPE)
-        val request = Request.Builder()
+        return Request.Builder()
             .url("${BuildConfig.API_BASE_URL}/v1/auth/password-reset")
             .post(body)
             .header("Content-Type", "application/json")
             .header("Accept", "application/json")
             .header("Accept-Language", Locale.getDefault().toLanguageTag())
             .build()
+    }
 
-        execute(request).use { response ->
+    suspend fun resetPassword(email: String, code: String, password: String) {
+        execute(resetPasswordRequest(email, code, password)).use { response ->
             if (!response.isSuccessful) throw response.toAuthError()
         }
+    }
+
+    internal fun invitationRegisterRequest(
+        code: String,
+        name: String,
+        email: String,
+        password: String,
+        turnstileToken: String,
+    ): Request {
+        val body = json.encodeToString(InvitationRegisterRequest(code, name, email, password))
+            .toRequestBody(JSON_MEDIA_TYPE)
+        return Request.Builder()
+            .url("${BuildConfig.API_BASE_URL}/v1/invitations/register")
+            .post(body)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .header("Accept-Language", Locale.getDefault().toLanguageTag())
+            .header(HEADER_TURNSTILE, turnstileToken)
+            .build()
     }
 
     suspend fun registerByInvitation(
@@ -110,18 +137,7 @@ object AuthApi {
         password: String,
         turnstileToken: String,
     ): SessionResponse {
-        val body = json.encodeToString(InvitationRegisterRequest(code, name, email, password))
-            .toRequestBody(JSON_MEDIA_TYPE)
-        val request = Request.Builder()
-            .url("${BuildConfig.API_BASE_URL}/v1/invitations/register")
-            .post(body)
-            .header("Content-Type", "application/json")
-            .header("Accept", "application/json")
-            .header("Accept-Language", Locale.getDefault().toLanguageTag())
-            .header(HEADER_TURNSTILE, turnstileToken)
-            .build()
-
-        execute(request).use { response ->
+        execute(invitationRegisterRequest(code, name, email, password, turnstileToken)).use { response ->
             if (!response.isSuccessful) throw response.toAuthError()
             val payload = response.body.string()
             return try {
@@ -132,10 +148,10 @@ object AuthApi {
         }
     }
 
-    suspend fun verifyOtp(email: String, code: String, turnstileToken: String): SessionResponse {
+    internal fun verifyOtpRequest(email: String, code: String, turnstileToken: String): Request {
         val body = json.encodeToString(OtpVerifyRequest(email, code))
             .toRequestBody(JSON_MEDIA_TYPE)
-        val request = Request.Builder()
+        return Request.Builder()
             .url("${BuildConfig.API_BASE_URL}/v1/auth/otp/verify")
             .post(body)
             .header("Content-Type", "application/json")
@@ -143,8 +159,10 @@ object AuthApi {
             .header("Accept-Language", Locale.getDefault().toLanguageTag())
             .header(HEADER_TURNSTILE, turnstileToken)
             .build()
+    }
 
-        execute(request).use { response ->
+    suspend fun verifyOtp(email: String, code: String, turnstileToken: String): SessionResponse {
+        execute(verifyOtpRequest(email, code, turnstileToken)).use { response ->
             if (!response.isSuccessful) throw response.toAuthError()
             val payload = response.body.string()
             return try {
@@ -155,18 +173,20 @@ object AuthApi {
         }
     }
 
-    internal suspend fun refreshSession(sessionId: String, refreshToken: String): RefreshSessionResponse {
+    internal fun refreshSessionRequest(sessionId: String, refreshToken: String): Request {
         val body = json.encodeToString(RefreshSessionRequest(refreshToken))
             .toRequestBody(JSON_MEDIA_TYPE)
-        val request = Request.Builder()
+        return Request.Builder()
             .url("${BuildConfig.API_BASE_URL}/v1/sessions/$sessionId/refresh")
             .post(body)
             .header("Content-Type", "application/json")
             .header("Accept", "application/json")
             .header("Accept-Language", Locale.getDefault().toLanguageTag())
             .build()
+    }
 
-        execute(request).use { response ->
+    internal suspend fun refreshSession(sessionId: String, refreshToken: String): RefreshSessionResponse {
+        execute(refreshSessionRequest(sessionId, refreshToken)).use { response ->
             if (!response.isSuccessful) throw response.toAuthError()
             val payload = response.body.string()
             return try {
@@ -194,7 +214,7 @@ object AuthApi {
             )
         }
 
-    private fun Response.toAuthError(): AuthError {
+    internal fun Response.toAuthError(): AuthError {
         val payload = body.string()
         val problem = runCatching {
             if (payload.isNotBlank()) json.decodeFromString<ProblemDetails>(payload) else null

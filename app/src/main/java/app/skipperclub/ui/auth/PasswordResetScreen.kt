@@ -28,6 +28,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import app.skipperclub.R
 import app.skipperclub.ui.theme.SkipperClubTheme
@@ -136,7 +137,9 @@ private fun PasswordResetScreenContent(
         OutlinedTextField(
             value = password,
             onValueChange = onPasswordChange,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("password-reset-new-password"),
             placeholder = { Text(stringResource(R.string.password_reset_new_password_placeholder)) },
             isError = passwordErrorMessage != null,
             supportingText = {
@@ -175,7 +178,9 @@ private fun PasswordResetScreenContent(
         OutlinedTextField(
             value = repeatedPassword,
             onValueChange = onRepeatedPasswordChange,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("password-reset-repeat-password"),
             placeholder = { Text(stringResource(R.string.password_reset_repeat_password_placeholder)) },
             isError = repeatedPasswordErrorMessage != null,
             supportingText = repeatedPasswordErrorMessage?.let { message ->

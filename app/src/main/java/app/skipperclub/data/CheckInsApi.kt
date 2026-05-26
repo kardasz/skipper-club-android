@@ -40,19 +40,19 @@ object CheckInsApi {
      * Upserts the caller's check-in. Pass `locationName = null` to let the backend
      * reverse-geocode the coordinates.
      */
-    suspend fun upsert(
+    internal fun upsertRequest(
         accessToken: String,
         lat: Double,
         lng: Double,
         locationName: String?,
-    ): CheckIn {
+    ): Request {
         val payload = CheckInRequest(
             lat = lat,
             lng = lng,
             locationName = locationName?.trim()?.takeIf { it.isNotEmpty() },
         )
         val body = json.encodeToString(payload).toRequestBody(JSON_MEDIA_TYPE)
-        val request = Request.Builder()
+        return Request.Builder()
             .url("${BuildConfig.API_BASE_URL}/v1/check-ins")
             .put(body)
             .header("Content-Type", "application/json")
@@ -60,8 +60,15 @@ object CheckInsApi {
             .header("Accept-Language", Locale.getDefault().toLanguageTag())
             .header("Authorization", "Bearer $accessToken")
             .build()
+    }
 
-        execute(request).use { response ->
+    suspend fun upsert(
+        accessToken: String,
+        lat: Double,
+        lng: Double,
+        locationName: String?,
+    ): CheckIn {
+        execute(upsertRequest(accessToken, lat, lng, locationName)).use { response ->
             if (!response.isSuccessful) throw response.toCheckInError()
             val responseBody = response.body.string()
             return try {
@@ -89,7 +96,7 @@ object CheckInsApi {
             )
         }
 
-    private fun Response.toCheckInError(): CheckInError {
+    internal fun Response.toCheckInError(): CheckInError {
         val payload = body.string()
         val problem = runCatching {
             if (payload.isNotBlank()) json.decodeFromString<ProblemDetails>(payload) else null
