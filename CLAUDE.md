@@ -3,6 +3,7 @@
 Working agreement for Claude Code in the SkipperClub Android repo. Read this first; it captures the conventions that are easy to miss from the code alone.
 
 For a complete tech reference see [`TECH_STACK.md`](./TECH_STACK.md). For the product surface see [`docs/prd/index.md`](./docs/prd/index.md).
+For API work, use [`docs/api/openapi.yaml`](./docs/api/openapi.yaml) as the contract and [`docs/api/index.md`](./docs/api/index.md) as the documentation entry point; module-specific API notes live in subdirectories under `docs/api/`.
 
 ---
 
@@ -84,6 +85,8 @@ The auth navigation is **deliberately a sealed class** (`AuthDestination`) saved
 
 ### Networking
 
+- Treat [`docs/api/openapi.yaml`](./docs/api/openapi.yaml) as the source of truth for REST endpoints, request/response DTOs, status codes, auth requirements, and `application/problem+json` shapes. Also read [`docs/api/index.md`](./docs/api/index.md) plus the relevant module directory under `docs/api/` before implementing or changing an API call.
+- Keep client DTOs and tests aligned with the OpenAPI schema. If implementation needs to diverge from the spec, update the spec/docs in the same change or call out the backend contract gap explicitly.
 - The current implementation uses **raw OkHttp + `Request.Builder`**, not Retrofit. That's intentional for four endpoints; if you're adding a new feature with several endpoints, **introduce Retrofit + a `:core:network` extraction in the same change** rather than copying the OkHttp boilerplate.
 - Error mapping must follow `application/problem+json` per [RFC 7807](https://datatracker.ietf.org/doc/html/rfc7807). See `AuthApi.toAuthError()` for the pattern (read `type`, `detail`, and `violations[].propertyPath`).
 - Captcha-gated endpoints require the `X-Turnstile-Token` header; obtain the token by showing `TurnstileDialog` with an action string and awaiting `onSuccess`.
@@ -167,10 +170,10 @@ For changes that touch a Composable, also render the affected `@Preview`s in And
 | If you're about to…                              | Read this first                                                  |
 | ------------------------------------------------ | ---------------------------------------------------------------- |
 | Add a new screen                                 | `ui/auth/LoginScreen.kt` (stateless content + preview pattern)   |
-| Add a new API endpoint                           | `data/AuthApi.kt` + `data/AuthError.kt`                          |
+| Add a new API endpoint                           | [`docs/api/openapi.yaml`](./docs/api/openapi.yaml) + [`docs/api/index.md`](./docs/api/index.md) + relevant module docs under `docs/api/`, then `data/AuthApi.kt` + `data/AuthError.kt` |
 | Add a captcha-gated mutation                     | `ui/turnstile/TurnstileDialog.kt` + `MainActivity` pending-action machinery |
 | Handle a new deep link                           | `MainActivity.consumeInvitationLink` + `AndroidManifest.xml`     |
 | Add a localized string                           | `res/values/strings.xml` + `res/values-pl/strings.xml`           |
 | Pick a library for a new concern                 | [`TECH_STACK.md`](./TECH_STACK.md) §3–§9                         |
 | Understand a product feature                     | [`docs/prd/PRD-XXX-*.md`](./docs/prd/)                           |
-| Understand an API call                           | [`docs/api/openapi.yaml`](./docs/api/openapi.yaml) + the per-module folder under `docs/api/` |
+| Understand an API call                           | [`docs/api/openapi.yaml`](./docs/api/openapi.yaml) + [`docs/api/index.md`](./docs/api/index.md) + the per-module folder under `docs/api/` |

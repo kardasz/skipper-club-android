@@ -14,6 +14,7 @@ If you are operating as Claude Code, prefer the more detailed [`CLAUDE.md`](./CL
 - **Languages shipped:** English (default), Polish (`values-pl/`).
 
 For the full picture read [`TECH_STACK.md`](./TECH_STACK.md).
+For API work, use [`docs/api/openapi.yaml`](./docs/api/openapi.yaml) as the REST contract and [`docs/api/index.md`](./docs/api/index.md) as the documentation entry point. Module-specific API documentation is split into subdirectories under `docs/api/`.
 
 ---
 
@@ -80,6 +81,8 @@ The **target** multi-module layout (`:app`, `:core:common`, `:core:designsystem`
 
 ### Networking & errors
 
+- Treat [`docs/api/openapi.yaml`](./docs/api/openapi.yaml) as the source of truth for REST endpoints, request/response DTOs, status codes, auth requirements, and `application/problem+json` shapes. Also read [`docs/api/index.md`](./docs/api/index.md) plus the relevant module directory under `docs/api/` before implementing or changing an API call.
+- Keep client DTOs and tests aligned with the OpenAPI schema. If implementation needs to diverge from the spec, update the spec/docs in the same change or call out the backend contract gap explicitly.
 - Errors are typed sealed classes mapped from `application/problem+json` ([RFC 7807](https://datatracker.ietf.org/doc/html/rfc7807)). See `data/AuthError.kt` and `AuthApi.toAuthError()` for the pattern.
 - Localized error text is resolved in the UI layer, not in `data/`. Repositories raise `AuthError` (or future `ApiError`) and the screen maps it to a `stringResource(...)`.
 - Captcha-gated endpoints require the `X-Turnstile-Token` header obtained from `TurnstileDialog`.
@@ -168,9 +171,9 @@ If you cannot run the build or render the previews, say so explicitly in the PR 
 | ------------------------------------------------ | ------------------------------------------------------------------------ |
 | Pick a library or version                        | [`TECH_STACK.md`](./TECH_STACK.md) + `gradle/libs.versions.toml`         |
 | Add a new screen                                 | `app/src/main/java/app/skipperclub/ui/auth/LoginScreen.kt`               |
-| Add a new API endpoint                           | `app/src/main/java/app/skipperclub/data/AuthApi.kt` + `AuthError.kt`     |
+| Add a new API endpoint                           | [`docs/api/openapi.yaml`](./docs/api/openapi.yaml) + [`docs/api/index.md`](./docs/api/index.md) + relevant module docs under `docs/api/`, then `app/src/main/java/app/skipperclub/data/AuthApi.kt` + `AuthError.kt` |
 | Add a captcha-gated mutation                     | `app/src/main/java/app/skipperclub/ui/turnstile/TurnstileDialog.kt`      |
 | Handle a new deep link                           | `MainActivity.consumeInvitationLink` + `app/src/main/AndroidManifest.xml`|
 | Add a localized string                           | `res/values/strings.xml` + `res/values-pl/strings.xml`                   |
 | Understand a product feature                     | [`docs/prd/PRD-XXX-*.md`](./docs/prd/)                                   |
-| Understand an API call                           | [`docs/api/openapi.yaml`](./docs/api/openapi.yaml) + the per-module folder under `docs/api/` |
+| Understand an API call                           | [`docs/api/openapi.yaml`](./docs/api/openapi.yaml) + [`docs/api/index.md`](./docs/api/index.md) + the per-module folder under `docs/api/` |
