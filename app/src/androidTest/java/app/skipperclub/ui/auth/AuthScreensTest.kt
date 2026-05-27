@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import app.skipperclub.R
 import app.skipperclub.ui.theme.SkipperClubTheme
@@ -163,6 +164,131 @@ class AuthScreensTest {
         assertEquals("123456", submittedCode)
         assertEquals("secret12", submittedPassword)
         compose.onAllNodesWithText(text(R.string.password_reset_error_password_mismatch)).assertCountEquals(0)
+    }
+
+    @Test
+    fun invitationRegisterScreenSanitizesInputAndSubmitsCompletedForm() {
+        var submittedCode: String? = null
+        var submittedName: String? = null
+        var submittedEmail: String? = null
+        var submittedPassword: String? = null
+
+        compose.setContent {
+            SkipperClubTheme {
+                InvitationRegisterScreen(
+                    initialCode = " ab-12_ć345678 ",
+                    onBack = {},
+                    onSubmit = { code, name, email, password ->
+                        submittedCode = code
+                        submittedName = name
+                        submittedEmail = email
+                        submittedPassword = password
+                    },
+                )
+            }
+        }
+
+        compose.onNodeWithText(text(R.string.invitation_submit)).assertIsNotEnabled()
+        compose.onNodeWithTag("invitation-name").performScrollTo().performTextInput("  Anna Nowak  ")
+        compose.onNodeWithTag("invitation-email").performScrollTo().performTextInput("  anna@example.com  ")
+        compose.onNodeWithTag("invitation-password").performScrollTo().performTextInput("secret12")
+        compose.onNodeWithText(text(R.string.invitation_submit)).performScrollTo().assertIsEnabled().performClick()
+
+        assertEquals("AB123456", submittedCode)
+        assertEquals("Anna Nowak", submittedName)
+        assertEquals("anna@example.com", submittedEmail)
+        assertEquals("secret12", submittedPassword)
+    }
+
+    @Test
+    fun invitationRegisterScreenClearsErrorsAndTogglesPasswordVisibility() {
+        var clearCount = 0
+
+        compose.setContent {
+            SkipperClubTheme {
+                InvitationRegisterScreen(
+                    onBack = {},
+                    onSubmit = { _, _, _, _ -> },
+                    codeErrorMessage = text(R.string.auth_error_invalid_invitation_code),
+                    nameErrorMessage = text(R.string.auth_error_invalid_name),
+                    emailErrorMessage = text(R.string.auth_error_invalid_email),
+                    passwordErrorMessage = text(R.string.auth_error_invalid_password),
+                    formErrorMessage = text(R.string.auth_error_captcha),
+                    onClearError = { clearCount++ },
+                )
+            }
+        }
+
+        compose.onNodeWithText(text(R.string.auth_error_captcha)).assertExists()
+        compose.onNodeWithText(text(R.string.auth_error_invalid_invitation_code)).assertExists()
+        compose.onNodeWithTag("invitation-code").performScrollTo().performTextInput("abc12345")
+        compose.onNodeWithTag("invitation-password").performScrollTo().performTextInput("secret12")
+        compose.onNodeWithContentDescription(text(R.string.invitation_password_show))
+            .performScrollTo()
+            .performClick()
+        compose.onNodeWithContentDescription(text(R.string.invitation_password_hide)).assertExists()
+
+        assertEquals(2, clearCount)
+    }
+
+    @Test
+    fun passwordResetRequestScreenSubmitsTrimmedEmailAndShowsSentState() {
+        var submittedEmail: String? = null
+
+        compose.setContent {
+            SkipperClubTheme {
+                PasswordResetRequestScreen(
+                    onBack = {},
+                    onSubmit = { submittedEmail = it },
+                    onSignIn = {},
+                )
+            }
+        }
+
+        compose.onNodeWithText(text(R.string.password_reset_request_submit)).assertIsNotEnabled()
+        compose.onNodeWithTag("password-reset-request-email").performTextInput("  sailor@example.com  ")
+        compose.onNodeWithText(text(R.string.password_reset_request_submit)).assertIsEnabled().performClick()
+        assertEquals("sailor@example.com", submittedEmail)
+    }
+
+    @Test
+    fun passwordResetRequestScreenSentStateReturnsToSignIn() {
+        var signInEmail: String? = null
+
+        compose.setContent {
+            SkipperClubTheme {
+                PasswordResetRequestScreen(
+                    initialEmail = "sailor@example.com",
+                    linkSent = true,
+                    onBack = {},
+                    onSubmit = {},
+                    onSignIn = { signInEmail = it },
+                )
+            }
+        }
+
+        compose.onNodeWithText(text(R.string.password_reset_request_sent_body)).assertExists()
+        compose.onNodeWithText(text(R.string.password_reset_back_to_sign_in)).performClick()
+        assertEquals("sailor@example.com", signInEmail)
+    }
+
+    @Test
+    fun passwordResetCompleteScreenReturnsToSignInWithEmail() {
+        var signInEmail: String? = null
+
+        compose.setContent {
+            SkipperClubTheme {
+                PasswordResetCompleteScreen(
+                    email = "sailor@example.com",
+                    onSignIn = { signInEmail = it },
+                )
+            }
+        }
+
+        compose.onNodeWithText(text(R.string.password_reset_complete_body)).assertExists()
+        compose.onNodeWithText(text(R.string.password_reset_back_to_sign_in)).performClick()
+
+        assertEquals("sailor@example.com", signInEmail)
     }
 
     private fun text(id: Int): String = compose.activity.getString(id)

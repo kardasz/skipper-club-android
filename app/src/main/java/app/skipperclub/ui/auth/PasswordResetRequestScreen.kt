@@ -24,6 +24,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import app.skipperclub.R
 import app.skipperclub.ui.theme.SkipperClubTheme
@@ -122,7 +123,9 @@ private fun PasswordResetRequestScreenContent(
         OutlinedTextField(
             value = email,
             onValueChange = onEmailChange,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("password-reset-request-email"),
             placeholder = { Text(stringResource(R.string.login_email_placeholder)) },
             isError = emailErrorMessage != null,
             supportingText = emailErrorMessage?.let { message ->

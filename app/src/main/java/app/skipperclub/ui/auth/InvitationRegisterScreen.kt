@@ -29,6 +29,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import app.skipperclub.R
 import app.skipperclub.ui.theme.SkipperClubTheme
@@ -141,7 +142,9 @@ private fun InvitationRegisterContent(
         OutlinedTextField(
             value = code,
             onValueChange = onCodeChange,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("invitation-code"),
             placeholder = { Text(stringResource(R.string.invitation_code_placeholder)) },
             isError = codeErrorMessage != null,
             supportingText = {
@@ -167,7 +170,9 @@ private fun InvitationRegisterContent(
         OutlinedTextField(
             value = name,
             onValueChange = onNameChange,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("invitation-name"),
             placeholder = { Text(stringResource(R.string.invitation_name_placeholder)) },
             isError = nameErrorMessage != null,
             supportingText = nameErrorMessage?.let { message ->
@@ -192,7 +197,9 @@ private fun InvitationRegisterContent(
         OutlinedTextField(
             value = email,
             onValueChange = onEmailChange,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("invitation-email"),
             placeholder = { Text(stringResource(R.string.invitation_email_placeholder)) },
             isError = emailErrorMessage != null,
             supportingText = emailErrorMessage?.let { message ->
@@ -217,7 +224,9 @@ private fun InvitationRegisterContent(
         OutlinedTextField(
             value = password,
             onValueChange = onPasswordChange,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("invitation-password"),
             placeholder = { Text(stringResource(R.string.invitation_password_placeholder)) },
             isError = passwordErrorMessage != null,
             supportingText = {
