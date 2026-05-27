@@ -119,12 +119,15 @@ The **target** multi-module layout (`:app`, `:core:common`, `:core:designsystem`
 
 A `Makefile` exposes the same commands as `make assemble-debug`, `make install-debug`, `make run`, `make test`, `make connected-check`, `make coverage`, `make coverage-connected`, `make lint`, `make clean`, `make dependencies`. Run `make help` for the full list. The `Build platforms` workflow (`.github/workflows/build-platforms.yml`) drives CI through these `make` targets on JDK 21 with `pixel_10` and `pixel_tablet` emulators (API 34) — keep them in sync when adding new CI checks.
 
+Tests are mandatory for feature work. Every new feature, user flow, API endpoint, persistence behavior, or non-trivial bug fix must add or update tests in the same change. Match test type to risk: pure business logic gets JVM unit tests; API/request/error mapping gets unit tests or MockWebServer-backed tests; Compose behavior gets instrumented Compose UI tests; persistence/session behavior gets focused DataStore/fake-backed tests. If a change is intentionally not testable in the current PR, call that out explicitly with the reason and follow-up.
+
 A UI change is not "done" until at least:
 
 1. `./gradlew :app:assembleDebug` succeeds.
 2. `./gradlew :app:lintDebug` is clean.
 3. `./gradlew :app:testDebugUnitTest` is green.
-4. The affected `@Preview`s have been rendered (or captured via Roborazzi once introduced).
+4. The new or changed behavior is covered by appropriate tests.
+5. The affected `@Preview`s have been rendered (or captured via Roborazzi once introduced).
 
 If you cannot run the build or render the previews, say so explicitly in the PR description rather than claiming success.
 

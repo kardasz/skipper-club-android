@@ -101,6 +101,9 @@ The auth navigation is **deliberately a sealed class** (`AuthDestination`) saved
 
 ### Testing
 
+- Tests are mandatory for feature work. Every new feature, user flow, API endpoint, persistence behavior, or non-trivial bug fix must add or update tests in the same change.
+- Match test type to risk: pure business logic gets JVM unit tests; API/request/error mapping gets unit tests or MockWebServer-backed tests; Compose behavior gets instrumented Compose UI tests; persistence/session behavior gets focused DataStore/fake-backed tests.
+- Do not add UI-only implementation without testing the state transitions and callbacks that make the feature work. If a change is intentionally not testable in this PR, call that out explicitly with the reason and follow-up.
 - Run unit tests with `./gradlew :app:testDebugUnitTest`.
 - Run instrumented tests with `./gradlew :app:connectedDebugAndroidTest` (needs a device/emulator).
 - Generate JVM unit test coverage with `./gradlew :app:debugUnitTestCoverage`; HTML output is under `app/build/reports/jacoco/debugUnitTestCoverage/html/index.html`.
@@ -140,6 +143,8 @@ For UI changes, run at least:
 ```
 
 A `Makefile` wraps the common Gradle invocations (`make assemble-debug`, `make test`, `make coverage`, `make coverage-connected`, `make lint`, `make connected-check`, `make run`). The `Build platforms` GitHub Actions workflow (`.github/workflows/build-platforms.yml`) runs unit test coverage + lint on JDK 21, then `connectedDebugAndroidTest` on `pixel_10` and `pixel_tablet` emulator profiles (API 34) for every PR. **Match the Makefile targets when adding CI steps** — the workflow calls `make` rather than `./gradlew` directly.
+
+Before marking feature work done, confirm the new or changed behavior is covered by tests and that the relevant coverage report still reflects meaningful coverage rather than only composable rendering.
 
 For changes that touch a Composable, also render the affected `@Preview`s in Android Studio or capture them via Roborazzi once that's set up. Don't report "done" on a UI change you haven't seen render.
 
