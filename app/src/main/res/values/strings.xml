@@ -106,6 +106,9 @@
     <string name="map_check_in_error_network">No internet connection. Please try again.</string>
     <string name="map_check_in_error_auth">Please sign in again to check in.</string>
     <string name="map_check_in_error_generic">Couldn\'t check in. Please try again.</string>
+    <string name="map_items_error_network">Couldn\'t load map objects. Check your connection.</string>
+    <string name="map_items_error_auth">Please sign in again to load map objects.</string>
+    <string name="map_items_error_generic">Couldn\'t load map objects. Please try again.</string>
 
     <string name="menu_my_profile">My profile</string>
     <string name="menu_saved">Saved</string>

@@ -4,6 +4,7 @@ import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -45,6 +47,11 @@ import androidx.compose.ui.unit.dp
 import app.skipperclub.R
 import app.skipperclub.data.CheckInError
 import app.skipperclub.data.CheckInsApi
+import app.skipperclub.data.MapEntry
+import app.skipperclub.data.MapEntryKind
+import app.skipperclub.data.MapItemsApi
+import app.skipperclub.data.MapItemsError
+import app.skipperclub.data.MapViewportBounds
 import app.skipperclub.data.SessionStore
 import app.skipperclub.ui.main.checkin.CheckInOverlay
 import app.skipperclub.ui.main.checkin.CheckInUiState
@@ -58,14 +65,19 @@ import app.skipperclub.ui.theme.SkipperClubTheme
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.ComposeMapColorScheme
+import com.google.maps.android.compose.GoogleMapComposable
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.MapType
 import com.google.maps.android.compose.MapUiSettings
+import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.rememberCameraPositionState
+import com.google.maps.android.compose.rememberUpdatedMarkerState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
@@ -92,6 +104,9 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
     val genericErrorMessage = stringResource(R.string.map_check_in_error_generic)
     val successMessageTemplate = stringResource(R.string.map_check_in_success)
     val successNoNameMessage = stringResource(R.string.map_check_in_success_no_name)
+    val mapItemsNetworkErrorMessage = stringResource(R.string.map_items_error_network)
+    val mapItemsAuthErrorMessage = stringResource(R.string.map_items_error_auth)
+    val mapItemsGenericErrorMessage = stringResource(R.string.map_items_error_generic)
 
     val startPosition = remember {
         CameraPosition.fromLatLngZoom(GDANSK_BAY, DEFAULT_ZOOM)
@@ -117,6 +132,41 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
 
     var checkInState by remember { mutableStateOf<CheckInUiState>(CheckInUiState.Idle) }
     val isActive = checkInState is CheckInUiState.Active
+    var isMapLoaded by remember { mutableStateOf(false) }
+    var mapEntries by remember { mutableStateOf(emptyList<MapEntry>()) }
+
+    LaunchedEffect(isMapLoaded) {
+        if (!isMapLoaded) return@LaunchedEffect
+        snapshotFlow { cameraPositionState.isMoving }
+            .distinctUntilChanged()
+            .collectLatest { moving ->
+                if (moving) return@collectLatest
+                delay(300)
+                val bounds = cameraPositionState.visibleViewportBounds() ?: return@collectLatest
+                val token = SessionStore.validSession()?.accessToken
+                if (token.isNullOrBlank()) {
+                    mapEntries = emptyList()
+                    notificationHostState.show(mapItemsAuthErrorMessage, InAppNotificationType.Error)
+                    return@collectLatest
+                }
+                try {
+                    mapEntries = MapItemsApi.list(accessToken = token, bounds = bounds).entries
+                } catch (e: MapItemsError) {
+                    notificationHostState.show(
+                        e.userMessage(
+                            network = mapItemsNetworkErrorMessage,
+                            auth = mapItemsAuthErrorMessage,
+                            generic = mapItemsGenericErrorMessage,
+                        ),
+                        InAppNotificationType.Error,
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    notificationHostState.show(mapItemsGenericErrorMessage, InAppNotificationType.Error)
+                }
+            }
+    }
 
     // Re-geocode when the map stops moving (camera target = pin position).
     // While the camera is moving the user is still aiming; only fire after a brief
@@ -158,9 +208,16 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
             contentDescription = stringResource(R.string.map_content_description),
             contentPadding = PaddingValues(bottom = BottomBarMapPadding),
             mapColorScheme = ComposeMapColorScheme.FOLLOW_SYSTEM,
+            onMapLoaded = { isMapLoaded = true },
             properties = mapProperties,
             uiSettings = mapUiSettings,
-        )
+        ) {
+            mapEntries.forEach { entry ->
+                key("${entry.kind}:${entry.id}") {
+                    MapEntryMarker(entry = entry)
+                }
+            }
+        }
 
         // Static pin overlay, fixed to the centre of the *visible* map area
         // (= the area not covered by our bottom bar). The map's contentPadding
@@ -267,6 +324,60 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
         InAppNotificationHost(
             hostState = notificationHostState,
             modifier = Modifier.align(Alignment.TopCenter),
+        )
+    }
+}
+
+@Composable
+@GoogleMapComposable
+private fun MapEntryMarker(entry: MapEntry) {
+    MarkerComposable(
+        entry.kind,
+        entry.id,
+        entry.name,
+        entry.count ?: 0,
+        state = rememberUpdatedMarkerState(
+            position = LatLng(entry.coordinates.lat, entry.coordinates.lng),
+        ),
+        contentDescription = entry.name,
+        title = entry.name,
+        zIndex = if (entry.kind == MapEntryKind.Cluster) 2f else 1f,
+    ) {
+        MapEntryMarkerLabel(entry = entry)
+    }
+}
+
+@Composable
+private fun MapEntryMarkerLabel(entry: MapEntry) {
+    val isCluster = entry.kind == MapEntryKind.Cluster
+    val colors = MaterialTheme.colorScheme
+    val containerColor = if (isCluster) colors.primary else colors.surface
+    val contentColor = if (isCluster) colors.onPrimary else colors.onSurface
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Surface(
+            shape = MaterialTheme.shapes.small,
+            color = containerColor,
+            contentColor = contentColor,
+            tonalElevation = 4.dp,
+            shadowElevation = 4.dp,
+            border = if (isCluster) null else BorderStroke(1.dp, colors.outlineVariant),
+            modifier = Modifier.widthIn(max = 164.dp),
+        ) {
+            Text(
+                text = entry.name,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(if (isCluster) 12.dp else 9.dp)
+                .clip(CircleShape)
+                .background(containerColor),
         )
     }
 }
@@ -385,6 +496,29 @@ private fun CheckInError.userMessage(
     is CheckInError.Validation,
     is CheckInError.Server,
     -> generic
+}
+
+private fun MapItemsError.userMessage(
+    network: String,
+    auth: String,
+    generic: String,
+): String = when (this) {
+    is MapItemsError.Network -> network
+    is MapItemsError.AuthenticationRequired -> auth
+    is MapItemsError.RateLimited,
+    is MapItemsError.Validation,
+    is MapItemsError.Server,
+    -> generic
+}
+
+private fun CameraPositionState.visibleViewportBounds(): MapViewportBounds? {
+    val bounds = projection?.visibleRegion?.latLngBounds ?: return null
+    return MapViewportBounds(
+        north = bounds.northeast.latitude,
+        south = bounds.southwest.latitude,
+        east = bounds.northeast.longitude,
+        west = bounds.southwest.longitude,
+    )
 }
 
 @Composable

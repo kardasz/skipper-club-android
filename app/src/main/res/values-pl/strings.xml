@@ -106,6 +106,9 @@
     <string name="map_check_in_error_network">Brak połączenia z internetem. Spróbuj ponownie.</string>
     <string name="map_check_in_error_auth">Zaloguj się ponownie, aby się zameldować.</string>
     <string name="map_check_in_error_generic">Nie udało się zameldować. Spróbuj ponownie.</string>
+    <string name="map_items_error_network">Nie udało się wczytać obiektów mapy. Sprawdź połączenie.</string>
+    <string name="map_items_error_auth">Zaloguj się ponownie, aby wczytać obiekty mapy.</string>
+    <string name="map_items_error_generic">Nie udało się wczytać obiektów mapy. Spróbuj ponownie.</string>
 
     <string name="menu_my_profile">Mój profil</string>
     <string name="menu_saved">Zapisane</string>
