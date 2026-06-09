@@ -84,12 +84,62 @@ class MapItemsApiTest {
 
         assertEquals(2, decoded.entries.size)
         assertEquals(MapEntryKind.Item, decoded.entries[0].kind)
+        assertEquals(MapEntryType.Spot, decoded.entries[0].type)
         assertEquals("Sopot Marina", decoded.entries[0].name)
         assertEquals(54.441, decoded.entries[0].coordinates.lat, 0.0)
         assertEquals(MapEntryKind.Cluster, decoded.entries[1].kind)
         assertEquals("24 items", decoded.entries[1].name)
         assertEquals(24, decoded.entries[1].count)
         assertTrue(decoded.meta.hasMoreDetail)
+    }
+
+    @Test
+    fun decodeResponseMapsCheckInAttributes() {
+        val decoded = MapItemsApi.decodeResponse(
+            """
+                {
+                  "data": [
+                    {
+                      "kind": "item",
+                      "type": "check_in",
+                      "id": "019eac4a-3e2d-7c11-8761-f9d85d6e6419",
+                      "name": "Krzysztof",
+                      "coordinates": {
+                        "lat": 43.939826948,
+                        "lng": 15.441865213
+                      },
+                      "geometry": {
+                        "type": "Point",
+                        "coordinates": [15.441865213, 43.939826948]
+                      },
+                      "attributes": {
+                        "user": {
+                          "id": "01985af0-b793-7d54-a10f-a0d18100b4a0",
+                          "displayName": "Krzysztof",
+                          "avatarUrl": "https://media.skipperclub.app/avatars/krzysztof.jpeg"
+                        },
+                        "checkedInAt": "2026-06-09T12:10:07.274Z",
+                        "locationName": "Marina Kornati"
+                      },
+                      "distanceMeters": 26130
+                    }
+                  ],
+                  "meta": {
+                    "hasMoreDetail": false
+                  }
+                }
+            """.trimIndent(),
+        )
+
+        val entry = decoded.entries.single()
+        val attributes = entry.attributes as MapEntryAttributes.CheckIn
+        assertEquals(MapEntryType.CheckIn, entry.type)
+        assertEquals("Krzysztof", entry.name)
+        assertEquals("01985af0-b793-7d54-a10f-a0d18100b4a0", attributes.user.id)
+        assertEquals("Krzysztof", attributes.user.displayName)
+        assertEquals("https://media.skipperclub.app/avatars/krzysztof.jpeg", attributes.user.avatarUrl)
+        assertEquals("2026-06-09T12:10:07.274Z", attributes.checkedInAt)
+        assertEquals("Marina Kornati", attributes.locationName)
     }
 
     @Test

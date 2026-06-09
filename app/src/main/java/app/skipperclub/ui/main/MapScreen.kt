@@ -6,14 +6,19 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -25,7 +30,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,11 +42,16 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -48,9 +60,12 @@ import app.skipperclub.R
 import app.skipperclub.data.CheckInError
 import app.skipperclub.data.CheckInsApi
 import app.skipperclub.data.MapEntry
+import app.skipperclub.data.MapEntryAttributes
 import app.skipperclub.data.MapEntryKind
+import app.skipperclub.data.MapEntryType
 import app.skipperclub.data.MapItemsApi
 import app.skipperclub.data.MapItemsError
+import app.skipperclub.data.MapUserProjection
 import app.skipperclub.data.MapViewportBounds
 import app.skipperclub.data.SessionStore
 import app.skipperclub.ui.main.checkin.CheckInOverlay
@@ -62,6 +77,10 @@ import app.skipperclub.ui.notification.InAppNotificationHost
 import app.skipperclub.ui.notification.InAppNotificationType
 import app.skipperclub.ui.notification.rememberInAppNotificationHostState
 import app.skipperclub.ui.theme.SkipperClubTheme
+import coil3.compose.AsyncImagePainter
+import coil3.compose.rememberAsyncImagePainter
+import coil3.request.ImageRequest
+import coil3.request.allowHardware
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
@@ -75,6 +94,8 @@ import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberUpdatedMarkerState
+import java.time.Duration
+import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -134,6 +155,7 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
     val isActive = checkInState is CheckInUiState.Active
     var isMapLoaded by remember { mutableStateOf(false) }
     var mapEntries by remember { mutableStateOf(emptyList<MapEntry>()) }
+    var selectedMapEntryKey by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(isMapLoaded) {
         if (!isMapLoaded) return@LaunchedEffect
@@ -166,6 +188,13 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                     notificationHostState.show(mapItemsGenericErrorMessage, InAppNotificationType.Error)
                 }
             }
+    }
+
+    LaunchedEffect(mapEntries, selectedMapEntryKey) {
+        val selectedKey = selectedMapEntryKey ?: return@LaunchedEffect
+        if (mapEntries.none { it.markerKey == selectedKey }) {
+            selectedMapEntryKey = null
+        }
     }
 
     // Re-geocode when the map stops moving (camera target = pin position).
@@ -209,12 +238,24 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
             contentPadding = PaddingValues(bottom = BottomBarMapPadding),
             mapColorScheme = ComposeMapColorScheme.FOLLOW_SYSTEM,
             onMapLoaded = { isMapLoaded = true },
+            onMapClick = { selectedMapEntryKey = null },
             properties = mapProperties,
             uiSettings = mapUiSettings,
         ) {
             mapEntries.forEach { entry ->
                 key("${entry.kind}:${entry.id}") {
-                    MapEntryMarker(entry = entry)
+                    val markerKey = entry.markerKey
+                    MapEntryMarker(
+                        entry = entry,
+                        selected = selectedMapEntryKey == markerKey,
+                        onClick = {
+                            selectedMapEntryKey = if (selectedMapEntryKey == markerKey) {
+                                null
+                            } else {
+                                markerKey
+                            }
+                        },
+                    )
                 }
             }
         }
@@ -330,20 +371,61 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
 
 @Composable
 @GoogleMapComposable
-private fun MapEntryMarker(entry: MapEntry) {
+private fun MapEntryMarker(
+    entry: MapEntry,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val checkInAttributes = entry.checkInAttributes
+    val avatarUrl = checkInAttributes?.user?.avatarUrl?.takeIf { it.isNotBlank() }
+    val context = LocalContext.current
+    val avatarPainter = avatarUrl?.let { url ->
+        rememberAsyncImagePainter(
+            model = ImageRequest.Builder(context)
+                .data(url)
+                .allowHardware(false)
+                .build(),
+            contentScale = ContentScale.Crop,
+        )
+    }
+    val avatarState = if (avatarPainter != null) {
+        val state by avatarPainter.state.collectAsState()
+        state
+    } else {
+        null
+    }
+    val isAvatarLoaded = avatarState is AsyncImagePainter.State.Success
+
     MarkerComposable(
         entry.kind,
         entry.id,
         entry.name,
         entry.count ?: 0,
+        selected,
+        avatarUrl ?: "",
+        avatarState?.snapshotKey ?: "no-avatar",
         state = rememberUpdatedMarkerState(
             position = LatLng(entry.coordinates.lat, entry.coordinates.lng),
         ),
         contentDescription = entry.name,
         title = entry.name,
+        onClick = {
+            onClick()
+            true
+        },
         zIndex = if (entry.kind == MapEntryKind.Cluster) 2f else 1f,
     ) {
-        MapEntryMarkerLabel(entry = entry)
+        if (entry.type == MapEntryType.CheckIn && checkInAttributes != null) {
+            CheckInMapMarker(
+                name = entry.name,
+                attributes = checkInAttributes,
+                selected = selected,
+                avatarPainter = avatarPainter,
+                isAvatarLoaded = isAvatarLoaded,
+            )
+        } else {
+            MapEntryMarkerLabel(entry = entry)
+        }
     }
 }
 
@@ -379,6 +461,157 @@ private fun MapEntryMarkerLabel(entry: MapEntry) {
                 .clip(CircleShape)
                 .background(containerColor),
         )
+    }
+}
+
+@Composable
+private fun CheckInMapMarker(
+    name: String,
+    attributes: MapEntryAttributes.CheckIn,
+    selected: Boolean,
+    avatarPainter: Painter?,
+    isAvatarLoaded: Boolean,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        if (selected) {
+            CheckInInfoBubble(
+                displayName = attributes.user.displayName.ifBlank { name },
+                checkedInAt = attributes.checkedInAt,
+                modifier = Modifier.widthIn(max = 236.dp),
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+        }
+        CheckInAvatarPin(
+            user = attributes.user,
+            fallbackName = name,
+            avatarPainter = avatarPainter,
+            isAvatarLoaded = isAvatarLoaded,
+        )
+    }
+}
+
+@Composable
+private fun CheckInInfoBubble(
+    displayName: String,
+    checkedInAt: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = 4.dp,
+        shadowElevation = 8.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = modifier,
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+            Text(
+                text = displayName,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = checkInRelativeStatus(checkedInAt),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CheckInAvatarPin(
+    user: MapUserProjection,
+    fallbackName: String,
+    avatarPainter: Painter?,
+    isAvatarLoaded: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    val avatarName = user.displayName.ifBlank { fallbackName }
+    Box(
+        modifier = modifier
+            .width(56.dp)
+            .height(62.dp),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .offset(y = (-4).dp)
+                .size(16.dp)
+                .rotate(45f)
+                .clip(MaterialTheme.shapes.extraSmall)
+                .background(colors.primary),
+        )
+        Box(
+            modifier = Modifier
+                .size(50.dp)
+                .clip(CircleShape)
+                .background(colors.secondaryContainer)
+                .border(3.dp, colors.primary, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (avatarPainter != null && isAvatarLoaded) {
+                Image(
+                    painter = avatarPainter,
+                    contentDescription = avatarName,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Text(
+                    text = avatarName.initials(),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = colors.onSecondaryContainer,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun checkInRelativeStatus(checkedInAt: String): String {
+    var nowMillis by remember(checkedInAt) { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(checkedInAt) {
+        while (true) {
+            delay(60_000)
+            nowMillis = System.currentTimeMillis()
+        }
+    }
+
+    val elapsedMinutes = remember(checkedInAt, nowMillis) {
+        runCatching {
+            Duration.between(Instant.parse(checkedInAt), Instant.ofEpochMilli(nowMillis))
+                .toMinutes()
+                .coerceAtLeast(0)
+        }.getOrNull()
+    } ?: return stringResource(R.string.map_check_in_bubble_recent)
+
+    return when {
+        elapsedMinutes < 1 -> stringResource(R.string.map_check_in_bubble_now)
+        elapsedMinutes < 60 -> pluralStringResource(
+            R.plurals.map_check_in_bubble_minutes,
+            elapsedMinutes.toInt(),
+            elapsedMinutes,
+        )
+
+        elapsedMinutes < 1_440 -> {
+            val hours = (elapsedMinutes / 60).coerceAtLeast(1)
+            pluralStringResource(R.plurals.map_check_in_bubble_hours, hours.toInt(), hours)
+        }
+
+        else -> {
+            val days = (elapsedMinutes / 1_440).coerceAtLeast(1)
+            pluralStringResource(R.plurals.map_check_in_bubble_days, days.toInt(), days)
+        }
     }
 }
 
@@ -511,6 +744,33 @@ private fun MapItemsError.userMessage(
     -> generic
 }
 
+private val MapEntry.markerKey: String
+    get() = "${kind.name}:$id"
+
+private val MapEntry.checkInAttributes: MapEntryAttributes.CheckIn?
+    get() = attributes as? MapEntryAttributes.CheckIn
+
+private val AsyncImagePainter.State.snapshotKey: String
+    get() = when (this) {
+        is AsyncImagePainter.State.Empty -> "empty"
+        is AsyncImagePainter.State.Loading -> "loading"
+        is AsyncImagePainter.State.Success -> "success:${result.memoryCacheKey}"
+        is AsyncImagePainter.State.Error -> "error:${result.throwable::class.qualifiedName}"
+    }
+
+private fun String.initials(): String {
+    val initials = trim()
+        .split(Regex("\\s+"))
+        .asSequence()
+        .filter { it.isNotBlank() }
+        .take(2)
+        .mapNotNull { it.firstOrNull()?.uppercaseChar()?.toString() }
+        .toList()
+        .joinToString("")
+
+    return initials.ifBlank { "SC" }
+}
+
 private fun CameraPositionState.visibleViewportBounds(): MapViewportBounds? {
     val bounds = projection?.visibleRegion?.latLngBounds ?: return null
     return MapViewportBounds(
@@ -581,6 +841,55 @@ private fun MapScreenPreviewPl() {
 private fun MapScreenPreviewDark() {
     SkipperClubTheme {
         MapScreenContent()
+    }
+}
+
+@Preview(showBackground = true, locale = "en")
+@Composable
+private fun CheckInMapMarkerPreviewEn() {
+    SkipperClubTheme {
+        CheckInMarkerPreviewContent()
+    }
+}
+
+@Preview(showBackground = true, locale = "pl")
+@Composable
+private fun CheckInMapMarkerPreviewPl() {
+    SkipperClubTheme {
+        CheckInMarkerPreviewContent()
+    }
+}
+
+@Preview(showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+private fun CheckInMapMarkerPreviewDark() {
+    SkipperClubTheme {
+        CheckInMarkerPreviewContent()
+    }
+}
+
+@Composable
+private fun CheckInMarkerPreviewContent() {
+    Box(
+        modifier = Modifier
+            .background(MaterialTheme.colorScheme.background)
+            .padding(32.dp),
+    ) {
+        CheckInMapMarker(
+            name = "Krzysztof",
+            attributes = MapEntryAttributes.CheckIn(
+                user = MapUserProjection(
+                    id = "preview-user",
+                    displayName = "Krzysztof",
+                    avatarUrl = null,
+                ),
+                checkedInAt = Instant.now().minusSeconds(65).toString(),
+                locationName = "Marina Kornati",
+            ),
+            selected = true,
+            avatarPainter = null,
+            isAvatarLoaded = false,
+        )
     }
 }
 

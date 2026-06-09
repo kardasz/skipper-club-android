@@ -109,6 +109,20 @@
     <string name="map_items_error_network">Couldn\'t load map objects. Check your connection.</string>
     <string name="map_items_error_auth">Please sign in again to load map objects.</string>
     <string name="map_items_error_generic">Couldn\'t load map objects. Please try again.</string>
+    <string name="map_check_in_bubble_now">Checked in just now.</string>
+    <string name="map_check_in_bubble_recent">Checked in recently.</string>
+    <plurals name="map_check_in_bubble_minutes">
+        <item quantity="one">Checked in a minute ago.</item>
+        <item quantity="other">Checked in %1$d minutes ago.</item>
+    </plurals>
+    <plurals name="map_check_in_bubble_hours">
+        <item quantity="one">Checked in an hour ago.</item>
+        <item quantity="other">Checked in %1$d hours ago.</item>
+    </plurals>
+    <plurals name="map_check_in_bubble_days">
+        <item quantity="one">Checked in yesterday.</item>
+        <item quantity="other">Checked in %1$d days ago.</item>
+    </plurals>
 
     <string name="menu_my_profile">My profile</string>
     <string name="menu_saved">Saved</string>

@@ -109,6 +109,26 @@
     <string name="map_items_error_network">Nie udało się wczytać obiektów mapy. Sprawdź połączenie.</string>
     <string name="map_items_error_auth">Zaloguj się ponownie, aby wczytać obiekty mapy.</string>
     <string name="map_items_error_generic">Nie udało się wczytać obiektów mapy. Spróbuj ponownie.</string>
+    <string name="map_check_in_bubble_now">Zameldował się przed chwilą.</string>
+    <string name="map_check_in_bubble_recent">Zameldował się niedawno.</string>
+    <plurals name="map_check_in_bubble_minutes">
+        <item quantity="one">Zameldował się minutę temu.</item>
+        <item quantity="few">Zameldował się %1$d minuty temu.</item>
+        <item quantity="many">Zameldował się %1$d minut temu.</item>
+        <item quantity="other">Zameldował się %1$d minut temu.</item>
+    </plurals>
+    <plurals name="map_check_in_bubble_hours">
+        <item quantity="one">Zameldował się godzinę temu.</item>
+        <item quantity="few">Zameldował się %1$d godziny temu.</item>
+        <item quantity="many">Zameldował się %1$d godzin temu.</item>
+        <item quantity="other">Zameldował się %1$d godzin temu.</item>
+    </plurals>
+    <plurals name="map_check_in_bubble_days">
+        <item quantity="one">Zameldował się wczoraj.</item>
+        <item quantity="few">Zameldował się %1$d dni temu.</item>
+        <item quantity="many">Zameldował się %1$d dni temu.</item>
+        <item quantity="other">Zameldował się %1$d dni temu.</item>
+    </plurals>
 
     <string name="menu_my_profile">Mój profil</string>
     <string name="menu_saved">Zapisane</string>
