@@ -307,6 +307,57 @@ Once connected as friends:
 - Users can manage friend requests and friendship lifecycle
 - Organizers can invite friends to private cruises
 
+## Navigation Alerts
+
+Alerts let any authenticated user share navigation-relevant information
+with the rest of the community — weather warnings, obstructions, regattas,
+diving zones, military exercises, NAVTEX-style and Notice-to-Mariners-style
+messages, and a generic "other" category. They are the first object type
+that supports area-based geometry (polygons and multipolygons) in addition
+to points.
+
+### Authorship and Ownership
+
+- Any signed-in user can create an alert. The server stamps
+  `source = 'user'` and `sourceId = <authenticated user id>`.
+- Admins can update or delete any alert through the standard endpoints.
+  Non-admins can only update or delete alerts they created. There is no
+  separate admin-only endpoint tree — the role check is inline. See
+  [Alert Ownership Flow](../reference/flows/alert-ownership-flow.md).
+- Deletes are soft (`deleted_at` timestamp). Soft-deleted alerts disappear
+  from every read endpoint, including the unified map.
+
+### Geometry and Anchor
+
+- Alerts may carry an optional GeoJSON `Point`, `Polygon`, or
+  `MultiPolygon`. Every other geometry type is rejected with
+  `422 /errors/invalid-alert-geometry`.
+- Whenever geometry is set, the server also computes an `anchor` Point:
+  the geometry itself for `Point`, and `ST_PointOnSurface(geometry)` for
+  polygons. The anchor backs marker placement, radius filtering, and
+  clustering — so every alert behaves the same on the map regardless of
+  whether it is a single point or an area.
+- Alerts without geometry are stored and returned by `GET /v1/alerts` (when
+  no viewport filter is requested) but never appear on `/v1/map/items`.
+
+### Categories
+
+Alerts are tagged with one of ten categories — see
+[Alert Categories](../reference/enums/alert-categories.md) for the full
+enum. Severity is intentionally not modelled; the category alone drives
+client presentation and any official-source attribution is exposed via
+`sourceAttributes` instead.
+
+### Localization
+
+- `Content-Language` controls what gets stored in `alerts.language` at
+  write time. Missing header defaults to `en` on both `POST` and `PUT`
+  (no inheritance).
+- `GET` endpoints return `content` and `language` as-is.
+- On `/v1/map/items`, the alert item `name` field is a short
+  category-derived label localized via `Accept-Language`. The full alert
+  body stays on `attributes.content`.
+
 ## Notifications
 
 The platform sends notifications for important events.

@@ -15,12 +15,16 @@ servers:
     description: Staging server
 
 tags:
+  - name: alerts
+    description: User-submitted navigation alerts (weather, obstructions, regattas, …)
   - name: audio
     description: Audio processing and transcription
   - name: auth
     description: Authentication and authorization
   - name: invitations
     description: User invitations system
+  - name: map
+    description: Unified map view across posts, spots, check-ins, and navigation alerts
   - name: check-ins
     description: User location presence (latest check-in per user)
   - name: spots
@@ -4608,6 +4612,521 @@ paths:
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
 
+  /alerts:
+    get:
+      operationId: listAlerts
+      tags: [alerts]
+      summary: List non-deleted navigation alerts
+      description: |
+        Lists alerts that are not soft-deleted.
+
+        When viewport bounds (`north`, `south`, `east`, `west`) are supplied,
+        only alerts whose `geometry` intersects the viewport are returned;
+        non-geolocated alerts are excluded. When no viewport bounds are
+        supplied, both geolocated and non-geolocated alerts are returned.
+
+        Antimeridian: when `west > east` the viewport is split into
+        `[west, 180]` and `[-180, east]` envelopes and unioned, mirroring
+        `/map/items` behavior.
+
+        `category` accepts the repeated-parameter form
+        (e.g. `?category=weather&category=obstruction`). Comma-separated
+        values are not supported.
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - in: query
+          name: north
+          schema: { type: number, minimum: -90, maximum: 90 }
+        - in: query
+          name: south
+          schema: { type: number, minimum: -90, maximum: 90 }
+        - in: query
+          name: east
+          schema: { type: number, minimum: -180, maximum: 180 }
+        - in: query
+          name: west
+          schema: { type: number, minimum: -180, maximum: 180 }
+        - in: query
+          name: category
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/AlertCategory' }
+          style: form
+          explode: true
+          description: Repeatable. Filter by one or more categories.
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Paginated list of alerts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertsListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    post:
+      operationId: createAlert
+      tags: [alerts]
+      summary: Create an alert for the authenticated user
+      description: |
+        Creates an alert with `source='user'` and
+        `sourceId=<authenticated user id>`.
+
+        The `Content-Language` header, when present, is stored on the alert
+        as the original content language. When the header is missing, the
+        stored language defaults to `en`.
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - in: header
+          name: Content-Language
+          required: false
+          schema: { type: string, example: en }
+          description: Original content language. Defaults to `en` when absent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAlertRequest'
+      responses:
+        '201':
+          description: Alert created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /alerts/{id}:
+    get:
+      operationId: getAlert
+      tags: [alerts]
+      summary: Get one alert by id
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Alert.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateAlert
+      tags: [alerts]
+      summary: Replace editable fields of an alert
+      description: |
+        Performs a full replacement of the editable fields (`category`,
+        `content`, `geometry`).
+
+        A missing `geometry` clears `geometry` and `anchor`, making the alert
+        non-geolocated. A new `geometry` triggers anchor recomputation
+        (`ST_PointOnSurface` for polygons; identity for `Point`).
+
+        The `Content-Language` header behaves the same as on `POST`: missing
+        header defaults to `en` (no inheritance of the previously stored
+        value).
+
+        Authorization: admins may update any alert; non-admins may only update
+        an alert they created. Other users receive
+        `403 application/problem+json` (`type: /errors/alert-forbidden`).
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: header
+          name: Content-Language
+          required: false
+          schema: { type: string, example: en }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAlertRequest'
+      responses:
+        '200':
+          description: Alert updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Non-admin non-owner tried to update somebody else's alert.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ApiProblem' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: deleteAlert
+      tags: [alerts]
+      summary: Soft-delete an alert
+      description: |
+        Sets `deleted_at`. Deleted alerts are excluded from `/alerts`,
+        `/alerts/{id}`, and `/map/items`.
+
+        Admins may delete any alert; non-admins may only delete an alert they
+        created. Other users receive `403 application/problem+json`.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204':
+          description: Alert deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Non-admin non-owner tried to delete somebody else's alert.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ApiProblem' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /map/items:
+    get:
+      operationId: listMapItems
+      tags: [map]
+      summary: List unified map items across posts, spots, check-ins, and navigation alerts
+      description: |
+        Returns map-ready items and clusters from posts, spots, check-ins,
+        and navigation alerts for a given viewport bounds or center+radius
+        query.
+
+        > **Default response change.** `navigation_alert` is included in the
+        > default `types` set. Existing clients that omit `types` will start
+        > receiving alert items automatically.
+
+        ### Spatial filtering
+
+        Exactly one of two modes must be supplied:
+
+        - **Viewport bounds** — `north`, `south`, `east`, `west` together. Primary
+          mode for any map screen. Accepts antimeridian-crossing viewports where
+          `west > east`; the server splits these into two envelopes and unions
+          the results. Maximum 120° per axis (after antimeridian split).
+        - **Center + radius** — `lat`, `lng`, `distance` together. Use for
+          "near me" queries and deep links. Radius in kilometers, range
+          `(0, 500]`.
+
+        ### Filters
+
+        - `types` controls which source types are returned (any non-empty
+          subset of `post`, `spot`, `check_in`, `navigation_alert`). Default:
+          all four.
+        - `postTypes` narrows posts to the given `PostType` values; ignored when
+          `types` excludes `post`.
+        - `regionCode` and `includeCrossRegionPostTypes` apply only to posts and
+          use the same subtree semantics as `GET /posts`.
+        - `fromDate`/`toDate` apply to post `createdAt` and check-in
+          `checkedInAt`; spots are not time-filtered.
+        - `limit` caps the total top-level entries (items + clusters together).
+        - `detail` toggles clustering rules (`auto`, `markers`, `summary`).
+
+        ### Visibility
+
+        The endpoint reuses each source's existing visibility predicates:
+
+        - **Posts** — only `published`, not-deleted, not effectively expired,
+          and with coordinates.
+        - **Spots** — only non-soft-deleted spots.
+        - **Check-ins** — only freshness-window members (`CHECK_IN_FRESHNESS_TTL_HOURS`,
+          default 24 h); one per user.
+        - **Navigation alerts** — only alerts where `deletedAt IS NULL`,
+          `geometry IS NOT NULL`, and `anchor IS NOT NULL`. Bounds mode matches
+          alerts whose `geometry` intersects the viewport; radius mode uses
+          `anchor` with `ST_DWithin`.
+
+        ### Clustering
+
+        Returns clusters automatically when results would overflow `limit`,
+        when density exceeds ~40 items per ~30×30 px cell, or when the area is
+        wide (`latSpan > 5°` or `distance > 100 km`). Cluster IDs are stable
+        and deterministic.
+
+        ### Caching
+
+        Unclustered: `Cache-Control: private, max-age=15`. Clustered:
+        `Cache-Control: private, max-age=60`.
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - in: query
+          name: north
+          schema: { type: number, minimum: -90, maximum: 90 }
+          description: Northern latitude edge of the viewport (bounds mode).
+        - in: query
+          name: south
+          schema: { type: number, minimum: -90, maximum: 90 }
+          description: Southern latitude edge of the viewport (bounds mode).
+        - in: query
+          name: east
+          schema: { type: number, minimum: -180, maximum: 180 }
+          description: Eastern longitude edge of the viewport (bounds mode).
+        - in: query
+          name: west
+          schema: { type: number, minimum: -180, maximum: 180 }
+          description: Western longitude edge of the viewport (bounds mode). When `west > east` the viewport is interpreted as crossing the antimeridian.
+        - in: query
+          name: lat
+          schema: { type: number, minimum: -90, maximum: 90 }
+          description: Center latitude (radius mode).
+        - in: query
+          name: lng
+          schema: { type: number, minimum: -180, maximum: 180 }
+          description: Center longitude (radius mode).
+        - in: query
+          name: distance
+          schema: { type: number, exclusiveMinimum: 0, maximum: 500 }
+          description: Radius in kilometers (radius mode).
+        - in: query
+          name: types
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [post, spot, check_in, navigation_alert]
+          style: form
+          explode: false
+          description: Source types to include. Default = all four.
+        - in: query
+          name: postTypes
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/PostType' }
+          style: form
+          explode: false
+          description: Narrow post items by post type. Ignored when `types` excludes `post`.
+        - in: query
+          name: regionCode
+          schema: { type: string }
+          description: Subtree match on post region code (uses `getDescendantCodes`).
+        - in: query
+          name: includeCrossRegionPostTypes
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [photo, place, food, marina, tips, route]
+          style: form
+          explode: false
+          description: Evergreen post types that bypass `regionCode`. Time-sensitive types are rejected.
+        - in: query
+          name: fromDate
+          schema: { type: string, format: date-time }
+          description: Inclusive lower bound on post `createdAt` / check-in `checkedInAt`.
+        - in: query
+          name: toDate
+          schema: { type: string, format: date-time }
+          description: Inclusive upper bound on post `createdAt` / check-in `checkedInAt`.
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+          description: Maximum number of returned top-level entries (items + clusters together).
+        - in: query
+          name: detail
+          schema:
+            type: string
+            enum: [auto, markers, summary]
+            default: auto
+          description: Detail preference. `auto` follows clustering rules; `markers` skips density/area clustering; `summary` always clusters.
+      responses:
+        '200':
+          description: Map items and clusters
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: 'private, max-age=15'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MapItemsResponse'
+              examples:
+                autoMixed:
+                  summary: detail=auto, mixed items and clusters
+                  value:
+                    data:
+                      - kind: item
+                        type: spot
+                        id: 019dfd19-ddd8-7d23-a1f4-06b96c16a36d
+                        name: Sopot Marina
+                        coordinates: { lat: 54.441, lng: 18.567 }
+                        geometry: { type: Point, coordinates: [18.567, 54.441] }
+                        attributes:
+                          hasPhoneContacts: true
+                          hasRadioChannels: true
+                          phoneContactsCount: 2
+                          radioChannelsCount: 1
+                      - kind: cluster
+                        id: cluster:u3wge:5
+                        name: 24 items
+                        coordinates: { lat: 54.44, lng: 18.56 }
+                        geometry: { type: Point, coordinates: [18.56, 54.44] }
+                        count: 24
+                        types: { post: 12, spot: 8, check_in: 4 }
+                        bounds: { north: 54.49, south: 54.39, east: 18.63, west: 18.5 }
+                    meta:
+                      mode: bounds
+                      detail: auto
+                      totalItems: 248
+                      returnedItems: 248
+                      topLevelEntries: 42
+                      hasMoreDetail: true
+                      checkInFreshnessHours: 24
+                      appliedLimit: 200
+                markersOnly:
+                  summary: detail=markers, no clusters
+                  value:
+                    data:
+                      - kind: item
+                        type: check_in
+                        id: 019dfd19-bbbb-7d23-a1f4-06b96c16a36d
+                        name: Jan K.
+                        coordinates: { lat: 54.441, lng: 18.567 }
+                        geometry: { type: Point, coordinates: [18.567, 54.441] }
+                        distanceMeters: 870
+                        attributes:
+                          user: { id: 019dfd19-aaaa-7d23-a1f4-06b96c16a36d, displayName: Jan K., avatarUrl: null }
+                          checkedInAt: '2030-06-06T12:00:00Z'
+                          locationName: Sopot Pier
+                    meta:
+                      mode: radius
+                      detail: markers
+                      totalItems: 1
+                      returnedItems: 1
+                      topLevelEntries: 1
+                      hasMoreDetail: false
+                      checkInFreshnessHours: 24
+                      appliedLimit: 200
+                summaryClusters:
+                  summary: detail=summary, all clusters
+                  value:
+                    data:
+                      - kind: cluster
+                        id: cluster:u3wge:4
+                        name: 12 spots
+                        coordinates: { lat: 54.44, lng: 18.56 }
+                        geometry: { type: Point, coordinates: [18.56, 54.44] }
+                        count: 12
+                        types: { spot: 12 }
+                        bounds: { north: 54.49, south: 54.39, east: 18.63, west: 18.5 }
+                    meta:
+                      mode: bounds
+                      detail: summary
+                      totalItems: 12
+                      returnedItems: 12
+                      topLevelEntries: 1
+                      hasMoreDetail: true
+                      checkInFreshnessHours: 24
+                      appliedLimit: 200
+        '400':
+          description: Detail=markers cannot be satisfied even after coarsest clustering.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblem'
+              examples:
+                markersNotSatisfiable:
+                  value:
+                    type: /errors/markers-detail-not-satisfiable
+                    title: Markers Detail Not Satisfiable
+                    status: 400
+                    detail: detail=markers cannot be satisfied for the requested area even after coarsest clustering.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          description: Validation error specific to map filtering.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblem'
+              examples:
+                invalidSpatialMode:
+                  value:
+                    type: /errors/invalid-spatial-mode
+                    title: Invalid Spatial Mode
+                    status: 422
+                    detail: Provide either viewport bounds or center+radius — not both, neither, or partial.
+                spatialBoundsOutOfRange:
+                  value:
+                    type: /errors/spatial-bounds-out-of-range
+                    title: Spatial Bounds Out Of Range
+                    status: 422
+                    detail: Viewport latitudinal span exceeds 120°.
+                invalidCoordinateRange:
+                  value:
+                    type: /errors/invalid-coordinate-range
+                    title: Invalid Coordinate Range
+                    status: 422
+                    detail: north must be strictly greater than south.
+                invalidTypes:
+                  value:
+                    type: /errors/invalid-types
+                    title: Invalid Types
+                    status: 422
+                    detail: 'types must be a non-empty subset of: post, spot, check_in.'
+                invalidPostTypes:
+                  value:
+                    type: /errors/invalid-post-types
+                    title: Invalid Post Types
+                    status: 422
+                    detail: postTypes contains one or more unknown post type values.
+                crossRegionTypesNotEvergreen:
+                  value:
+                    type: /errors/cross-region-types-not-evergreen
+                    title: Cross-Region Types Not Evergreen
+                    status: 422
+                    detail: includeCrossRegionPostTypes may only contain evergreen post types.
+                invalidDateRange:
+                  value:
+                    type: /errors/invalid-date-range
+                    title: Invalid Date Range
+                    status: 422
+                    detail: fromDate must be on or before toDate.
+                invalidLimit:
+                  value:
+                    type: /errors/invalid-limit
+                    title: Invalid Limit
+                    status: 422
+                    detail: limit must be an integer in [1, 500].
+                invalidDetail:
+                  value:
+                    type: /errors/invalid-detail
+                    title: Invalid Detail Level
+                    status: 422
+                    detail: 'detail must be one of: auto, markers, summary.'
+
   /check-ins:
     put:
       operationId: upsertCheckIn
@@ -8847,6 +9366,554 @@ components:
             $ref: '#/components/schemas/CheckIn'
         meta:
           $ref: '#/components/schemas/PageMeta'
+
+    MapCoordinates:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          minimum: -180
+          maximum: 180
+
+    MapBounds:
+      type: object
+      required: [north, south, east, west]
+      properties:
+        north: { type: number, minimum: -90, maximum: 90 }
+        south: { type: number, minimum: -90, maximum: 90 }
+        east: { type: number, minimum: -180, maximum: 180 }
+        west: { type: number, minimum: -180, maximum: 180 }
+
+    MapPointGeometry:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type: { type: string, enum: [Point] }
+        coordinates:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: { type: number }
+
+    MapMultiPointGeometry:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type: { type: string, enum: [MultiPoint] }
+        coordinates:
+          type: array
+          items:
+            type: array
+            minItems: 2
+            maxItems: 2
+            items: { type: number }
+
+    MapPolygonGeometry:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type: { type: string, enum: [Polygon] }
+        coordinates:
+          type: array
+          items:
+            type: array
+            items:
+              type: array
+              minItems: 2
+              maxItems: 2
+              items: { type: number }
+
+    MapMultiPolygonGeometry:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type: { type: string, enum: [MultiPolygon] }
+        coordinates:
+          type: array
+          items:
+            type: array
+            items:
+              type: array
+              items:
+                type: array
+                minItems: 2
+                maxItems: 2
+                items: { type: number }
+
+    MapGeometry:
+      oneOf:
+        - $ref: '#/components/schemas/MapPointGeometry'
+        - $ref: '#/components/schemas/MapMultiPointGeometry'
+        - $ref: '#/components/schemas/MapPolygonGeometry'
+        - $ref: '#/components/schemas/MapMultiPolygonGeometry'
+
+    MapUserProjection:
+      type: object
+      required: [id, displayName, avatarUrl]
+      properties:
+        id: { type: string, format: uuid }
+        displayName: { type: string }
+        avatarUrl:
+          type: [string, 'null']
+
+    MapMediaPreview:
+      type: object
+      required: [id, kind, url, thumbnailUrl]
+      properties:
+        id: { type: string, format: uuid }
+        kind:
+          type: string
+          enum: [image, video]
+        url: { type: string }
+        thumbnailUrl:
+          type: [string, 'null']
+        width: { type: integer }
+        height: { type: integer }
+
+    MapPostAttributes:
+      type: object
+      required: [postType, status, regionCode, author, createdAt, mediaPreview, commentsCount, bookmarked]
+      properties:
+        postType: { $ref: '#/components/schemas/PostType' }
+        status: { type: string }
+        regionCode: { type: string }
+        author: { $ref: '#/components/schemas/MapUserProjection' }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        mediaPreview:
+          anyOf:
+            - $ref: '#/components/schemas/MapMediaPreview'
+            - type: 'null'
+        commentsCount: { type: integer, minimum: 0 }
+        bookmarked: { type: boolean }
+
+    MapSpotAttributes:
+      type: object
+      required: [hasPhoneContacts, hasRadioChannels, phoneContactsCount, radioChannelsCount]
+      properties:
+        hasPhoneContacts: { type: boolean }
+        hasRadioChannels: { type: boolean }
+        phoneContactsCount: { type: integer, minimum: 0 }
+        radioChannelsCount: { type: integer, minimum: 0 }
+
+    MapCheckInAttributes:
+      type: object
+      required: [user, checkedInAt, locationName]
+      properties:
+        user: { $ref: '#/components/schemas/MapUserProjection' }
+        checkedInAt: { type: string, format: date-time }
+        locationName:
+          type: [string, 'null']
+
+    AlertCategory:
+      type: string
+      enum:
+        - navigation_warning
+        - navtex
+        - notice_to_mariners
+        - obstruction
+        - works
+        - regatta
+        - diving
+        - military_exercise
+        - weather
+        - other
+
+    AlertGeometryPoint:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type:
+          type: string
+          enum: [Point]
+        coordinates:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: { type: number }
+          description: '[lng, lat] in WGS84.'
+
+    AlertGeometryMultiPoint:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type:
+          type: string
+          enum: [MultiPoint]
+        coordinates:
+          type: array
+          minItems: 1
+          items:
+            type: array
+            minItems: 2
+            maxItems: 2
+            items: { type: number }
+          description: 'Non-empty list of `[lng, lat]` positions in WGS84.'
+
+    AlertGeometryPolygon:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type:
+          type: string
+          enum: [Polygon]
+        coordinates:
+          type: array
+          minItems: 1
+          items:
+            type: array
+            minItems: 4
+            items:
+              type: array
+              minItems: 2
+              maxItems: 2
+              items: { type: number }
+
+    AlertGeometryMultiPolygon:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type:
+          type: string
+          enum: [MultiPolygon]
+        coordinates:
+          type: array
+          minItems: 1
+          items:
+            type: array
+            minItems: 1
+            items:
+              type: array
+              minItems: 4
+              items:
+                type: array
+                minItems: 2
+                maxItems: 2
+                items: { type: number }
+
+    AlertGeometry:
+      oneOf:
+        - $ref: '#/components/schemas/AlertGeometryPoint'
+        - $ref: '#/components/schemas/AlertGeometryMultiPoint'
+        - $ref: '#/components/schemas/AlertGeometryPolygon'
+        - $ref: '#/components/schemas/AlertGeometryMultiPolygon'
+      discriminator:
+        propertyName: type
+        mapping:
+          Point: '#/components/schemas/AlertGeometryPoint'
+          MultiPoint: '#/components/schemas/AlertGeometryMultiPoint'
+          Polygon: '#/components/schemas/AlertGeometryPolygon'
+          MultiPolygon: '#/components/schemas/AlertGeometryMultiPolygon'
+
+    AlertSourceAttributesHhiRnw:
+      type: object
+      required:
+        - type
+        - externalSourceName
+        - externalSourceUrl
+        - externalNumber
+        - externalPublishedAt
+        - externalUpdatedAt
+        - externalExpiresAt
+      properties:
+        type:
+          type: string
+          enum: [hhi_rnw]
+        externalSourceName:
+          type: string
+          example: Hydrographic Institute of the Republic of Croatia
+        externalSourceUrl:
+          type: string
+          format: uri
+          example: https://www.hhi.hr/en/e-services/radio-navigational-warnings
+        externalNumber:
+          type: string
+          description: Human-readable `<Number>/<Year>` identifier from the source feed.
+          example: '161/2026'
+        externalPublishedAt:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+        externalUpdatedAt:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+        externalExpiresAt:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+        cancellation:
+          type: object
+          required: [cancelledExternalNumber, cancelledAlertId]
+          properties:
+            cancelledExternalNumber:
+              type: string
+              description: The referenced `<Number>/<Year>` of the cancelled warning.
+              example: '147/2026'
+            cancelledAlertId:
+              oneOf:
+                - type: string
+                  format: uuid
+                - type: 'null'
+              description: Linked imported alert id when the cancelled warning was already imported.
+
+    AlertSourceAttributes:
+      oneOf:
+        - $ref: '#/components/schemas/AlertSourceAttributesHhiRnw'
+      discriminator:
+        propertyName: type
+        mapping:
+          hhi_rnw: '#/components/schemas/AlertSourceAttributesHhiRnw'
+      description: |
+        Source-specific public attribution for an alert. `null` for
+        user-owned alerts.
+
+    AlertAnchor:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lng: { type: number, minimum: -180, maximum: 180 }
+
+    AlertResponse:
+      type: object
+      required:
+        - id
+        - category
+        - content
+        - language
+        - source
+        - sourceId
+        - sourceAttributes
+        - geometry
+        - anchor
+        - createdAt
+        - updatedAt
+      properties:
+        id: { type: string, format: uuid }
+        category: { $ref: '#/components/schemas/AlertCategory' }
+        content: { type: string }
+        language: { type: string, minLength: 2, maxLength: 2, example: en }
+        source: { type: string, example: user }
+        sourceId:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+          description: |
+            Owner user id for `source='user'` alerts; `null` for official
+            imports.
+        sourceAttributes:
+          oneOf:
+            - $ref: '#/components/schemas/AlertSourceAttributes'
+            - type: 'null'
+          description: |
+            Source-specific public attribution for non-user sources.
+            `null` for `source='user'`.
+        geometry:
+          oneOf:
+            - $ref: '#/components/schemas/AlertGeometry'
+            - type: 'null'
+          description: |
+            GeoJSON `Point`, `MultiPoint`, `Polygon`, or `MultiPolygon` in
+            `[lng, lat]` order, or `null` when the alert is non-geolocated.
+        anchor:
+          oneOf:
+            - $ref: '#/components/schemas/AlertAnchor'
+            - type: 'null'
+          description: |
+            Representative point as `{ lat, lng }`. Always present when
+            `geometry` is present; always `null` when `geometry` is `null`.
+            Note the deliberate format duality between `geometry`
+            (`[lng, lat]` array) and `anchor` (`{ lat, lng }` object).
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateAlertRequest:
+      type: object
+      required: [category, content]
+      properties:
+        category: { $ref: '#/components/schemas/AlertCategory' }
+        content: { type: string, minLength: 1 }
+        geometry:
+          oneOf:
+            - $ref: '#/components/schemas/AlertGeometry'
+            - type: 'null'
+
+    UpdateAlertRequest:
+      type: object
+      required: [category, content]
+      properties:
+        category: { $ref: '#/components/schemas/AlertCategory' }
+        content: { type: string, minLength: 1 }
+        geometry:
+          oneOf:
+            - $ref: '#/components/schemas/AlertGeometry'
+            - type: 'null'
+
+    AlertsListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/AlertResponse' }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+
+    MapAlertAttributes:
+      type: object
+      required:
+        - category
+        - content
+        - language
+        - source
+        - sourceId
+        - sourceAttributes
+      properties:
+        category: { $ref: '#/components/schemas/AlertCategory' }
+        content: { type: string }
+        language: { type: string, minLength: 2, maxLength: 2, example: en }
+        source: { type: string, example: user }
+        sourceId:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+          description: |
+            Owner user id for `source='user'`; `null` for official imports.
+        sourceAttributes:
+          oneOf:
+            - $ref: '#/components/schemas/AlertSourceAttributes'
+            - type: 'null'
+
+    MapItem:
+      type: object
+      required: [kind, type, id, name, coordinates, geometry, attributes]
+      properties:
+        kind:
+          type: string
+          enum: [item]
+        type:
+          type: string
+          enum: [post, spot, check_in, navigation_alert]
+        id: { type: string, format: uuid }
+        name: { type: string }
+        coordinates: { $ref: '#/components/schemas/MapCoordinates' }
+        geometry: { $ref: '#/components/schemas/MapGeometry' }
+        distanceMeters:
+          type: integer
+          minimum: 0
+          description: Present only when center+radius filtering is used.
+        attributes:
+          oneOf:
+            - $ref: '#/components/schemas/MapPostAttributes'
+            - $ref: '#/components/schemas/MapSpotAttributes'
+            - $ref: '#/components/schemas/MapCheckInAttributes'
+            - $ref: '#/components/schemas/MapAlertAttributes'
+
+    MapCluster:
+      type: object
+      required: [kind, id, name, coordinates, geometry, count, types, bounds]
+      properties:
+        kind:
+          type: string
+          enum: [cluster]
+        id:
+          type: string
+          description: Deterministic identifier of the form `cluster:<geohash>:<precision>`.
+          example: cluster:u3wge:5
+        name:
+          type: string
+          description: Localized cluster label (EN/PL). Format `"{count} items"` / `"{count} obiektów"`. When a single type accounts for ≥80% of the cluster, a typed label is used.
+        coordinates: { $ref: '#/components/schemas/MapCoordinates' }
+        geometry: { $ref: '#/components/schemas/MapPointGeometry' }
+        count:
+          type: integer
+          minimum: 1
+          description: |
+            Number of source items represented by the cluster.
+
+            On the in-memory clustering path (default for queries small enough to materialize), singleton cells return individual `item` entries instead of clusters, so `count` is ≥ 2.
+
+            `count=1` clusters can appear in `summary` responses because summary mode wraps singleton cells consistently. They can also appear on the DB-aggregated path — taken for large totals or wide viewports (see the "DB-level clustering for large or wide queries" section in `docs/map/index.md`) — because individual rows never leave the database there. This means `count=1` clusters can appear in `auto`, `summary`, and `markers-degraded` responses.
+        types:
+          type: object
+          properties:
+            post: { type: integer, minimum: 1 }
+            spot: { type: integer, minimum: 1 }
+            check_in: { type: integer, minimum: 1 }
+            navigation_alert: { type: integer, minimum: 1 }
+          additionalProperties: false
+        bounds: { $ref: '#/components/schemas/MapBounds' }
+
+    MapEntry:
+      oneOf:
+        - $ref: '#/components/schemas/MapItem'
+        - $ref: '#/components/schemas/MapCluster'
+      discriminator:
+        propertyName: kind
+        mapping:
+          item: '#/components/schemas/MapItem'
+          cluster: '#/components/schemas/MapCluster'
+
+    MapItemsMeta:
+      type: object
+      required: [mode, detail, totalItems, returnedItems, topLevelEntries, hasMoreDetail, checkInFreshnessHours, appliedLimit]
+      properties:
+        mode:
+          type: string
+          enum: [bounds, radius]
+        detail:
+          type: string
+          enum: [auto, markers, summary, markers-degraded]
+        totalItems:
+          type: integer
+          minimum: 0
+          description: Total number of source items matching filters within the spatial area (post-visibility, pre-clustering).
+        returnedItems:
+          type: integer
+          minimum: 0
+          description: Number of source items represented in the response. For unclustered responses this equals `data.length`; for clustered responses this equals the sum of `count` for clusters plus the number of items.
+        topLevelEntries:
+          type: integer
+          minimum: 0
+          description: Number of top-level entries in `data` (items + clusters together).
+        hasMoreDetail:
+          type: boolean
+          description: True if at least one `cluster` is present and zooming in would reveal individual items.
+        checkInFreshnessHours:
+          type: number
+          description: The configured check-in freshness TTL in hours.
+        appliedLimit:
+          type: integer
+          description: Echo of the requested `limit`.
+        degradedToClusters:
+          type: boolean
+          description: Present and `true` when `detail=markers` was requested but the response was downgraded to clusters.
+        truncated:
+          type: boolean
+          description: Present and `true` if the response was truncated to fit the limit even at coarsest clustering precision.
+        truncatedItems:
+          type: integer
+          minimum: 0
+          description: Number of source items omitted by truncation.
+
+    MapItemsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/MapEntry' }
+        meta: { $ref: '#/components/schemas/MapItemsMeta' }
 
     PageMeta:
       type: object

@@ -86,6 +86,8 @@ Users may only cancel their own pending requests. Attempting to cancel another u
 
 `GET /v1/spots?lat=54.35&lng=18.65&distance=5` returns spots within 5 km of the given point, sorted by `distanceMeters` ascending. The `lat`, `lng`, and `distance` parameters must all be provided together.
 
+For **map rendering** (viewport-scoped queries with optional clustering), use the unified map endpoint instead — see [Map](../map/index.md). It returns lightweight spot map items alongside posts and check-ins in a single request.
+
 ## API Endpoints
 
 | Method   | Path                       | Auth       | Summary                            |

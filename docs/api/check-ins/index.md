@@ -64,7 +64,12 @@ By default, **any authenticated user** can list nearby active check-ins. The **c
 - Use `distance` between **1 and 50** (converted to meters for PostGIS `ST_DWithin`).
 - Coordinates in JSON are `{ lat, lng }`; storage uses GeoJSON order `[lng, lat]` internally.
 
+## Map rendering
+
+Check-ins are also exposed on the **unified map endpoint** alongside posts and spots — see [Map](../map/index.md). On the map the marker label is the user's `displayName` (with `locationName` available as a subtitle attribute), and only check-ins inside the freshness window are returned.
+
 ## Related documentation
 
+- [Map](../map/index.md) — unified `/v1/map/items` endpoint
 - [Geocoder module](../geocoder/index.md)
 - [Error handling](../getting-started/errors.md) (RFC 7807)

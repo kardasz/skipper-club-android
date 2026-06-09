@@ -326,6 +326,15 @@ If the requested language is not supported, English is used as fallback.
 | `/errors/audio-file-too-large`     | 413    | File exceeds size limit |
 | `/errors/transcription-failed`     | 502    | External service error  |
 
+### Alerts Module
+
+| Type                             | Status | Description                                                                |
+| -------------------------------- | ------ | -------------------------------------------------------------------------- |
+| `/errors/alert-not-found`        | 404    | Alert id missing or soft-deleted                                           |
+| `/errors/alert-forbidden`        | 403    | Non-admin non-owner attempted `PUT` or `DELETE`                            |
+| `/errors/invalid-alert-geometry` | 422    | Geometry type, coordinates, or polygon rings violate the GeoJSON rules     |
+| `/errors/invalid-alert-viewport` | 422    | Only some viewport edges supplied, or `north <= south` on a viewport query |
+
 ### Common
 
 | Type                 | Status | Description               |

@@ -50,6 +50,8 @@ Detailed documentation for each API module.
 - [Geocoder](./geocoder/index.md) — Location search and reverse geocoding
 - [Check-ins](./check-ins/index.md) — Latest user location presence and nearby discovery
 - [Spots](./spots/index.md) — Community-driven spots directory with admin approval workflow
+- [Map](./map/index.md) — Unified map view across posts, spots, check-ins, and alerts
+- [Alerts](./alerts/index.md) — User-submitted navigation alerts (weather, obstructions, regattas, …)
 - [Email](./email/index.md) — Queue-based email delivery system
 
 ### Reference
@@ -57,8 +59,8 @@ Detailed documentation for each API module.
 Focused reference documents for enums and flows, optimized for AI context and quick lookup.
 
 - [Reference Index](./reference/index.md) — All enums, state machines, and flows
-- Enums: [Cruise Types](./reference/enums/cruise-types.md), [Vessel Types](./reference/enums/vessel-types.md), [Chat Types](./reference/enums/chat-types.md), [Notification Types](./reference/enums/notification-types.md), [Sailing Experience](./reference/enums/sailing-experience.md)
-- Flows: [Participant States](./reference/flows/cruise-participant-state-flow.md), [Chat Flows](./reference/flows/cruise-chat-flows.md), [Notifications](./reference/flows/notification-flows.md), [Friend Requests](./reference/flows/friend-request-flow.md), [Blind Reviews](./reference/flows/blind-review-flow.md)
+- Enums: [Cruise Types](./reference/enums/cruise-types.md), [Vessel Types](./reference/enums/vessel-types.md), [Chat Types](./reference/enums/chat-types.md), [Notification Types](./reference/enums/notification-types.md), [Sailing Experience](./reference/enums/sailing-experience.md), [Alert Categories](./reference/enums/alert-categories.md)
+- Flows: [Participant States](./reference/flows/cruise-participant-state-flow.md), [Chat Flows](./reference/flows/cruise-chat-flows.md), [Notifications](./reference/flows/notification-flows.md), [Friend Requests](./reference/flows/friend-request-flow.md), [Blind Reviews](./reference/flows/blind-review-flow.md), [Alert Ownership](./reference/flows/alert-ownership-flow.md)
 
 ### Technical Reference
 

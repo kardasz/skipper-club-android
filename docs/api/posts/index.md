@@ -920,5 +920,6 @@ When checking access to a post, errors are returned in this order:
 - [Media](../media/index.md) — File uploads for posts
 - [Regions](../regions/index.md) — Region hierarchy
 - [Geocoder](../geocoder/index.md) — Location search, autocomplete, and place details for populating `locationName` and `coordinates` fields
+- [Map](../map/index.md) — Unified `/v1/map/items` endpoint that renders posts with coordinates alongside spots and check-ins
 - [Notifications](../notifications/index.md) — Post notifications
 - [Error Handling](../getting-started/errors.md) — RFC 7807 format

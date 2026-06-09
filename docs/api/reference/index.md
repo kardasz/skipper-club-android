@@ -13,6 +13,7 @@ Enum definitions with all possible values and their descriptions.
 | [Chat Types](./enums/chat-types.md)                 | 4 chat types for messaging system                               |
 | [Notification Types](./enums/notification-types.md) | Source types and 16 event types                                 |
 | [Sailing Experience](./enums/sailing-experience.md) | 4 experience levels for user profiles                           |
+| [Alert Categories](./enums/alert-categories.md)     | 10 navigation alert categories with EN/PL marker labels         |
 
 ## Flows & State Machines
 
@@ -25,6 +26,7 @@ State machines and flow diagrams for complex system behaviors.
 | [Notification Flows](./flows/notification-flows.md)                       | When notifications are triggered         |
 | [Friend Request Flow](./flows/friend-request-flow.md)                     | Friend request state machine             |
 | [Blind Review Flow](./flows/blind-review-flow.md)                         | Reciprocal review system                 |
+| [Alert Ownership Flow](./flows/alert-ownership-flow.md)                   | Owner / admin authorization on alerts    |
 
 ## Usage
 
