@@ -288,4 +288,50 @@
         <item quantity="other">%1$d załącznika</item>
     </plurals>
     <string name="wizard_publish_failed">Nie udało się opublikować posta. Spróbuj ponownie.</string>
+
+    <string name="messages_search_placeholder">Szukaj rozmów</string>
+    <string name="messages_search_clear">Wyczyść wyszukiwanie</string>
+    <string name="messages_filter_all">Wszystkie</string>
+    <string name="chat_type_one_to_one">Prywatne</string>
+    <string name="chat_type_group">Grupy</string>
+    <string name="chat_type_cruise_qna">Pytania o rejs</string>
+    <string name="chat_type_cruise_group">Załoga rejsu</string>
+    <string name="messages_empty_title">Brak rozmów</string>
+    <string name="messages_empty_subtitle">Rozpocznij rozmowę z innym żeglarzem.</string>
+    <string name="messages_empty_search">Brak rozmów pasujących do wyszukiwania.</string>
+    <string name="messages_load_failed">Nie udało się wczytać rozmów.</string>
+    <string name="messages_retry">Spróbuj ponownie</string>
+    <string name="messages_new_chat">Nowa wiadomość</string>
+    <string name="messages_mark_read">Oznacz jako przeczytane</string>
+    <string name="messages_delete">Usuń</string>
+    <string name="messages_delete_confirm_title">Usunąć rozmowę?</string>
+    <string name="messages_delete_confirm_text">Rozmowa zniknie z Twojej listy. Wróci, gdy ktoś znów napisze.</string>
+    <string name="messages_deleted">Rozmowa usunięta</string>
+    <string name="messages_cancel">Anuluj</string>
+    <string name="messages_preview_you">Ty: %1$s</string>
+    <string name="messages_preview_other">%1$s: %2$s</string>
+    <string name="messages_preview_empty">Brak wiadomości</string>
+    <string name="messages_title_fallback">Rozmowa</string>
+    <string name="messages_unread_badge_max">99+</string>
+    <string name="messages_error_network">Brak połączenia z internetem. Spróbuj ponownie.</string>
+    <string name="messages_error_auth">Zaloguj się ponownie.</string>
+    <string name="messages_error_generic">Coś poszło nie tak. Spróbuj ponownie.</string>
+    <string name="conversation_back">Wstecz</string>
+    <string name="conversation_input_placeholder">Napisz wiadomość…</string>
+    <string name="conversation_send">Wyślij</string>
+    <string name="conversation_empty">Brak wiadomości. Przywitaj się!</string>
+    <string name="conversation_load_failed">Nie udało się wczytać wiadomości.</string>
+    <plurals name="conversation_participants">
+        <item quantity="one">%1$d uczestnik</item>
+        <item quantity="few">%1$d uczestników</item>
+        <item quantity="many">%1$d uczestników</item>
+        <item quantity="other">%1$d uczestnika</item>
+    </plurals>
+    <string name="new_chat_title">Nowa wiadomość</string>
+    <string name="new_chat_search_placeholder">Szukaj członków</string>
+    <string name="new_chat_group_name_label">Nazwa grupy</string>
+    <string name="new_chat_create">Utwórz</string>
+    <string name="new_chat_empty">Nie znaleziono członków.</string>
+    <string name="new_chat_search_failed">Nie udało się wyszukać członków.</string>
+    <string name="new_chat_remove_participant">Usuń %1$s</string>
 </resources>

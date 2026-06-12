@@ -276,4 +276,48 @@
         <item quantity="other">%1$d attachments</item>
     </plurals>
     <string name="wizard_publish_failed">Couldn\'t publish the post. Please try again.</string>
+
+    <string name="messages_search_placeholder">Search conversations</string>
+    <string name="messages_search_clear">Clear search</string>
+    <string name="messages_filter_all">All</string>
+    <string name="chat_type_one_to_one">Private</string>
+    <string name="chat_type_group">Groups</string>
+    <string name="chat_type_cruise_qna">Cruise Q&amp;A</string>
+    <string name="chat_type_cruise_group">Cruise crew</string>
+    <string name="messages_empty_title">No conversations yet</string>
+    <string name="messages_empty_subtitle">Start a conversation with another sailor.</string>
+    <string name="messages_empty_search">No conversations match your search.</string>
+    <string name="messages_load_failed">Couldn\'t load conversations.</string>
+    <string name="messages_retry">Try again</string>
+    <string name="messages_new_chat">New message</string>
+    <string name="messages_mark_read">Mark as read</string>
+    <string name="messages_delete">Delete</string>
+    <string name="messages_delete_confirm_title">Delete conversation?</string>
+    <string name="messages_delete_confirm_text">The conversation will disappear from your list. It will come back if someone writes again.</string>
+    <string name="messages_deleted">Conversation deleted</string>
+    <string name="messages_cancel">Cancel</string>
+    <string name="messages_preview_you">You: %1$s</string>
+    <string name="messages_preview_other">%1$s: %2$s</string>
+    <string name="messages_preview_empty">No messages yet</string>
+    <string name="messages_title_fallback">Conversation</string>
+    <string name="messages_unread_badge_max">99+</string>
+    <string name="messages_error_network">No internet connection. Please try again.</string>
+    <string name="messages_error_auth">Please sign in again.</string>
+    <string name="messages_error_generic">Something went wrong. Please try again.</string>
+    <string name="conversation_back">Back</string>
+    <string name="conversation_input_placeholder">Type a message…</string>
+    <string name="conversation_send">Send</string>
+    <string name="conversation_empty">No messages yet. Say hello!</string>
+    <string name="conversation_load_failed">Couldn\'t load messages.</string>
+    <plurals name="conversation_participants">
+        <item quantity="one">%1$d participant</item>
+        <item quantity="other">%1$d participants</item>
+    </plurals>
+    <string name="new_chat_title">New message</string>
+    <string name="new_chat_search_placeholder">Search members</string>
+    <string name="new_chat_group_name_label">Group name</string>
+    <string name="new_chat_create">Create</string>
+    <string name="new_chat_empty">No members found.</string>
+    <string name="new_chat_search_failed">Couldn\'t search members.</string>
+    <string name="new_chat_remove_participant">Remove %1$s</string>
 </resources>

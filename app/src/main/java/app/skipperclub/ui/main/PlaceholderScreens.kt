@@ -25,11 +25,6 @@ fun CruisesScreen(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun MessagesScreen(modifier: Modifier = Modifier) {
-    PlaceholderScreen(R.string.nav_messages, modifier)
-}
-
-@Composable
 fun MenuScreen(modifier: Modifier = Modifier) {
     PlaceholderScreen(R.string.nav_menu, modifier)
 }
