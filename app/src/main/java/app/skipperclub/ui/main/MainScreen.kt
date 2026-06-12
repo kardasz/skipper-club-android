@@ -31,6 +31,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.skipperclub.R
 import app.skipperclub.data.SessionUser
+import app.skipperclub.ui.main.posts.PostsScreen
 import app.skipperclub.ui.theme.SkipperClubTheme
 
 @Composable

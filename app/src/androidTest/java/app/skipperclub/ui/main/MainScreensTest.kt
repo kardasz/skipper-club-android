@@ -38,7 +38,8 @@ class MainScreensTest {
 
         compose.onNodeWithTag("main-nav-posts").performClick()
         compose.onNodeWithText(text(R.string.nav_posts)).assertExists()
-        compose.onNodeWithText(text(R.string.main_placeholder_subtitle)).assertExists()
+        compose.onNodeWithTag("posts_create").assertExists()
+        compose.onNodeWithTag("posts_filters").assertExists()
 
         compose.onNodeWithTag("main-nav-cruises").performClick()
         compose.onNodeWithText(text(R.string.nav_cruises)).assertExists()

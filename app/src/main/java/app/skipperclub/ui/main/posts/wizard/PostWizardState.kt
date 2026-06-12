@@ -1,0 +1,387 @@
+package app.skipperclub.ui.main.posts.wizard
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import app.skipperclub.data.CoordinatesDto
+import app.skipperclub.data.CreatePostRequest
+import app.skipperclub.data.GeocodedLocation
+import app.skipperclub.data.Post
+import app.skipperclub.data.PostCoordinates
+import app.skipperclub.data.PostRouteStop
+import app.skipperclub.data.PostType
+import app.skipperclub.data.Region
+import app.skipperclub.data.RouteStopDto
+import app.skipperclub.ui.main.posts.PostsGateway
+import app.skipperclub.ui.main.posts.RealPostsGateway
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.launch
+
+const val POST_DESCRIPTION_MAX_LENGTH = 2200
+const val POST_MEDIA_MAX_COUNT = 10
+const val POST_ROUTE_STOPS_MAX_COUNT = 30
+
+enum class PostWizardStep { Type, Details, RouteStops, Media, Summary }
+
+/** Validation problems surfaced under the relevant field / step. */
+enum class PostWizardError {
+    DescriptionRequired,
+    LocationRequired,
+    RegionRequired,
+    StopsRequired,
+    MediaRequired,
+}
+
+sealed interface PostWizardEvent {
+    data class Published(val post: Post) : PostWizardEvent
+    data class PublishFailed(val error: Exception) : PostWizardEvent
+    data class MediaUploadFailed(val error: Exception) : PostWizardEvent
+    data object SessionExpired : PostWizardEvent
+}
+
+data class WizardMedia(
+    val localId: Long,
+    val fileName: String,
+    val isUploading: Boolean = false,
+    val failed: Boolean = false,
+    val mediaId: String? = null,
+    val publicUrl: String? = null,
+)
+
+/**
+ * State machine for the post creation wizard. Pure Kotlin + Compose snapshot
+ * state (no Android types) so step flow, validation and request building are
+ * unit-testable on the JVM with a fake [PostsGateway].
+ */
+class PostWizardState(
+    private val scope: CoroutineScope,
+    private val accessToken: suspend () -> String?,
+    private val gateway: PostsGateway = RealPostsGateway,
+    private val locationSearchDebounceMillis: Long = 350,
+) {
+    var step by mutableStateOf(PostWizardStep.Type)
+        private set
+    var selectedType by mutableStateOf<PostType?>(null)
+        private set
+
+    var description by mutableStateOf("")
+        private set
+    var locationName by mutableStateOf<String?>(null)
+        private set
+    var coordinates by mutableStateOf<PostCoordinates?>(null)
+        private set
+    var regionCode by mutableStateOf<String?>(null)
+        private set
+
+    var regions by mutableStateOf<List<Region>>(emptyList())
+        private set
+    var regionsLoadFailed by mutableStateOf(false)
+        private set
+
+    var locationQuery by mutableStateOf("")
+        private set
+    var locationResults by mutableStateOf<List<GeocodedLocation>>(emptyList())
+        private set
+    var isSearchingLocation by mutableStateOf(false)
+        private set
+
+    val stops = mutableStateListOf<PostRouteStop>()
+    var durationDaysText by mutableStateOf("")
+        private set
+    var lengthNmText by mutableStateOf("")
+        private set
+
+    val media = mutableStateListOf<WizardMedia>()
+
+    var isPublishing by mutableStateOf(false)
+        private set
+
+    /** Set after a failed Next tap so fields can highlight what is missing. */
+    var visibleErrors by mutableStateOf<Set<PostWizardError>>(emptySet())
+        private set
+
+    private val _events = MutableSharedFlow<PostWizardEvent>(extraBufferCapacity = 16)
+    val events: SharedFlow<PostWizardEvent> = _events.asSharedFlow()
+
+    private var nextMediaLocalId = 0L
+    private var locationSearchJob: Job? = null
+
+    /** Ordered steps for the selected type (route inserts the stops step). */
+    val steps: List<PostWizardStep>
+        get() {
+            val type = selectedType
+            return buildList {
+                add(PostWizardStep.Type)
+                add(PostWizardStep.Details)
+                if (type?.requiresStops == true) add(PostWizardStep.RouteStops)
+                add(PostWizardStep.Media)
+                add(PostWizardStep.Summary)
+            }
+        }
+
+    val stepIndex: Int
+        get() = steps.indexOf(step).coerceAtLeast(0)
+
+    fun selectType(type: PostType) {
+        selectedType = type
+        visibleErrors = emptySet()
+    }
+
+    fun updateDescription(value: String) {
+        description = value.take(POST_DESCRIPTION_MAX_LENGTH)
+        if (value.isNotBlank()) visibleErrors = visibleErrors - PostWizardError.DescriptionRequired
+    }
+
+    fun selectRegion(code: String) {
+        regionCode = code
+        visibleErrors = visibleErrors - PostWizardError.RegionRequired
+    }
+
+    fun updateLocationQuery(value: String) {
+        locationQuery = value
+        locationSearchJob?.cancel()
+        if (value.trim().length < 3) {
+            locationResults = emptyList()
+            isSearchingLocation = false
+            return
+        }
+        isSearchingLocation = true
+        locationSearchJob = scope.launch {
+            delay(locationSearchDebounceMillis)
+            val token = runCatching { accessToken() }.getOrNull() ?: run {
+                isSearchingLocation = false
+                _events.tryEmit(PostWizardEvent.SessionExpired)
+                return@launch
+            }
+            try {
+                locationResults = gateway.searchLocations(token, value.trim())
+            } catch (_: Exception) {
+                locationResults = emptyList()
+            }
+            isSearchingLocation = false
+        }
+    }
+
+    fun selectLocation(location: GeocodedLocation) {
+        locationName = location.displayName
+        coordinates = location.coordinates
+        locationQuery = location.displayName
+        locationResults = emptyList()
+        visibleErrors = visibleErrors - PostWizardError.LocationRequired
+    }
+
+    fun clearLocation() {
+        locationName = null
+        coordinates = null
+        locationQuery = ""
+        locationResults = emptyList()
+    }
+
+    fun loadRegionsIfNeeded() {
+        if (regions.isNotEmpty()) return
+        scope.launch {
+            try {
+                regions = gateway.listRegions()
+                regionsLoadFailed = false
+            } catch (_: Exception) {
+                regionsLoadFailed = true
+            }
+        }
+    }
+
+    fun addStop(location: GeocodedLocation) {
+        if (stops.size >= POST_ROUTE_STOPS_MAX_COUNT) return
+        stops.add(PostRouteStop(name = location.displayName, coordinates = location.coordinates))
+        visibleErrors = visibleErrors - PostWizardError.StopsRequired
+    }
+
+    fun removeStop(index: Int) {
+        if (index in stops.indices) stops.removeAt(index)
+    }
+
+    fun moveStop(index: Int, delta: Int) {
+        val target = index + delta
+        if (index !in stops.indices || target !in stops.indices) return
+        val stop = stops.removeAt(index)
+        stops.add(target, stop)
+    }
+
+    fun updateDurationDays(value: String) {
+        durationDaysText = value.filter { it.isDigit() }.take(3)
+    }
+
+    fun updateLengthNm(value: String) {
+        lengthNmText = value.filter { it.isDigit() || it == '.' }.take(7)
+    }
+
+    fun uploadMedia(
+        fileName: String,
+        mimeType: String,
+        bytes: ByteArray,
+        width: Int?,
+        height: Int?,
+    ) {
+        if (media.size >= POST_MEDIA_MAX_COUNT) return
+        val item = WizardMedia(
+            localId = nextMediaLocalId++,
+            fileName = fileName,
+            isUploading = true,
+        )
+        media.add(item)
+        scope.launch {
+            val token = runCatching { accessToken() }.getOrNull() ?: run {
+                media.remove(media.first { it.localId == item.localId })
+                _events.tryEmit(PostWizardEvent.SessionExpired)
+                return@launch
+            }
+            try {
+                val uploaded = gateway.uploadMedia(token, fileName, mimeType, bytes, width, height)
+                replaceMedia(item.localId) {
+                    it.copy(isUploading = false, mediaId = uploaded.mediaId, publicUrl = uploaded.publicUrl)
+                }
+                visibleErrors = visibleErrors - PostWizardError.MediaRequired
+            } catch (error: Exception) {
+                replaceMedia(item.localId) { it.copy(isUploading = false, failed = true) }
+                _events.tryEmit(PostWizardEvent.MediaUploadFailed(error))
+            }
+        }
+    }
+
+    fun removeMedia(localId: Long) {
+        media.removeAll { it.localId == localId }
+    }
+
+    val isUploadingMedia: Boolean
+        get() = media.any { it.isUploading }
+
+    private val uploadedMediaIds: List<String>
+        get() = media.mapNotNull { it.mediaId }
+
+    /** Validation errors blocking the given step's Next action. */
+    fun errorsFor(step: PostWizardStep): Set<PostWizardError> {
+        val type = selectedType ?: return emptySet()
+        return when (step) {
+            PostWizardStep.Type -> emptySet()
+            PostWizardStep.Details -> buildSet {
+                if (type.requiresDescription && description.isBlank()) {
+                    add(PostWizardError.DescriptionRequired)
+                }
+                if (type.requiresLocation && (locationName == null || coordinates == null)) {
+                    add(PostWizardError.LocationRequired)
+                }
+                if (regionCode == null) add(PostWizardError.RegionRequired)
+            }
+
+            PostWizardStep.RouteStops ->
+                if (type.requiresStops && stops.isEmpty()) {
+                    setOf(PostWizardError.StopsRequired)
+                } else {
+                    emptySet()
+                }
+
+            PostWizardStep.Media ->
+                if (type.requiresMedia && uploadedMediaIds.isEmpty()) {
+                    setOf(PostWizardError.MediaRequired)
+                } else {
+                    emptySet()
+                }
+
+            PostWizardStep.Summary -> emptySet()
+        }
+    }
+
+    val canGoNext: Boolean
+        get() = when (step) {
+            PostWizardStep.Type -> selectedType != null
+            PostWizardStep.Media -> !isUploadingMedia
+            PostWizardStep.Summary -> !isPublishing
+            else -> true
+        }
+
+    /** Advances if the current step validates; otherwise surfaces the errors. */
+    fun next() {
+        val errors = errorsFor(step)
+        if (errors.isNotEmpty()) {
+            visibleErrors = errors
+            return
+        }
+        visibleErrors = emptySet()
+        val ordered = steps
+        val index = ordered.indexOf(step)
+        if (index < ordered.lastIndex) {
+            step = ordered[index + 1]
+        }
+    }
+
+    /** Returns false when already at the first step (caller should close). */
+    fun back(): Boolean {
+        val ordered = steps
+        val index = ordered.indexOf(step)
+        if (index <= 0) return false
+        visibleErrors = emptySet()
+        step = ordered[index - 1]
+        return true
+    }
+
+    val hasUserInput: Boolean
+        get() = selectedType != null &&
+            (
+                description.isNotBlank() || locationName != null || regionCode != null ||
+                    stops.isNotEmpty() || media.isNotEmpty()
+                )
+
+    internal fun buildRequest(): CreatePostRequest? {
+        val type = selectedType ?: return null
+        val region = regionCode ?: return null
+        return CreatePostRequest(
+            type = type.wireValue,
+            regionCode = region,
+            description = description.trim().takeIf { it.isNotEmpty() },
+            locationName = locationName,
+            coordinates = coordinates?.let { CoordinatesDto.from(it) },
+            mediaIds = uploadedMediaIds.takeIf { it.isNotEmpty() },
+            stops = if (type.requiresStops) stops.map { RouteStopDto.from(it) } else null,
+            durationDays = if (type.requiresStops) durationDaysText.toIntOrNull() else null,
+            lengthNm = if (type.requiresStops) lengthNmText.toDoubleOrNull() else null,
+        )
+    }
+
+    fun publish() {
+        if (isPublishing) return
+        val allErrors = steps.flatMap { errorsFor(it) }.toSet()
+        if (allErrors.isNotEmpty()) {
+            visibleErrors = allErrors
+            return
+        }
+        val request = buildRequest() ?: return
+        isPublishing = true
+        scope.launch {
+            val token = runCatching { accessToken() }.getOrNull() ?: run {
+                isPublishing = false
+                _events.tryEmit(PostWizardEvent.SessionExpired)
+                return@launch
+            }
+            try {
+                val post = gateway.create(token, request)
+                isPublishing = false
+                _events.tryEmit(PostWizardEvent.Published(post))
+            } catch (error: Exception) {
+                isPublishing = false
+                _events.tryEmit(PostWizardEvent.PublishFailed(error))
+            }
+        }
+    }
+
+    private fun replaceMedia(localId: Long, transform: (WizardMedia) -> WizardMedia) {
+        val index = media.indexOfFirst { it.localId == localId }
+        if (index >= 0) {
+            media[index] = transform(media[index])
+        }
+    }
+}
