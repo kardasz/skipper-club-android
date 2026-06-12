@@ -17,16 +17,16 @@ Admin permissions are enforced inline on the standard CRUD endpoints — see
 
 ## Endpoints
 
-| Method   | Path              | Description                                          |
-| -------- | ----------------- | ---------------------------------------------------- |
-| `GET`    | `/v1/alerts`      | List non-deleted alerts (optionally viewport-bound). |
-| `GET`    | `/v1/alerts/{id}` | Get one alert by id.                                 |
-| `POST`   | `/v1/alerts`      | Create an alert as the authenticated user.           |
-| `PUT`    | `/v1/alerts/{id}` | Replace editable fields of an alert.                 |
-| `DELETE` | `/v1/alerts/{id}` | Soft-delete an alert.                                |
+| Method   | Path                   | Description                                          |
+| -------- | ---------------------- | ---------------------------------------------------- |
+| `GET`    | `/v1/alerts`           | List non-deleted alerts (optionally viewport-bound). |
+| `GET`    | `/v1/alerts/{alertId}` | Get one alert by id.                                 |
+| `POST`   | `/v1/alerts`           | Create an alert as the authenticated user.           |
+| `PUT`    | `/v1/alerts/{alertId}` | Replace editable fields of an alert.                 |
+| `DELETE` | `/v1/alerts/{alertId}` | Soft-delete an alert.                                |
 
 Full schemas: [`openapi.yaml`](../openapi.yaml) (paths `/alerts` and
-`/alerts/{id}`).
+`/alerts/{alertId}`).
 
 ## Authorization
 
@@ -39,7 +39,7 @@ API. The role guard is enforced inline by the handlers — there are no separate
   `sourceId = <authenticated user id>`.
 - **`PUT` / `DELETE` ownership rules**
   - A user with the `admin` role may update or delete **any** alert through
-    the standard `PUT /v1/alerts/{id}` and `DELETE /v1/alerts/{id}`
+    the standard `PUT /v1/alerts/{alertId}` and `DELETE /v1/alerts/{alertId}`
     endpoints.
   - A non-admin user may only update or delete an alert where
     `source = 'user'` and `source_id = <authenticated user id>`.
@@ -62,7 +62,7 @@ API. The role guard is enforced inline by the handlers — there are no separate
 - The request body `content` is stored as-is in `alerts.content`. There is no
   translation step.
 
-### Read requests (`GET /v1/alerts`, `GET /v1/alerts/{id}`)
+### Read requests (`GET /v1/alerts`, `GET /v1/alerts/{alertId}`)
 
 - The stored `content` and `language` are returned as-is. There are no
   per-alert translations.
@@ -195,7 +195,7 @@ Successful response (`201 Created`):
 }
 ```
 
-### `PUT /v1/alerts/{id}`
+### `PUT /v1/alerts/{alertId}`
 
 `PUT` is a full replacement of editable fields (`category`, `content`,
 `geometry`):
@@ -206,10 +206,10 @@ Successful response (`201 Created`):
   (`ST_PointOnSurface` for polygons/multipoints; identity for `Point`).
 - `Content-Language` follows the same default-to-`en` rule as `POST`.
 
-### `DELETE /v1/alerts/{id}`
+### `DELETE /v1/alerts/{alertId}`
 
 Soft-deletes the alert (`deleted_at` timestamp). Returns `204 No Content`.
-Deleted alerts are excluded from `/v1/alerts`, `/v1/alerts/{id}`, and
+Deleted alerts are excluded from `/v1/alerts`, `/v1/alerts/{alertId}`, and
 `/v1/map/items`.
 
 ## Error Types
@@ -703,7 +703,7 @@ there is no public `lastSuccessfulSync` field in the API today.
 
 - Imported alerts are **never** auto-deleted. Cancellation records update
   `source_attributes.cancellation` on the referenced alert. Soft-delete
-  remains a user-alert capability through `DELETE /v1/alerts/{id}` (admin
+  remains a user-alert capability through `DELETE /v1/alerts/{alertId}` (admin
   override).
 - `alerts.deleted_at` exists on the schema and is untouched by the
   importer.
@@ -724,4 +724,4 @@ there is no public `lastSuccessfulSync` field in the API today.
 - [Error Handling](../getting-started/errors.md#alerts-module) — Full
   catalog of alert error slugs.
 - [OpenAPI Specification](../openapi.yaml) — Machine-readable schemas for
-  `/alerts` and `/alerts/{id}`.
+  `/alerts` and `/alerts/{alertId}`.

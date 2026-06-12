@@ -88,7 +88,7 @@ flowchart LR
 | **PostgreSQL** | Primary relational data — users, cruises, friends, reviews, posts, notifications, sessions |
 | **MongoDB**    | Chat and messaging — optimized for real-time conversation workloads                        |
 
-> **Note:** Redis is available in the Docker Compose setup for future use (caching, session store, presence tracking) but is not yet integrated into the application.
+> **Note:** Redis backs the BullMQ job queues used for email and push notification delivery (including dead-letter queues). It is not yet used for caching or session storage.
 
 ### File Storage
 
@@ -171,16 +171,27 @@ The application is organized by domain modules:
 ```
 src/modules/
 ├── ai/             # Audio transcription & AI features
+├── alerts/         # Navigational alerts & warnings
 ├── auth/           # JWT authentication & sessions
+├── check-ins/      # User location check-ins
 ├── cruises/        # Cruise organization
+├── debug/          # Sentry debug endpoints (non-production only)
+├── email/          # Email queue & templates
 ├── filestorage/    # File storage management
 ├── friends/        # Friend system
+├── geocoder/       # Reverse geocoding with caching
+├── invitations/    # App invitations (codes & links)
+├── map/            # Unified map items endpoint
 ├── media/          # Media sharing
 ├── messages/       # Chat system
 ├── notifications/  # Notification center
 ├── posts/          # Social posts
+├── push/           # Push notifications (APNs/FCM)
+├── redis/          # Redis connection module
 ├── regions/        # Sailing regions
 ├── reviews/        # Rating system
+├── sailing-brief/  # AI-generated sailing briefs
+├── spots/          # Sailing spots & validity voting
 └── users/          # User profiles
 ```
 

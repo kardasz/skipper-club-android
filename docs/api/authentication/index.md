@@ -73,12 +73,13 @@ Accept-Language: en
     "id": "018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b2e",
     "email": "jan.kowalski@email.com",
     "name": "Jan Kowalski",
+    "role": "user",
     "avatarUrl": null
   }
 }
 ```
 
-> **Note:** User role is included in the JWT payload (access and refresh tokens) but not in the session response body. To retrieve the role, decode the JWT token or use the `GET /profile` endpoint.
+> **Note:** User role (`user` or `admin`) is included both in the JWT payload (access and refresh tokens) and in the `user` object of the session response body.
 
 | Field          | Description                                         |
 | -------------- | --------------------------------------------------- |

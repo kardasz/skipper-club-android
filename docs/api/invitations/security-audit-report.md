@@ -261,16 +261,18 @@ InvitationResendEvent; // For rate limiting, tracking
 
 Current configuration values (all configurable via environment variables):
 
-| Variable                        | Default                            | Purpose                                                    |
-| ------------------------------- | ---------------------------------- | ---------------------------------------------------------- |
-| `INVITATION_EXPIRY_HOURS`       | 48                                 | Hours until invitation expires                             |
-| `INVITATION_MAX_ATTEMPTS`       | 5                                  | Max registration attempts per code                         |
-| `INVITATION_CODE_LENGTH`        | 8                                  | Length of generated invitation code                        |
-| `INVITATION_CODE_ALPHABET`      | `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` | Characters used in code generation                         |
-| `INVITATION_CLEANUP_INTERVAL`   | 3600000                            | Cleanup job interval (ms)                                  |
-| `INVITATION_CLEANUP_BATCH_SIZE` | 1000                               | Batch size for cleanup operations                          |
-| `INVITATION_INVITE_BASE_URL`    | -                                  | Base URL for invitation links                              |
-| `TURNSTILE_SECRET_KEY`          | -                                  | Cloudflare Turnstile secret key (empty = CAPTCHA disabled) |
+| Variable                               | Default                   | Purpose                                                    |
+| -------------------------------------- | ------------------------- | ---------------------------------------------------------- |
+| `INVITATION_EXPIRATION_DAYS`           | 7                         | Days until invitation expires                              |
+| `INVITATION_MAX_ATTEMPTS`              | 5                         | Max registration attempts per code                         |
+| `INVITATION_RESPONSE_DELAY_MS`         | 500                       | Minimum response time (timing-attack mitigation)           |
+| `INVITATION_CLEANUP_ENABLED`           | true                      | Enable scheduled cleanup job                               |
+| `INVITATION_CLEANUP_DAYS_AFTER_EXPIRY` | 30                        | Days after expiry before invitations are deleted           |
+| `INVITATION_CLEANUP_BATCH_SIZE`        | 100                       | Batch size for cleanup operations                          |
+| `WEBAPP_BASE_URL`                      | `https://skipperclub.app` | Base URL for invitation links                              |
+| `TURNSTILE_SECRET_KEY`                 | -                         | Cloudflare Turnstile secret key (empty = CAPTCHA disabled) |
+
+The invitation code format is hardcoded (not configurable): 8 characters from the alphabet `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no `0`, `O`, `1`, `I`).
 
 Values still worth adding:
 

@@ -193,7 +193,7 @@ Invalid enum values fall back to defaults:
 
 - **vesselType:** Must be one of `SAILING_YACHT`, `CATAMARAN`, `MOTORBOAT`, `TRIMARAN`, `GULET`, `SCHOONER`
 - **type:** Must be valid `CruiseType` (see [index](./index.md#cruise-types))
-- **currency:** Must be `PLN`, `EUR`, `USD`, or `GBP`
+- **currency:** Must be `PLN`, `EUR`, or `USD`
 
 #### No String Length Validation
 

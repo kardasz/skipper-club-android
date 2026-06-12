@@ -520,9 +520,10 @@ components:
           description: Name of the user who sent the message
           example: "Jan Kowalski"
         avatarUrl:
-          type: string
+          type:
+            - string
+            - "null"
           format: uri
-          nullable: true
           description: Full URL to the user's avatar image
           example: "https://cdn.skipperclub.com/avatars/user-123.jpg"
 
@@ -709,9 +710,10 @@ components:
           description: Source object identifier (e.g., cruise ID, post ID)
           example: "018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b98"
         relationId:
-          type: string
+          type:
+            - string
+            - "null"
           format: uuid
-          nullable: true
           description: Optional related entity ID (e.g., actor user ID)
           example: "018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b97"
         status:
@@ -721,8 +723,9 @@ components:
             - READ
           description: Notification read state
         metadata:
-          type: object
-          nullable: true
+          type:
+            - object
+            - "null"
           additionalProperties: true
           description: Context data for rendering the notification
           example:
@@ -734,9 +737,10 @@ components:
           description: Notification creation timestamp
           example: "2025-01-29T12:00:00.000Z"
         readAt:
-          type: string
+          type:
+            - string
+            - "null"
           format: date-time
-          nullable: true
           description: Timestamp when notification was marked as read
           example: null
 

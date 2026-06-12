@@ -644,13 +644,14 @@ Content-Type: application/json
     "id": "018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b00",
     "name": "Jan Kowalski",
     "email": "jan@example.com",
+    "role": "user",
     "avatarUrl": null
   },
   "expiresIn": 900
 }
 ```
 
-> **Note:** User role is included in the JWT payload (access and refresh tokens) but not in the session response body. The role is available via `GET /profile` or `GET /users/{userId}` endpoints.
+> **Note:** User role (`user` or `admin`) is included both in the JWT payload (access and refresh tokens) and in the `user` object of the session response body.
 
 ### Errors
 

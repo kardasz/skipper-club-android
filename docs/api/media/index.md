@@ -210,11 +210,11 @@ Content-Type: application/json
 
 ### Response Fields
 
-| Field       | Type   | Description                                      |
-| ----------- | ------ | ------------------------------------------------ |
-| `uploadUrl` | string | Presigned URL for uploading (expires in ~15 min) |
-| `mediaId`   | uuid   | Media UUID v7 to use for confirmation            |
-| `publicUrl` | string | Public URL where file will be accessible         |
+| Field       | Type   | Description                                     |
+| ----------- | ------ | ----------------------------------------------- |
+| `uploadUrl` | string | Presigned URL for uploading (expires in 1 hour) |
+| `mediaId`   | uuid   | Media UUID v7 to use for confirmation           |
+| `publicUrl` | string | Public URL where file will be accessible        |
 
 ### Validation Errors
 

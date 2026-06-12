@@ -583,6 +583,8 @@ User online/offline status changed.
 
 **Note**: Presence is tracked per user across all their connections. A user is considered online if they have at least one active WebSocket connection.
 
+**Broadcast scope**: `presence:update` is broadcast to **all clients connected to the namespace**, not only to participants of shared chats.
+
 **Payload**
 
 | Field      | Type     | Description               |

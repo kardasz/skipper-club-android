@@ -826,6 +826,15 @@ paths:
       responses:
         '200':
           description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    example: ok
         '400':
           description: Bad request
           content:
@@ -2052,7 +2061,7 @@ paths:
           explode: true
           description: |
             Evergreen post types that bypass regionCode filter and return from all regions.
-            Only accepts: photo, place, food, spot, tips, route.
+            Only accepts: photo, place, food, marina, tips, route.
             Time-sensitive types (berth, weather, navigation_warning, help) are NOT allowed.
             Returns 422 if non-evergreen types are provided.
         - name: userId
@@ -4707,7 +4716,7 @@ paths:
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
 
-  /alerts/{id}:
+  /alerts/{alertId}:
     get:
       operationId: getAlert
       tags: [alerts]
@@ -4715,7 +4724,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
         - in: path
-          name: id
+          name: alertId
           required: true
           schema: { type: string, format: uuid }
       responses:
@@ -4751,7 +4760,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
         - in: path
-          name: id
+          name: alertId
           required: true
           schema: { type: string, format: uuid }
         - in: header
@@ -4788,13 +4797,13 @@ paths:
       summary: Soft-delete an alert
       description: |
         Sets `deleted_at`. Deleted alerts are excluded from `/alerts`,
-        `/alerts/{id}`, and `/map/items`.
+        `/alerts/{alertId}`, and `/map/items`.
 
         Admins may delete any alert; non-admins may only delete an alert they
         created. Other users receive `403 application/problem+json`.
       parameters:
         - in: path
-          name: id
+          name: alertId
           required: true
           schema: { type: string, format: uuid }
       responses:
@@ -7885,7 +7894,7 @@ components:
         - photo
         - place
         - food
-        - spot
+        - marina
         - tips
         - route
         - berth
@@ -7897,7 +7906,7 @@ components:
         - photo: Photo/Travel posts (evergreen, media required)
         - place: Places to Visit (evergreen)
         - food: Recommended Food Spots (evergreen)
-        - spot: Recommended Marinas (evergreen)
+        - marina: Recommended Marinas (evergreen)
         - tips: Tips & Experience (evergreen)
         - route: Recommended Route (evergreen)
         - berth: Berth Availability (expires in 6 hours)
@@ -8005,7 +8014,7 @@ components:
         - photo
         - place
         - food
-        - spot
+        - marina
         - tips
         - route
       description: |
@@ -8731,7 +8740,7 @@ components:
         - $ref: '#/components/schemas/CreatePhotoPost'
         - $ref: '#/components/schemas/CreatePlacePost'
         - $ref: '#/components/schemas/CreateFoodPost'
-        - $ref: '#/components/schemas/CreateSpotPost'
+        - $ref: '#/components/schemas/CreateMarinaPost'
         - $ref: '#/components/schemas/CreateTipsPost'
         - $ref: '#/components/schemas/CreateRoutePost'
         - $ref: '#/components/schemas/CreateBerthPost'
@@ -8744,7 +8753,7 @@ components:
           photo: '#/components/schemas/CreatePhotoPost'
           place: '#/components/schemas/CreatePlacePost'
           food: '#/components/schemas/CreateFoodPost'
-          spot: '#/components/schemas/CreateSpotPost'
+          marina: '#/components/schemas/CreateMarinaPost'
           tips: '#/components/schemas/CreateTipsPost'
           route: '#/components/schemas/CreateRoutePost'
           berth: '#/components/schemas/CreateBerthPost'
@@ -8785,11 +8794,7 @@ components:
             format: uuid
           description: Required - at least one media item
         taggedUserIds:
-          type: array
-          maxItems: 20
-          items:
-            type: string
-            format: uuid
+          $ref: '#/components/schemas/TaggedUserSet'
 
     CreatePlacePost:
       type: object
@@ -8820,11 +8825,7 @@ components:
             type: string
             format: uuid
         taggedUserIds:
-          type: array
-          maxItems: 20
-          items:
-            type: string
-            format: uuid
+          $ref: '#/components/schemas/TaggedUserSet'
 
     CreateFoodPost:
       type: object
@@ -8855,13 +8856,9 @@ components:
             type: string
             format: uuid
         taggedUserIds:
-          type: array
-          maxItems: 20
-          items:
-            type: string
-            format: uuid
+          $ref: '#/components/schemas/TaggedUserSet'
 
-    CreateSpotPost:
+    CreateMarinaPost:
       type: object
       description: Create a recommended marinas post (evergreen)
       required: [type, regionCode, description, locationName, coordinates]
@@ -8890,11 +8887,7 @@ components:
             type: string
             format: uuid
         taggedUserIds:
-          type: array
-          maxItems: 20
-          items:
-            type: string
-            format: uuid
+          $ref: '#/components/schemas/TaggedUserSet'
 
     CreateTipsPost:
       type: object
@@ -8924,11 +8917,7 @@ components:
             type: string
             format: uuid
         taggedUserIds:
-          type: array
-          maxItems: 20
-          items:
-            type: string
-            format: uuid
+          $ref: '#/components/schemas/TaggedUserSet'
 
     CreateRoutePost:
       type: object
@@ -8979,11 +8968,7 @@ components:
             type: string
             format: uuid
         taggedUserIds:
-          type: array
-          maxItems: 20
-          items:
-            type: string
-            format: uuid
+          $ref: '#/components/schemas/TaggedUserSet'
 
     CreateBerthPost:
       type: object
@@ -9014,11 +8999,7 @@ components:
             type: string
             format: uuid
         taggedUserIds:
-          type: array
-          maxItems: 20
-          items:
-            type: string
-            format: uuid
+          $ref: '#/components/schemas/TaggedUserSet'
 
     CreateWeatherPost:
       type: object
@@ -9048,11 +9029,7 @@ components:
             type: string
             format: uuid
         taggedUserIds:
-          type: array
-          maxItems: 20
-          items:
-            type: string
-            format: uuid
+          $ref: '#/components/schemas/TaggedUserSet'
 
     CreateNavigationWarningPost:
       type: object
@@ -9082,11 +9059,7 @@ components:
             type: string
             format: uuid
         taggedUserIds:
-          type: array
-          maxItems: 20
-          items:
-            type: string
-            format: uuid
+          $ref: '#/components/schemas/TaggedUserSet'
 
     CreateHelpPost:
       type: object
@@ -9117,11 +9090,7 @@ components:
             type: string
             format: uuid
         taggedUserIds:
-          type: array
-          maxItems: 20
-          items:
-            type: string
-            format: uuid
+          $ref: '#/components/schemas/TaggedUserSet'
 
     PostsList:
       type: object
@@ -9174,11 +9143,7 @@ components:
             - type: 'null'
         taggedUserIds:
           oneOf:
-            - type: array
-              maxItems: 20
-              items:
-                type: string
-                format: uuid
+            - $ref: '#/components/schemas/TaggedUserSet'
             - type: 'null'
         # Route-specific fields (flat, only valid for route posts)
         stops:
@@ -9239,11 +9204,7 @@ components:
             - type: 'null'
         taggedUserIds:
           oneOf:
-            - type: array
-              maxItems: 20
-              items:
-                type: string
-                format: uuid
+            - $ref: '#/components/schemas/TaggedUserSet'
             - type: 'null'
         # Route-specific fields (flat, only valid for route posts)
         stops:
@@ -10499,7 +10460,7 @@ components:
         currency:
           type: string
           description: Currency code (defaults to EUR)
-          enum: [PLN, EUR, USD, GBP]
+          enum: [PLN, EUR, USD]
           example: 'EUR'
         private:
           type: boolean
@@ -11190,7 +11151,7 @@ components:
               example: '+48123456789'
             sailingLicenses:
               type: string
-              maxLength: 500
+              maxLength: 150
               description: User's sailing licenses and certifications
               example: 'Yacht Skipper, RYA Day Skipper'
             yearsOfExperience:
@@ -11509,6 +11470,8 @@ components:
             - '/errors/authentication-required'
             - '/errors/invalid-otp-code'
             - '/errors/otp-rate-limit'
+            - '/errors/invalid-password-reset-code'
+            - '/errors/password-reset-rate-limit'
             - '/errors/forbidden-role'
             - '/errors/captcha-token-missing'
             - '/errors/captcha-verification-failed'
@@ -11740,30 +11703,6 @@ components:
           description: A human-readable explanation specific to this occurrence of the problem
           example: 'The requested cruise could not be found'
 
-    RegionsProblem:
-      type: object
-      required: [type, title, status, detail]
-      properties:
-        type:
-          type: string
-          description: A URI reference that identifies the problem type
-          enum:
-            - '/errors/region-not-found'
-            - '/errors/region-validation-error'
-          example: '/errors/region-not-found'
-        title:
-          type: string
-          description: A short, human-readable summary of the problem type
-          example: 'Region Not Found'
-        status:
-          type: integer
-          description: The HTTP status code
-          example: 404
-        detail:
-          type: string
-          description: A human-readable explanation specific to this occurrence of the problem
-          example: 'The requested region could not be found'
-
     CruiseRegion:
       type: object
       properties:
@@ -11782,79 +11721,6 @@ components:
           items:
             type: string
           example: ['Morze Śródziemne', 'Chorwacja']
-
-    Region:
-      type: object
-      properties:
-        code:
-          type: string
-          maxLength: 50
-          description: Unique region code
-          example: 'MED'
-        slug:
-          type: string
-          maxLength: 255
-          description: URL-friendly slug in English
-          example: 'mediterranean-sea'
-        name:
-          type: string
-          maxLength: 255
-          description: English name of the region
-          example: 'Mediterranean Sea'
-        parent:
-          anyOf:
-            - type: string
-              maxLength: 50
-            - type: 'null'
-          description: Parent region code (null for top-level)
-          example: null
-        popularity:
-          type: number
-          format: decimal
-          minimum: 0
-          maximum: 1
-          description: Popularity score (0-1)
-          example: 0.5
-        order:
-          type: integer
-          description: Sort order within siblings
-          example: 0
-        level:
-          type: integer
-          description: Nesting level (0 for root)
-          example: 0
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-
-    RegionI18n:
-      type: object
-      properties:
-        regionCode:
-          type: string
-          maxLength: 50
-          example: 'MED'
-        locale:
-          type: string
-          maxLength: 5
-          example: 'pl'
-        localizedName:
-          type: string
-          maxLength: 255
-          example: 'Morze Śródziemne'
-        localizedSlug:
-          type: string
-          maxLength: 255
-          example: 'morze-srodziemne'
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
 
     RegionFlatItem:
       type: object
@@ -12466,7 +12332,7 @@ components:
         - berth
         - route
         - tips
-        - spot
+        - marina
         - food
         - place
       properties:
@@ -12537,7 +12403,7 @@ components:
           type: string
           description: Practical sailing tips (markdown)
           example: 'Check local weather before departure...'
-        spot:
+        marina:
           type: string
           description: Marina facilities and information (markdown)
           example: 'ACI Marina facilities include...'

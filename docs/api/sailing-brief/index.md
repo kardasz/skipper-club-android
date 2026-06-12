@@ -65,7 +65,7 @@ Briefs are generated three times per day in region-local time:
 
 ### AI Integration
 
-- **Provider**: OpenAI Responses API (`gpt-4.1-mini` by default)
+- **Provider**: OpenAI Responses API; model selected via `AI_SAILING_BRIEF_MODEL` preset (code default: `OPENAI_SAILING_BRIEF` → `gpt-5.2-2025-12-11`; `.env.example` sets `OPENAI_GPT_4_1_MINI`)
 - **Web Search**: Enabled via `web_search_preview` tool for current information
 - **Structured Output**: JSON schema enforcement for all 9 content fields
 - **Timeout**: 50s for web-search request, 25s for fallback request; global generation timeout is configurable (`AI_SAILING_BRIEF_TIMEOUT_MS`, code default 90s)
