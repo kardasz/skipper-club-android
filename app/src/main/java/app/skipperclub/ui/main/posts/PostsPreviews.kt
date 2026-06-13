@@ -50,6 +50,25 @@ internal val previewPhotoPost = Post(
     updatedAt = "2025-12-05T18:30:00Z",
 )
 
+internal val previewVideoPost = Post(
+    id = "p1v",
+    type = PostType.Photo,
+    status = PostStatus.Published,
+    regionCode = "ADR-HR",
+    user = previewAuthor,
+    description = "Downwind under spinnaker 🌊 #sailing",
+    locationName = "Trogir",
+    hashtags = listOf("sailing"),
+    media = listOf(
+        PostMedia(id = "mv1", type = "video", url = "https://example.com/downwind.mp4"),
+    ),
+    commentsCount = 2,
+    reactions = ReactionSummary(total = 2, byType = mapOf(ReactionType.Laugh to 1, ReactionType.Heart to 1)),
+    permissions = previewPermissions,
+    createdAt = "2025-12-05T18:30:00Z",
+    updatedAt = "2025-12-05T18:30:00Z",
+)
+
 internal val previewRoutePost = Post(
     id = "p2",
     type = PostType.Route,
@@ -178,6 +197,14 @@ private fun PostsScreenEmptyPreviewPl() {
             onLoadMore = {},
             onRetry = {},
         )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360, locale = "en")
+@Composable
+private fun PostCardVideoPreview() {
+    SkipperClubTheme {
+        PostCard(post = previewVideoPost, nowMillis = previewNow, actions = previewActions)
     }
 }
 

@@ -218,6 +218,8 @@
     <string name="post_add_reaction">Add reaction</string>
     <string name="post_media_content_description">Post photo</string>
     <string name="post_video_badge">Video</string>
+    <string name="post_video_play">Play video</string>
+    <string name="video_player_close">Close player</string>
     <string name="post_expired">Expired</string>
     <string name="post_expires_in_minutes">%1$d min left</string>
     <string name="post_expires_in_hours">%1$dh %2$dm left</string>

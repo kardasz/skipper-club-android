@@ -116,6 +116,25 @@ class PostsScreenTest {
     }
 
     @Test
+    fun tappingVideoOpensFullscreenPlayer() {
+        compose.setContent {
+            SkipperClubTheme {
+                PostCard(
+                    post = previewVideoPost,
+                    nowMillis = nowMillis,
+                    actions = actions(),
+                )
+            }
+        }
+
+        compose.onNodeWithTag("video_player").assertDoesNotExist()
+        compose.onNodeWithTag("post_video_play").performClick()
+        compose.onNodeWithTag("video_player").assertExists()
+        compose.onNodeWithTag("video_player_close").performClick()
+        compose.onNodeWithTag("video_player").assertDoesNotExist()
+    }
+
+    @Test
     fun reactionPickerShowsBothSectionsAndSelects() {
         var selected: ReactionType? = null
         compose.setContent {

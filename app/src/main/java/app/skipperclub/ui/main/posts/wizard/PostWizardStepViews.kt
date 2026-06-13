@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.CircularProgressIndicator
@@ -562,6 +563,16 @@ internal fun WizardMediaStep(state: PostWizardState) {
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize(),
                             )
+                            if (item.isVideo) {
+                                Icon(
+                                    imageVector = Icons.Filled.PlayCircle,
+                                    contentDescription = stringResource(R.string.post_video_badge),
+                                    tint = Color.White.copy(alpha = 0.9f),
+                                    modifier = Modifier
+                                        .align(Alignment.Center)
+                                        .size(32.dp),
+                                )
+                            }
                         }
                     }
                     IconButton(

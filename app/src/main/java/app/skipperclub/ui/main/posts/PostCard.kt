@@ -3,6 +3,7 @@ package app.skipperclub.ui.main.posts
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,6 +51,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -260,6 +262,7 @@ fun PostUserAvatar(
 @Composable
 private fun PostMediaPager(post: Post) {
     val pagerState = rememberPagerState(pageCount = { post.media.size })
+    var playingVideoUrl by remember { mutableStateOf<String?>(null) }
     Box {
         HorizontalPager(
             state = pagerState,
@@ -268,7 +271,19 @@ private fun PostMediaPager(post: Post) {
                 .aspectRatio(4f / 3f),
         ) { page ->
             val media = post.media[page]
-            Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (media.isVideo) {
+                            Modifier
+                                .clickable { playingVideoUrl = media.url }
+                                .testTag("post_video_play")
+                        } else {
+                            Modifier
+                        },
+                    ),
+            ) {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(media.url)
@@ -280,10 +295,10 @@ private fun PostMediaPager(post: Post) {
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                 )
-                if (media.type == "video") {
+                if (media.isVideo) {
                     Icon(
                         imageVector = Icons.Filled.PlayCircle,
-                        contentDescription = stringResource(R.string.post_video_badge),
+                        contentDescription = stringResource(R.string.post_video_play),
                         tint = Color.White.copy(alpha = 0.9f),
                         modifier = Modifier
                             .align(Alignment.Center)
@@ -310,6 +325,10 @@ private fun PostMediaPager(post: Post) {
                 }
             }
         }
+    }
+
+    playingVideoUrl?.let { url ->
+        VideoPlayerDialog(url = url, onDismiss = { playingVideoUrl = null })
     }
 }
 

@@ -1,0 +1,27 @@
+package app.skipperclub
+
+import android.app.Application
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import coil3.request.crossfade
+import coil3.video.VideoFrameDecoder
+
+/**
+ * Provides a process-wide Coil [ImageLoader] that can decode a poster frame from
+ * remote videos (`media.type == "video"`) in addition to images, so the posts
+ * feed and the create-post wizard render real video thumbnails instead of a
+ * blank box. The OkHttp network fetcher is registered explicitly because the
+ * default singleton loader is replaced here.
+ */
+class SkipperClubApplication : Application(), SingletonImageLoader.Factory {
+    override fun newImageLoader(context: PlatformContext): ImageLoader =
+        ImageLoader.Builder(context)
+            .components {
+                add(OkHttpNetworkFetcherFactory())
+                add(VideoFrameDecoder.Factory())
+            }
+            .crossfade(true)
+            .build()
+}

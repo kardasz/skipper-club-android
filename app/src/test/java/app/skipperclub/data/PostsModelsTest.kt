@@ -128,6 +128,16 @@ class PostsModelsTest {
     }
 
     @Test
+    fun postMediaIsVideoDistinguishesImagesFromVideos() {
+        val image = PostMedia(id = "m1", type = "image", url = "https://cdn/img.jpg")
+        val video = PostMedia(id = "m2", type = "video", url = "https://cdn/clip.mp4")
+        assertFalse(image.isVideo)
+        assertTrue(video.isVideo)
+        // wire value is matched case-insensitively
+        assertTrue(PostMedia(id = "m3", type = "VIDEO", url = "https://cdn/c.mp4").isVideo)
+    }
+
+    @Test
     fun commentsListDecodes() {
         val payload = """
             {

@@ -48,6 +48,7 @@ sealed interface PostWizardEvent {
 data class WizardMedia(
     val localId: Long,
     val fileName: String,
+    val isVideo: Boolean = false,
     val isUploading: Boolean = false,
     val failed: Boolean = false,
     val mediaId: String? = null,
@@ -231,6 +232,7 @@ class PostWizardState(
         val item = WizardMedia(
             localId = nextMediaLocalId++,
             fileName = fileName,
+            isVideo = mimeType.startsWith("video/"),
             isUploading = true,
         )
         media.add(item)

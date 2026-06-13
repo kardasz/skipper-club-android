@@ -122,7 +122,11 @@ data class PostMedia(
     val url: String,
     val width: Int? = null,
     val height: Int? = null,
-)
+) {
+    /** True for `video` attachments; drives the play affordance and frame poster. */
+    val isVideo: Boolean
+        get() = type.equals("video", ignoreCase = true)
+}
 
 data class ReactionSummary(
     val total: Int = 0,

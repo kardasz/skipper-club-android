@@ -224,6 +224,8 @@
     <string name="post_add_reaction">Dodaj reakcję</string>
     <string name="post_media_content_description">Zdjęcie posta</string>
     <string name="post_video_badge">Wideo</string>
+    <string name="post_video_play">Odtwórz film</string>
+    <string name="video_player_close">Zamknij odtwarzacz</string>
     <string name="post_expired">Wygasł</string>
     <string name="post_expires_in_minutes">Zostało %1$d min</string>
     <string name="post_expires_in_hours">Zostało %1$d godz. %2$d min</string>
