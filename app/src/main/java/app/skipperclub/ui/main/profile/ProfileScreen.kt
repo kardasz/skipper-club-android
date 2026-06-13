@@ -117,6 +117,7 @@ fun ProfileScreen(
         Box(modifier = Modifier.fillMaxSize()) {
             ProfileScreenContent(
                 state = state,
+                title = stringResource(R.string.profile_title),
                 onClose = onClose,
                 onRefresh = controller::refresh,
                 onRetry = controller::refresh,
@@ -151,6 +152,7 @@ fun ProfileScreen(
 @Composable
 internal fun ProfileScreenContent(
     state: ProfileUiState,
+    title: String,
     onClose: () -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
@@ -176,7 +178,7 @@ internal fun ProfileScreenContent(
                 )
             }
             Text(
-                text = stringResource(R.string.profile_title),
+                text = title,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),
@@ -306,12 +308,14 @@ private fun ProfileHeader(profile: UserProfile, modifier: Modifier = Modifier) {
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(top = 12.dp),
         )
-        Text(
-            text = profile.email,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 2.dp),
-        )
+        if (profile.email.isNotBlank()) {
+            Text(
+                text = profile.email,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
         if (profile.isAdmin) {
             Surface(
                 color = MaterialTheme.colorScheme.primaryContainer,
@@ -536,6 +540,7 @@ private fun ProfilePreview() {
     SkipperClubTheme {
         ProfileScreenContent(
             state = ProfileUiState(profile = previewProfile, hasLoadedOnce = true),
+            title = "Profile",
             onClose = {},
             onRefresh = {},
             onRetry = {},
@@ -554,6 +559,7 @@ private fun ProfilePreviewDark() {
     SkipperClubTheme {
         ProfileScreenContent(
             state = ProfileUiState(profile = previewProfile, hasLoadedOnce = true),
+            title = "Profile",
             onClose = {},
             onRefresh = {},
             onRetry = {},
@@ -570,6 +576,7 @@ private fun ProfilePreviewPl() {
                 profile = previewProfile.copy(role = "admin"),
                 hasLoadedOnce = true,
             ),
+            title = "Profile",
             onClose = {},
             onRefresh = {},
             onRetry = {},
@@ -583,6 +590,7 @@ private fun ProfileFailedPreviewPl() {
     SkipperClubTheme {
         ProfileScreenContent(
             state = ProfileUiState(loadFailed = true, hasLoadedOnce = true),
+            title = "Profile",
             onClose = {},
             onRefresh = {},
             onRetry = {},

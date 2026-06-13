@@ -600,6 +600,40 @@
     <string name="invitation_delete_confirm_title">Usunąć zaproszenie?</string>
     <string name="invitation_delete_confirm_message">Zaproszenie dla %1$s przestanie działać. Tej operacji nie można cofnąć.</string>
 
+    <!-- Znajomi -->
+    <string name="menu_friends">Znajomi</string>
+    <string name="friends_title">Znajomi</string>
+    <string name="friends_back">Wstecz</string>
+    <string name="friends_section_requests">Zaproszenia</string>
+    <string name="friends_section_friends">Znajomi (%1$d)</string>
+    <string name="friends_request_received">Chce zostać Twoim znajomym</string>
+    <string name="friends_request_sent">Zaproszenie wysłane</string>
+    <string name="friends_request_accept">Akceptuj</string>
+    <string name="friends_request_reject">Odrzuć zaproszenie</string>
+    <string name="friends_request_cancel">Anuluj</string>
+    <string name="friends_list_empty">Nie masz jeszcze żadnych znajomych.</string>
+    <string name="friends_empty_title">Brak znajomych</string>
+    <string name="friends_empty_subtitle">Zaproś osoby, z którymi pływałeś(aś), aby się połączyć.</string>
+    <string name="friends_load_failed">Nie udało się wczytać znajomych.</string>
+    <string name="friends_retry">Ponów</string>
+    <string name="friends_remove_title">Usuń znajomego</string>
+    <string name="friends_remove_message">Usunąć %1$s ze znajomych? Aby połączyć się ponownie, trzeba wysłać nowe zaproszenie.</string>
+    <string name="friends_remove_confirm">Usuń</string>
+    <string name="friends_remove_cancel">Anuluj</string>
+    <string name="friends_invite_button">Zaproś do znajomych</string>
+    <string name="friends_error_network">Brak połączenia. Sprawdź sieć i spróbuj ponownie.</string>
+    <string name="friends_error_auth">Twoja sesja wygasła. Zaloguj się ponownie.</string>
+    <string name="friends_error_generic">Coś poszło nie tak. Spróbuj ponownie.</string>
+    <string name="friend_invite_title">Zaproś do znajomych</string>
+    <string name="friend_invite_search_placeholder">Szukaj osób</string>
+    <string name="friend_invite_search_failed">Nie udało się wczytać osób.</string>
+    <string name="friend_invite_empty">Nie znaleziono osób.</string>
+    <string name="friend_invite_add">Dodaj</string>
+    <string name="friend_invite_sent_label">Wysłano</string>
+    <string name="friend_invite_sent">Wysłano zaproszenie do %1$s.</string>
+    <string name="friend_invite_error_already">Masz już zaproszenie z tą osobą.</string>
+    <string name="public_profile_title">Profil</string>
+
     <!-- Mój profil -->
     <string name="profile_title">Mój profil</string>
     <string name="profile_back">Wstecz</string>

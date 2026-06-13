@@ -56,6 +56,19 @@ object ProfileApi {
     suspend fun getProfile(accessToken: String): UserProfile =
         executeAndDecode<ProfileDto, UserProfile>(getProfileRequest(accessToken)) { it.toDomain() }
 
+    internal fun getUserRequest(accessToken: String, userId: String): Request =
+        baseRequest(accessToken)
+            .url("${BuildConfig.API_BASE_URL}/v1/users".toHttpUrl().newBuilder().addPathSegment(userId).build())
+            .get()
+            .build()
+
+    /**
+     * Another member's public profile (`GET /v1/users/{userId}`). The response omits
+     * `email`, so [UserProfile.email] comes back blank for other users.
+     */
+    suspend fun getUser(accessToken: String, userId: String): UserProfile =
+        executeAndDecode<ProfileDto, UserProfile>(getUserRequest(accessToken, userId)) { it.toDomain() }
+
     internal fun updateProfileRequest(accessToken: String, update: ProfileUpdate): Request {
         val body = requestJson.encodeToString(ProfileUpdateDto.from(update))
         return baseRequest(accessToken).url(profileUrl()).put(body.toRequestBody(jsonMediaType)).build()

@@ -582,6 +582,40 @@
     <string name="invitation_delete_confirm_title">Delete invitation?</string>
     <string name="invitation_delete_confirm_message">The invitation for %1$s will no longer work. This can\'t be undone.</string>
 
+    <!-- Friends -->
+    <string name="menu_friends">Friends</string>
+    <string name="friends_title">Friends</string>
+    <string name="friends_back">Back</string>
+    <string name="friends_section_requests">Friend requests</string>
+    <string name="friends_section_friends">Friends (%1$d)</string>
+    <string name="friends_request_received">Wants to be your friend</string>
+    <string name="friends_request_sent">Request sent</string>
+    <string name="friends_request_accept">Accept</string>
+    <string name="friends_request_reject">Decline request</string>
+    <string name="friends_request_cancel">Cancel</string>
+    <string name="friends_list_empty">You don\'t have any friends yet.</string>
+    <string name="friends_empty_title">No friends yet</string>
+    <string name="friends_empty_subtitle">Invite people you\'ve sailed with to connect.</string>
+    <string name="friends_load_failed">Couldn\'t load friends.</string>
+    <string name="friends_retry">Retry</string>
+    <string name="friends_remove_title">Remove friend</string>
+    <string name="friends_remove_message">Remove %1$s from your friends? You\'ll need to send a new request to connect again.</string>
+    <string name="friends_remove_confirm">Remove</string>
+    <string name="friends_remove_cancel">Cancel</string>
+    <string name="friends_invite_button">Invite friends</string>
+    <string name="friends_error_network">No connection. Check your network and try again.</string>
+    <string name="friends_error_auth">Your session has expired. Please sign in again.</string>
+    <string name="friends_error_generic">Something went wrong. Please try again.</string>
+    <string name="friend_invite_title">Invite friends</string>
+    <string name="friend_invite_search_placeholder">Search members</string>
+    <string name="friend_invite_search_failed">Couldn\'t load members.</string>
+    <string name="friend_invite_empty">No members found.</string>
+    <string name="friend_invite_add">Add</string>
+    <string name="friend_invite_sent_label">Sent</string>
+    <string name="friend_invite_sent">Friend request sent to %1$s.</string>
+    <string name="friend_invite_error_already">You already have a request with this person.</string>
+    <string name="public_profile_title">Profile</string>
+
     <!-- My profile -->
     <string name="profile_title">My profile</string>
     <string name="profile_back">Back</string>

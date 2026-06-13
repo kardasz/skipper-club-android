@@ -11,6 +11,8 @@ import app.skipperclub.data.UserProfile
 interface ProfileGateway {
     suspend fun getProfile(accessToken: String): UserProfile
 
+    suspend fun getUser(accessToken: String, userId: String): UserProfile
+
     suspend fun updateProfile(accessToken: String, update: ProfileUpdate): UserProfile
 
     suspend fun uploadAvatar(
@@ -26,6 +28,9 @@ interface ProfileGateway {
 object RealProfileGateway : ProfileGateway {
     override suspend fun getProfile(accessToken: String): UserProfile =
         ProfileApi.getProfile(accessToken)
+
+    override suspend fun getUser(accessToken: String, userId: String): UserProfile =
+        ProfileApi.getUser(accessToken, userId)
 
     override suspend fun updateProfile(accessToken: String, update: ProfileUpdate): UserProfile =
         ProfileApi.updateProfile(accessToken, update)

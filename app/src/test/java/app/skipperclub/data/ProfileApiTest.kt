@@ -13,6 +13,15 @@ import org.junit.Test
 class ProfileApiTest {
 
     @Test
+    fun getUserRequestTargetsUsersPathWithAuth() {
+        val request = ProfileApi.getUserRequest("token", "018fa2e4-user")
+
+        assertEquals("GET", request.method)
+        assertEquals("/v1/users/018fa2e4-user", request.url.encodedPath)
+        assertEquals("Bearer token", request.header("Authorization"))
+    }
+
+    @Test
     fun updateRequestPutsUserUpdateWithExplicitNullsForClearedFields() {
         val request = ProfileApi.updateProfileRequest(
             accessToken = "token",

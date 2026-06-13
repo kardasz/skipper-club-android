@@ -34,6 +34,7 @@ import androidx.compose.ui.window.DialogProperties
 import app.skipperclub.R
 import app.skipperclub.data.SessionUser
 import app.skipperclub.ui.main.cruises.CruisesScreen
+import app.skipperclub.ui.main.friends.FriendsScreen
 import app.skipperclub.ui.main.invitations.InvitationsScreen
 import app.skipperclub.ui.main.messages.MessagesScreen
 import app.skipperclub.ui.main.notifications.NotificationsScreen
@@ -70,6 +71,7 @@ private fun MainScreenContent(
     val menuOpenState = rememberSaveable { mutableStateOf(value = false) }
     var isMenuOpen by menuOpenState
     var showNotifications by rememberSaveable { mutableStateOf(value = false) }
+    var showFriends by rememberSaveable { mutableStateOf(value = false) }
     var showInvitations by rememberSaveable { mutableStateOf(value = false) }
     var showProfile by rememberSaveable { mutableStateOf(value = false) }
 
@@ -115,6 +117,10 @@ private fun MainScreenContent(
                     menuOpenState.value = false
                     showNotifications = true
                 },
+                onOpenFriends = {
+                    menuOpenState.value = false
+                    showFriends = true
+                },
                 onOpenInvitations = {
                     menuOpenState.value = false
                     showInvitations = true
@@ -137,6 +143,15 @@ private fun MainScreenContent(
             properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
         ) {
             NotificationsScreen(onClose = { showNotifications = false })
+        }
+    }
+
+    if (showFriends) {
+        Dialog(
+            onDismissRequest = { showFriends = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) {
+            FriendsScreen(onClose = { showFriends = false })
         }
     }
 
@@ -165,6 +180,7 @@ private fun MainMenuSheet(
     onClose: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenNotifications: () -> Unit,
+    onOpenFriends: () -> Unit,
     onOpenInvitations: () -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
@@ -203,6 +219,11 @@ private fun MainMenuSheet(
             label = stringResource(R.string.menu_notifications),
             iconRes = R.drawable.ic_notifications,
             onClick = onOpenNotifications,
+        )
+        MainMenuItem(
+            label = stringResource(R.string.menu_friends),
+            iconRes = R.drawable.ic_group,
+            onClick = onOpenFriends,
         )
         // Invitations are an admin-only surface (see docs/api/invitations) — hide it for standard users.
         if (user.isAdmin) {

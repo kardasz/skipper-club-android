@@ -62,10 +62,23 @@ internal class FakeProfileGateway : ProfileGateway {
         )
     }
 
+    /** Public profile fetched by `getUser`; defaults to [profile] with the email stripped. */
+    var userProfile: UserProfile = testProfile(id = "other", name = "Jan Kowalski", email = "")
+    var userError: ProfileError? = null
+    var userCalls = 0
+    var lastUserId: String? = null
+
     override suspend fun getProfile(accessToken: String): UserProfile {
         calls++
         error?.let { throw it }
         return profile
+    }
+
+    override suspend fun getUser(accessToken: String, userId: String): UserProfile {
+        userCalls++
+        lastUserId = userId
+        userError?.let { throw it }
+        return userProfile
     }
 
     override suspend fun updateProfile(accessToken: String, update: ProfileUpdate): UserProfile {
