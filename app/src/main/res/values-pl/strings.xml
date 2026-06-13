@@ -629,4 +629,31 @@
     <string name="profile_error_network">Brak połączenia. Sprawdź sieć i spróbuj ponownie.</string>
     <string name="profile_error_auth">Twoja sesja wygasła. Zaloguj się ponownie.</string>
     <string name="profile_error_generic">Coś poszło nie tak. Spróbuj ponownie.</string>
+
+    <!-- Edycja profilu -->
+    <string name="edit_profile_title">Edytuj profil</string>
+    <string name="edit_profile_save">Zapisz</string>
+    <string name="edit_profile_change_avatar">Zmień zdjęcie profilowe</string>
+    <string name="edit_profile_section_about">O mnie</string>
+    <string name="edit_profile_section_sailing">Żeglarstwo</string>
+    <string name="edit_profile_section_social">Social media</string>
+    <string name="edit_profile_label_name">Imię i nazwisko</string>
+    <string name="edit_profile_label_bio">O mnie</string>
+    <string name="edit_profile_label_city">Miasto</string>
+    <string name="edit_profile_label_country">Kraj</string>
+    <string name="edit_profile_hint_country">2-literowy kod kraju (np. PL)</string>
+    <string name="edit_profile_label_experience">Poziom doświadczenia</string>
+    <string name="edit_profile_experience_none">Nie podano</string>
+    <string name="edit_profile_label_years">Lata doświadczenia</string>
+    <string name="edit_profile_label_licenses">Licencje i certyfikaty</string>
+    <string name="edit_profile_label_languages">Języki</string>
+    <string name="edit_profile_hint_languages">Kody oddzielone przecinkami (np. pl, en, de)</string>
+    <string name="edit_profile_label_voyage_styles">Preferowane style rejsów</string>
+    <string name="edit_profile_hint_voyage_styles">Oddzielone przecinkami (np. coastal, racing)</string>
+    <string name="edit_profile_hint_facebook">https://facebook.com/twoj.profil</string>
+    <string name="edit_profile_hint_handle">Zacznij od @</string>
+    <string name="edit_profile_hint_whatsapp">Format międzynarodowy (np. +48123456789)</string>
+    <string name="edit_profile_name_required">Imię i nazwisko nie może być puste.</string>
+    <string name="edit_profile_error_validation">Niektóre dane są nieprawidłowe. Sprawdź je i spróbuj ponownie.</string>
+    <string name="edit_profile_avatar_rejected">Nie można użyć tego zdjęcia. Wybierz plik JPG, PNG lub HEIC poniżej 10 MB.</string>
 </resources>

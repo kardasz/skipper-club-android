@@ -48,11 +48,86 @@ data class UserProfile(
     val isAdmin: Boolean get() = role.equals(SessionUser.ROLE_ADMIN, ignoreCase = true)
 }
 
+/**
+ * The editable subset of the current user's profile, mirroring the `UserUpdate`
+ * schema in `docs/api/openapi.yaml`. A `null` value means "clear this field"; the
+ * request is serialized with explicit nulls so the server actually unsets it.
+ * [name] is the only required field.
+ */
+data class ProfileUpdate(
+    val name: String,
+    val bio: String? = null,
+    val city: String? = null,
+    val country: String? = null,
+    val sailingExperience: SailingExperience? = null,
+    val yearsOfExperience: Int? = null,
+    val sailingLicenses: String? = null,
+    val languagesSpoken: List<String> = emptyList(),
+    val preferredVoyageStyles: List<String> = emptyList(),
+    val facebookUrl: String? = null,
+    val instagramUsername: String? = null,
+    val tiktokUsername: String? = null,
+    val whatsappNumber: String? = null,
+)
+
+@Serializable
+internal data class ProfileUpdateDto(
+    val name: String,
+    val bio: String?,
+    val city: String?,
+    val country: String?,
+    val sailingExperience: String?,
+    val yearsOfExperience: Int?,
+    val sailingLicenses: String?,
+    val languagesSpoken: List<String>,
+    val preferredVoyageStyles: List<String>,
+    val facebookUrl: String?,
+    val instagramUsername: String?,
+    val tiktokUsername: String?,
+    val whatsappNumber: String?,
+) {
+    companion object {
+        fun from(update: ProfileUpdate): ProfileUpdateDto = ProfileUpdateDto(
+            name = update.name,
+            bio = update.bio,
+            city = update.city,
+            country = update.country,
+            sailingExperience = update.sailingExperience
+                ?.takeIf { it != SailingExperience.Unknown }?.wireValue,
+            yearsOfExperience = update.yearsOfExperience,
+            sailingLicenses = update.sailingLicenses,
+            languagesSpoken = update.languagesSpoken,
+            preferredVoyageStyles = update.preferredVoyageStyles,
+            facebookUrl = update.facebookUrl,
+            instagramUsername = update.instagramUsername,
+            tiktokUsername = update.tiktokUsername,
+            whatsappNumber = update.whatsappNumber,
+        )
+    }
+}
+
+@Serializable
+internal data class AvatarPresignedUrlRequest(
+    val fileName: String,
+    val fileType: String,
+    val fileSize: Long,
+    val width: Int? = null,
+    val height: Int? = null,
+)
+
+@Serializable
+internal data class AvatarPresignedUrlResponse(
+    val uploadUrl: String,
+    val avatarId: String,
+    val publicUrl: String,
+)
+
 @Serializable
 internal data class ProfileDto(
     val id: String,
     val name: String,
-    val email: String,
+    // `Profile` includes email; the `UserDetail` returned by PUT/PATCH does not.
+    val email: String? = null,
     val role: String? = null,
     val avatarUrl: String? = null,
     val bio: String? = null,
@@ -76,7 +151,7 @@ internal data class ProfileDto(
     fun toDomain(): UserProfile = UserProfile(
         id = id,
         name = name,
-        email = email,
+        email = email.orEmpty(),
         role = role ?: SessionUser.ROLE_USER,
         avatarUrl = avatarUrl,
         bio = bio?.takeIf { it.isNotBlank() },

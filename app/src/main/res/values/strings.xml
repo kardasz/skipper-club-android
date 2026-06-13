@@ -611,4 +611,31 @@
     <string name="profile_error_network">No connection. Check your network and try again.</string>
     <string name="profile_error_auth">Your session has expired. Please sign in again.</string>
     <string name="profile_error_generic">Something went wrong. Please try again.</string>
+
+    <!-- Edit profile -->
+    <string name="edit_profile_title">Edit profile</string>
+    <string name="edit_profile_save">Save</string>
+    <string name="edit_profile_change_avatar">Change profile photo</string>
+    <string name="edit_profile_section_about">About</string>
+    <string name="edit_profile_section_sailing">Sailing</string>
+    <string name="edit_profile_section_social">Social media</string>
+    <string name="edit_profile_label_name">Name</string>
+    <string name="edit_profile_label_bio">About me</string>
+    <string name="edit_profile_label_city">City</string>
+    <string name="edit_profile_label_country">Country</string>
+    <string name="edit_profile_hint_country">2-letter country code (e.g. PL)</string>
+    <string name="edit_profile_label_experience">Experience level</string>
+    <string name="edit_profile_experience_none">Not specified</string>
+    <string name="edit_profile_label_years">Years of experience</string>
+    <string name="edit_profile_label_licenses">Licenses</string>
+    <string name="edit_profile_label_languages">Languages</string>
+    <string name="edit_profile_hint_languages">Comma-separated codes (e.g. pl, en, de)</string>
+    <string name="edit_profile_label_voyage_styles">Preferred voyage styles</string>
+    <string name="edit_profile_hint_voyage_styles">Comma-separated (e.g. coastal, racing)</string>
+    <string name="edit_profile_hint_facebook">https://facebook.com/your.profile</string>
+    <string name="edit_profile_hint_handle">Start with @</string>
+    <string name="edit_profile_hint_whatsapp">International format (e.g. +48123456789)</string>
+    <string name="edit_profile_name_required">Name can\'t be empty.</string>
+    <string name="edit_profile_error_validation">Some details are invalid. Please check and try again.</string>
+    <string name="edit_profile_avatar_rejected">Couldn\'t use that image. Pick a JPG, PNG or HEIC under 10 MB.</string>
 </resources>

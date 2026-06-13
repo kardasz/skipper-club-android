@@ -13,8 +13,10 @@ import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 
 /**
@@ -31,6 +33,15 @@ object ProfileApi {
         coerceInputValues = true
     }
 
+    // Profile updates use full-replacement (PUT) semantics, so cleared optional
+    // fields must be sent as explicit `null` for the server to unset them.
+    private val requestJson = Json {
+        ignoreUnknownKeys = true
+        explicitNulls = true
+    }
+
+    private val jsonMediaType = "application/json".toMediaType()
+
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
@@ -44,6 +55,74 @@ object ProfileApi {
 
     suspend fun getProfile(accessToken: String): UserProfile =
         executeAndDecode<ProfileDto, UserProfile>(getProfileRequest(accessToken)) { it.toDomain() }
+
+    internal fun updateProfileRequest(accessToken: String, update: ProfileUpdate): Request {
+        val body = requestJson.encodeToString(ProfileUpdateDto.from(update))
+        return baseRequest(accessToken).url(profileUrl()).put(body.toRequestBody(jsonMediaType)).build()
+    }
+
+    /**
+     * Full profile update (`PUT /v1/profile`). The response is a `UserDetail`,
+     * which omits `email`, so callers should preserve the email they already hold.
+     */
+    suspend fun updateProfile(accessToken: String, update: ProfileUpdate): UserProfile =
+        executeAndDecode<ProfileDto, UserProfile>(updateProfileRequest(accessToken, update)) { it.toDomain() }
+
+    private fun avatarUrl(vararg segments: String): HttpUrl =
+        "${BuildConfig.API_BASE_URL}/v1/profile/avatar".toHttpUrl().newBuilder()
+            .apply { segments.forEach { addPathSegment(it) } }
+            .build()
+
+    internal fun avatarPresignedRequest(accessToken: String, payload: AvatarPresignedUrlRequest): Request =
+        baseRequest(accessToken)
+            .url(avatarUrl("presigned-url"))
+            .post(json.encodeToString(payload).toRequestBody(jsonMediaType))
+            .header("Content-Type", "application/json")
+            .build()
+
+    internal fun confirmAvatarRequest(accessToken: String, avatarId: String): Request =
+        baseRequest(accessToken)
+            .url(avatarUrl(avatarId, "confirm-upload"))
+            .post(ByteArray(0).toRequestBody(null))
+            .build()
+
+    /**
+     * Avatar upload via the presigned-URL flow recommended for mobile
+     * (`docs/api/users` → Avatar Upload): request a URL, PUT the bytes to storage,
+     * then confirm. Returns the public CDN URL of the new avatar.
+     */
+    suspend fun uploadAvatar(
+        accessToken: String,
+        fileName: String,
+        mimeType: String,
+        bytes: ByteArray,
+        width: Int? = null,
+        height: Int? = null,
+    ): String {
+        val presigned = executeAndDecode<AvatarPresignedUrlResponse, AvatarPresignedUrlResponse>(
+            avatarPresignedRequest(
+                accessToken,
+                AvatarPresignedUrlRequest(
+                    fileName = fileName,
+                    fileType = mimeType,
+                    fileSize = bytes.size.toLong(),
+                    width = width,
+                    height = height,
+                ),
+            ),
+        ) { it }
+
+        execute(
+            Request.Builder().url(presigned.uploadUrl).put(bytes.toRequestBody(mimeType.toMediaType())).build(),
+        ).use { response ->
+            if (!response.isSuccessful) throw ProfileError.Server(response.code, "Avatar upload failed")
+        }
+
+        execute(confirmAvatarRequest(accessToken, presigned.avatarId)).use { response ->
+            if (!response.isSuccessful) throw response.toProfileError()
+        }
+        return presigned.publicUrl
+    }
 
     private fun baseRequest(accessToken: String): Request.Builder =
         Request.Builder()

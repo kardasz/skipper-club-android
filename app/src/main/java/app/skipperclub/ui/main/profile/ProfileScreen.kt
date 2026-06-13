@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Sailing
@@ -36,8 +37,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,6 +53,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import app.skipperclub.R
 import app.skipperclub.data.ProfileError
 import app.skipperclub.data.SailingExperience
@@ -77,6 +83,7 @@ fun ProfileScreen(
     }
     val state by controller.state.collectAsState()
     val notificationHostState = rememberInAppNotificationHostState()
+    var showEdit by rememberSaveable { mutableStateOf(false) }
 
     val errorNetwork = stringResource(R.string.profile_error_network)
     val errorAuth = stringResource(R.string.profile_error_auth)
@@ -113,10 +120,28 @@ fun ProfileScreen(
                 onClose = onClose,
                 onRefresh = controller::refresh,
                 onRetry = controller::refresh,
+                onEdit = state.profile?.let { { showEdit = true } },
             )
             InAppNotificationHost(
                 hostState = notificationHostState,
                 modifier = Modifier.align(Alignment.TopCenter),
+            )
+        }
+    }
+
+    val editableProfile = state.profile
+    if (showEdit && editableProfile != null) {
+        Dialog(
+            onDismissRequest = { showEdit = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) {
+            EditProfileScreen(
+                profile = editableProfile,
+                onClose = { showEdit = false },
+                onSaved = { updated ->
+                    controller.applyProfile(updated)
+                    showEdit = false
+                },
             )
         }
     }
@@ -129,6 +154,7 @@ internal fun ProfileScreenContent(
     onClose: () -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
+    onEdit: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -155,6 +181,14 @@ internal fun ProfileScreenContent(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),
             )
+            if (onEdit != null) {
+                IconButton(onClick = onEdit, modifier = Modifier.testTag("profile_edit")) {
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = stringResource(R.string.edit_profile_title),
+                    )
+                }
+            }
         }
 
         PullToRefreshBox(

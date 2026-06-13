@@ -55,6 +55,11 @@ class ProfileController(
         reload(showAsRefreshing = true)
     }
 
+    /** Apply a profile edited elsewhere (the edit screen) without a network round-trip. */
+    fun applyProfile(profile: UserProfile) {
+        _state.update { it.copy(profile = profile, loadFailed = false, hasLoadedOnce = true) }
+    }
+
     private fun reload(showAsRefreshing: Boolean) {
         loadJob?.cancel()
         _state.update {
