@@ -57,6 +57,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.skipperclub.R
+import app.skipperclub.data.AlertCategory
+import app.skipperclub.data.AlertError
+import app.skipperclub.data.AlertGeometry
+import app.skipperclub.data.AlertsApi
 import app.skipperclub.data.CheckInError
 import app.skipperclub.data.CheckInsApi
 import app.skipperclub.data.MapEntry
@@ -68,6 +72,10 @@ import app.skipperclub.data.MapItemsError
 import app.skipperclub.data.MapUserProjection
 import app.skipperclub.data.MapViewportBounds
 import app.skipperclub.data.SessionStore
+import app.skipperclub.ui.main.alert.AlertContentError
+import app.skipperclub.ui.main.alert.AlertFormDialog
+import app.skipperclub.ui.main.alert.AlertPickActions
+import app.skipperclub.ui.main.alert.AlertUiState
 import app.skipperclub.ui.main.checkin.CheckInOverlay
 import app.skipperclub.ui.main.checkin.CheckInUiState
 import app.skipperclub.ui.main.checkin.fetchCurrentLocation
@@ -128,6 +136,10 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
     val mapItemsNetworkErrorMessage = stringResource(R.string.map_items_error_network)
     val mapItemsAuthErrorMessage = stringResource(R.string.map_items_error_auth)
     val mapItemsGenericErrorMessage = stringResource(R.string.map_items_error_generic)
+    val alertNetworkErrorMessage = stringResource(R.string.alert_error_network)
+    val alertAuthErrorMessage = stringResource(R.string.alert_error_auth)
+    val alertGenericErrorMessage = stringResource(R.string.alert_error_generic)
+    val alertSuccessMessage = stringResource(R.string.alert_success)
 
     val startPosition = remember {
         CameraPosition.fromLatLngZoom(GDANSK_BAY, DEFAULT_ZOOM)
@@ -152,7 +164,10 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
     }
 
     var checkInState by remember { mutableStateOf<CheckInUiState>(CheckInUiState.Idle) }
+    var alertState by remember { mutableStateOf<AlertUiState>(AlertUiState.Idle) }
+    var menuExpanded by remember { mutableStateOf(false) }
     val isActive = checkInState is CheckInUiState.Active
+    val isAlertPicking = alertState is AlertUiState.PickingLocation
     var isMapLoaded by remember { mutableStateOf(false) }
     var mapEntries by remember { mutableStateOf(emptyList<MapEntry>()) }
     var selectedMapEntryKey by remember { mutableStateOf<String?>(null) }
@@ -265,55 +280,71 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
         // makes `cameraPositionState.position.target` resolve to this same point,
         // so what the user sees is what we send.
         AnimatedVisibility(
-            visible = isActive,
+            visible = isActive || isAlertPicking,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier
                 .fillMaxSize()
                 .padding(bottom = BottomBarMapPadding),
         ) {
-            val active = checkInState as? CheckInUiState.Active
             Box(modifier = Modifier.fillMaxSize()) {
-                LocationTargetOverlay(
-                    locationLabel = active?.locationLabel ?: LocationLabel(),
-                    isResolvingName = active?.isResolvingName == true,
-                    modifier = Modifier.align(Alignment.Center),
-                )
+                if (isAlertPicking) {
+                    AlertTargetOverlay(modifier = Modifier.align(Alignment.Center))
+                } else {
+                    val active = checkInState as? CheckInUiState.Active
+                    LocationTargetOverlay(
+                        locationLabel = active?.locationLabel ?: LocationLabel(),
+                        isResolvingName = active?.isResolvingName == true,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
             }
+        }
+
+        if (checkInState is CheckInUiState.Idle && alertState is AlertUiState.Idle) {
+            MapAddMenu(
+                expanded = menuExpanded,
+                onExpandedChange = { menuExpanded = it },
+                onSelectCheckIn = {
+                    checkInState = CheckInUiState.Locating
+                    scope.launch {
+                        val location = runCatching { context.fetchCurrentLocation() }.getOrNull()
+                        if (location == null) {
+                            checkInState = CheckInUiState.Idle
+                            notificationHostState.show(locationErrorMessage, InAppNotificationType.Error)
+                            return@launch
+                        }
+                        val target = LatLng(location.latitude, location.longitude)
+                        checkInState = CheckInUiState.Active(
+                            locationLabel = LocationLabel(),
+                            isResolvingName = true,
+                            isSubmitting = false,
+                        )
+                        cameraPositionState.animate(
+                            update = CameraUpdateFactory.newLatLngZoom(target, ACTIVE_ZOOM),
+                            durationMs = 600,
+                        )
+                        // After animate() returns the camera has settled, which means
+                        // snapshotFlow above won't re-trigger; kick off geocoding now.
+                        val resolved = runCatching { context.reverseGeocode(target.latitude, target.longitude) }
+                            .getOrNull()
+                        val latest = checkInState as? CheckInUiState.Active ?: return@launch
+                        checkInState = latest.copy(
+                            locationLabel = resolved ?: LocationLabel(),
+                            isResolvingName = false,
+                        )
+                    }
+                },
+                onPermissionDenied = {
+                    notificationHostState.show(permissionErrorMessage, InAppNotificationType.Error)
+                },
+                onSelectAlert = { alertState = AlertUiState.PickingLocation },
+                bottomInset = BottomBarMapPadding + 28.dp,
+            )
         }
 
         CheckInOverlay(
             state = checkInState,
-            onStart = {
-                checkInState = CheckInUiState.Locating
-                scope.launch {
-                    val location = runCatching { context.fetchCurrentLocation() }.getOrNull()
-                    if (location == null) {
-                        checkInState = CheckInUiState.Idle
-                        notificationHostState.show(locationErrorMessage, InAppNotificationType.Error)
-                        return@launch
-                    }
-                    val target = LatLng(location.latitude, location.longitude)
-                    checkInState = CheckInUiState.Active(
-                        locationLabel = LocationLabel(),
-                        isResolvingName = true,
-                        isSubmitting = false,
-                    )
-                    cameraPositionState.animate(
-                        update = CameraUpdateFactory.newLatLngZoom(target, ACTIVE_ZOOM),
-                        durationMs = 600,
-                    )
-                    // After animate() returns the camera has settled, which means
-                    // snapshotFlow above won't re-trigger; kick off geocoding now.
-                    val resolved = runCatching { context.reverseGeocode(target.latitude, target.longitude) }
-                        .getOrNull()
-                    val latest = checkInState as? CheckInUiState.Active ?: return@launch
-                    checkInState = latest.copy(
-                        locationLabel = resolved ?: LocationLabel(),
-                        isResolvingName = false,
-                    )
-                }
-            },
             onConfirm = {
                 val active = checkInState as? CheckInUiState.Active ?: return@CheckInOverlay
                 val target = cameraPositionState.position.target
@@ -355,12 +386,94 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                 }
             },
             onCancel = { checkInState = CheckInUiState.Idle },
-            onPermissionDenied = {
-                checkInState = CheckInUiState.Idle
-                notificationHostState.show(permissionErrorMessage, InAppNotificationType.Error)
-            },
             bottomInset = BottomBarMapPadding + 28.dp,
         )
+
+        if (alertState is AlertUiState.PickingLocation) {
+            AlertPickActions(
+                onNext = {
+                    val target = cameraPositionState.position.target
+                    alertState = AlertUiState.Form(
+                        lat = target.latitude,
+                        lng = target.longitude,
+                        category = AlertCategory.NavigationWarning,
+                        content = "",
+                    )
+                },
+                onCancel = { alertState = AlertUiState.Idle },
+                bottomInset = BottomBarMapPadding + 28.dp,
+            )
+        }
+
+        (alertState as? AlertUiState.Form)?.let { form ->
+            AlertFormDialog(
+                state = form,
+                onCategorySelected = { category ->
+                    (alertState as? AlertUiState.Form)?.let { alertState = it.copy(category = category) }
+                },
+                onContentChange = { content ->
+                    (alertState as? AlertUiState.Form)?.let {
+                        alertState = it.copy(content = content, contentError = null)
+                    }
+                },
+                onSave = {
+                    val current = alertState as? AlertUiState.Form ?: return@AlertFormDialog
+                    if (current.content.isBlank()) {
+                        alertState = current.copy(contentError = AlertContentError.Required)
+                        return@AlertFormDialog
+                    }
+                    alertState = current.copy(isSubmitting = true, contentError = null)
+                    scope.launch {
+                        val token = SessionStore.validSession()?.accessToken
+                        if (token.isNullOrBlank()) {
+                            (alertState as? AlertUiState.Form)?.let { alertState = it.copy(isSubmitting = false) }
+                            notificationHostState.show(alertAuthErrorMessage, InAppNotificationType.Error)
+                            return@launch
+                        }
+                        try {
+                            AlertsApi.create(
+                                accessToken = token,
+                                category = current.category,
+                                content = current.content,
+                                geometry = AlertGeometry.point(current.lat, current.lng),
+                            )
+                            alertState = AlertUiState.Idle
+                            notificationHostState.show(alertSuccessMessage, InAppNotificationType.Success)
+                            // Refresh so the freshly created alert shows on the map
+                            // without waiting for the next camera move.
+                            val bounds = cameraPositionState.visibleViewportBounds()
+                            if (bounds != null) {
+                                runCatching { mapEntries = MapItemsApi.list(token, bounds).entries }
+                            }
+                        } catch (e: AlertError.Validation) {
+                            (alertState as? AlertUiState.Form)?.let {
+                                if (e.fieldErrors.containsKey("content")) {
+                                    alertState = it.copy(
+                                        isSubmitting = false,
+                                        contentError = AlertContentError.Required,
+                                    )
+                                } else {
+                                    alertState = it.copy(isSubmitting = false)
+                                    notificationHostState.show(alertGenericErrorMessage, InAppNotificationType.Error)
+                                }
+                            }
+                        } catch (e: AlertError) {
+                            (alertState as? AlertUiState.Form)?.let { alertState = it.copy(isSubmitting = false) }
+                            notificationHostState.show(
+                                e.userMessage(alertNetworkErrorMessage, alertAuthErrorMessage, alertGenericErrorMessage),
+                                InAppNotificationType.Error,
+                            )
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            (alertState as? AlertUiState.Form)?.let { alertState = it.copy(isSubmitting = false) }
+                            notificationHostState.show(alertGenericErrorMessage, InAppNotificationType.Error)
+                        }
+                    }
+                },
+                onDismiss = { alertState = AlertUiState.Idle },
+            )
+        }
 
         InAppNotificationHost(
             hostState = notificationHostState,
@@ -621,7 +734,10 @@ private fun checkInRelativeStatus(checkedInAt: String): String {
  * map (= the camera's target LatLng) sits exactly under the tip.
  */
 @Composable
-private fun CenterMapPin(modifier: Modifier = Modifier) {
+private fun CenterMapPin(
+    modifier: Modifier = Modifier,
+    contentDescription: String = stringResource(R.string.map_check_in_pin_content_description),
+) {
     val pinSize = 56.dp
     Box(modifier = modifier.size(pinSize)) {
         // Small ground anchor at the true centre so the user can see exactly which
@@ -635,7 +751,7 @@ private fun CenterMapPin(modifier: Modifier = Modifier) {
         )
         Icon(
             imageVector = Icons.Filled.LocationOn,
-            contentDescription = stringResource(R.string.map_check_in_pin_content_description),
+            contentDescription = contentDescription,
             tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier
                 .align(Alignment.Center)
@@ -660,6 +776,35 @@ private fun LocationTargetOverlay(
                 .offset(y = (-96).dp),
         )
         CenterMapPin(modifier = Modifier.align(Alignment.Center))
+    }
+}
+
+@Composable
+private fun AlertTargetOverlay(modifier: Modifier = Modifier) {
+    Box(modifier = modifier) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            tonalElevation = 3.dp,
+            shadowElevation = 8.dp,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .offset(y = (-96).dp)
+                .widthIn(max = 300.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.alert_pick_location_hint),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            )
+        }
+        CenterMapPin(
+            modifier = Modifier.align(Alignment.Center),
+            contentDescription = stringResource(R.string.alert_pin_content_description),
+        )
     }
 }
 
@@ -741,6 +886,19 @@ private fun MapItemsError.userMessage(
     is MapItemsError.RateLimited,
     is MapItemsError.Validation,
     is MapItemsError.Server,
+    -> generic
+}
+
+private fun AlertError.userMessage(
+    network: String,
+    auth: String,
+    generic: String,
+): String = when (this) {
+    is AlertError.Network -> network
+    is AlertError.AuthenticationRequired -> auth
+    is AlertError.RateLimited,
+    is AlertError.Validation,
+    is AlertError.Server,
     -> generic
 }
 

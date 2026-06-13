@@ -124,6 +124,41 @@
         <item quantity="other">Checked in %1$d days ago.</item>
     </plurals>
 
+    <!-- Map add menu -->
+    <string name="map_action_expand">Add to the map</string>
+    <string name="map_action_collapse">Close menu</string>
+    <string name="map_action_check_in">Check-in</string>
+    <string name="map_action_alert">Alert</string>
+
+    <!-- Navigation alerts -->
+    <string name="alert_pick_location_hint">Move the map to mark the alert location.</string>
+    <string name="alert_pin_content_description">Alert pin centred on map</string>
+    <string name="alert_next">Next</string>
+    <string name="alert_cancel">Cancel</string>
+    <string name="alert_form_title">New alert</string>
+    <string name="alert_form_close">Close</string>
+    <string name="alert_form_category_label">Category</string>
+    <string name="alert_form_content_label">Description</string>
+    <string name="alert_form_content_placeholder">Describe the navigation alert…</string>
+    <string name="alert_form_save">Save</string>
+    <string name="alert_error_content_required">Description is required.</string>
+    <string name="alert_success">Alert added.</string>
+    <string name="alert_error_network">No internet connection. Please try again.</string>
+    <string name="alert_error_auth">Please sign in again to add an alert.</string>
+    <string name="alert_error_generic">Couldn\'t add the alert. Please try again.</string>
+
+    <!-- Alert categories -->
+    <string name="alert_category_navigation_warning">Navigation warning</string>
+    <string name="alert_category_navtex">NAVTEX</string>
+    <string name="alert_category_notice_to_mariners">Notice to mariners</string>
+    <string name="alert_category_obstruction">Obstruction</string>
+    <string name="alert_category_works">Works</string>
+    <string name="alert_category_regatta">Regatta</string>
+    <string name="alert_category_diving">Diving</string>
+    <string name="alert_category_military_exercise">Military exercise</string>
+    <string name="alert_category_weather">Weather alert</string>
+    <string name="alert_category_other">Alert</string>
+
     <string name="menu_my_profile">My profile</string>
     <string name="menu_saved">Saved</string>
     <string name="menu_settings">Settings</string>

@@ -1,10 +1,7 @@
 package app.skipperclub.ui.main.checkin
 
-import android.Manifest
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -28,13 +25,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -45,8 +39,10 @@ import app.skipperclub.ui.theme.SkipperClubTheme
 import app.skipperclub.ui.theme.extended
 
 /**
- * Bottom-aligned overlay that hosts the check-in flow. It keeps the action stack
- * above global navigation while leaving the map visible.
+ * Bottom-aligned overlay that hosts the active check-in actions (confirm /
+ * cancel). The idle entry point now lives in the map "+" speed-dial
+ * ([app.skipperclub.ui.main.MapAddMenu]); this overlay renders nothing while the
+ * flow is [CheckInUiState.Idle].
  *
  * Pass [bottomInset] equal to the bottom-bar height (plus desired gap) so nothing
  * collides with global navigation.
@@ -54,50 +50,30 @@ import app.skipperclub.ui.theme.extended
 @Composable
 fun CheckInOverlay(
     state: CheckInUiState,
-    onStart: () -> Unit,
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
-    onPermissionDenied: () -> Unit,
     bottomInset: Dp,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions(),
-    ) { result ->
-        val granted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-            result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (granted) onStart() else onPermissionDenied()
-    }
-
     Box(modifier = modifier.fillMaxSize()) {
-        Box(
+        AnimatedVisibility(
+            visible = state !is CheckInUiState.Idle,
+            enter = fadeIn(),
+            exit = fadeOut(),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .imePadding()
                 .padding(horizontal = 16.dp)
                 .padding(bottom = bottomInset),
-            contentAlignment = Alignment.BottomEnd,
         ) {
-            CheckInActions(
-                state = state,
-                onStart = {
-                    if (context.hasLocationPermission()) {
-                        onStart()
-                    } else {
-                        permissionLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION,
-                            ),
-                        )
-                    }
-                },
-                onConfirm = onConfirm,
-                onCancel = onCancel,
-            )
+            Box(contentAlignment = Alignment.BottomEnd) {
+                CheckInActions(
+                    state = state,
+                    onConfirm = onConfirm,
+                    onCancel = onCancel,
+                )
+            }
         }
     }
 }
@@ -105,7 +81,6 @@ fun CheckInOverlay(
 @Composable
 private fun CheckInActions(
     state: CheckInUiState,
-    onStart: () -> Unit,
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -113,11 +88,7 @@ private fun CheckInActions(
         horizontalAlignment = Alignment.End,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        CheckInActionButton(
-            state = state,
-            onStart = onStart,
-            onConfirm = onConfirm,
-        )
+        ConfirmCheckInButton(state = state, onConfirm = onConfirm)
         AnimatedVisibility(
             visible = state is CheckInUiState.Active,
             enter = fadeIn() + slideInVertically { it / 2 },
@@ -132,39 +103,22 @@ private fun CheckInActions(
 }
 
 @Composable
-private fun CheckInActionButton(
+private fun ConfirmCheckInButton(
     state: CheckInUiState,
-    onStart: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    val isActive = state is CheckInUiState.Active
     val isBusy = state is CheckInUiState.Locating ||
         (state is CheckInUiState.Active && state.isSubmitting)
 
-    val containerColor by animateColorAsState(
-        targetValue = if (isActive) MaterialTheme.extended.success else MaterialTheme.colorScheme.primary,
-        label = "Check-in button container",
-    )
-    val contentColor by animateColorAsState(
-        targetValue = if (isActive) MaterialTheme.extended.onSuccess else MaterialTheme.colorScheme.onPrimary,
-        label = "Check-in button content",
-    )
-
     Button(
-        onClick = {
-            when (state) {
-                is CheckInUiState.Idle -> onStart()
-                is CheckInUiState.Locating -> Unit
-                is CheckInUiState.Active -> onConfirm()
-            }
-        },
+        onClick = { if (state is CheckInUiState.Active) onConfirm() },
         enabled = !isBusy,
         shape = RoundedCornerShape(50),
         colors = ButtonDefaults.buttonColors(
-            containerColor = containerColor,
-            contentColor = contentColor,
-            disabledContainerColor = containerColor,
-            disabledContentColor = contentColor,
+            containerColor = MaterialTheme.extended.success,
+            contentColor = MaterialTheme.extended.onSuccess,
+            disabledContainerColor = MaterialTheme.extended.success,
+            disabledContentColor = MaterialTheme.extended.onSuccess,
         ),
         modifier = Modifier
             .widthIn(min = 224.dp, max = 320.dp)
@@ -172,7 +126,7 @@ private fun CheckInActionButton(
     ) {
         if (isBusy) {
             CircularProgressIndicator(
-                color = contentColor,
+                color = MaterialTheme.extended.onSuccess,
                 strokeWidth = 2.dp,
                 modifier = Modifier.size(22.dp),
             )
@@ -184,9 +138,7 @@ private fun CheckInActionButton(
             )
         }
         Text(
-            text = stringResource(
-                if (isActive) R.string.map_check_in_confirm else R.string.map_check_in,
-            ),
+            text = stringResource(R.string.map_check_in_confirm),
             modifier = Modifier.padding(start = 8.dp),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
@@ -227,21 +179,6 @@ private fun CancelCheckInButton(
     }
 }
 
-@Preview(showBackground = true, widthDp = 360, heightDp = 280, locale = "en")
-@Composable
-private fun CheckInOverlayIdlePreview() {
-    SkipperClubTheme {
-        CheckInOverlay(
-            state = CheckInUiState.Idle,
-            onStart = {},
-            onConfirm = {},
-            onCancel = {},
-            onPermissionDenied = {},
-            bottomInset = 8.dp,
-        )
-    }
-}
-
 @Preview(showBackground = true, widthDp = 360, heightDp = 380, locale = "pl")
 @Composable
 private fun CheckInOverlayActivePreviewPl() {
@@ -252,10 +189,8 @@ private fun CheckInOverlayActivePreviewPl() {
                 isResolvingName = false,
                 isSubmitting = false,
             ),
-            onStart = {},
             onConfirm = {},
             onCancel = {},
-            onPermissionDenied = {},
             bottomInset = 8.dp,
         )
     }
@@ -265,21 +200,15 @@ private fun CheckInOverlayActivePreviewPl() {
     showBackground = true,
     widthDp = 360,
     heightDp = 380,
-    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
-private fun CheckInOverlayActivePreviewDark() {
+private fun CheckInOverlayLocatingPreviewDark() {
     SkipperClubTheme {
         CheckInOverlay(
-            state = CheckInUiState.Active(
-                locationLabel = LocationLabel(addressLine = "Gen. Mariana C. Coopera 3"),
-                isResolvingName = true,
-                isSubmitting = false,
-            ),
-            onStart = {},
+            state = CheckInUiState.Locating,
             onConfirm = {},
             onCancel = {},
-            onPermissionDenied = {},
             bottomInset = 8.dp,
         )
     }

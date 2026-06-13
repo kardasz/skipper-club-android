@@ -97,10 +97,8 @@ class MainScreensTest {
                         isResolvingName = false,
                         isSubmitting = false,
                     ),
-                    onStart = {},
                     onConfirm = { confirmCount++ },
                     onCancel = { cancelCount++ },
-                    onPermissionDenied = {},
                     bottomInset = 0.dp,
                 )
             }
@@ -119,16 +117,14 @@ class MainScreensTest {
             SkipperClubTheme {
                 CheckInOverlay(
                     state = CheckInUiState.Locating,
-                    onStart = {},
                     onConfirm = {},
                     onCancel = {},
-                    onPermissionDenied = {},
                     bottomInset = 0.dp,
                 )
             }
         }
 
-        compose.onNodeWithText(text(R.string.map_check_in)).assertIsNotEnabled()
+        compose.onNodeWithText(text(R.string.map_check_in_confirm)).assertIsNotEnabled()
     }
 
     @Test
@@ -141,10 +137,8 @@ class MainScreensTest {
                         isResolvingName = true,
                         isSubmitting = true,
                     ),
-                    onStart = {},
                     onConfirm = {},
                     onCancel = {},
-                    onPermissionDenied = {},
                     bottomInset = 0.dp,
                 )
             }

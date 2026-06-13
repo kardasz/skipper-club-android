@@ -130,6 +130,41 @@
         <item quantity="other">Zameldował się %1$d dni temu.</item>
     </plurals>
 
+    <!-- Menu dodawania na mapie -->
+    <string name="map_action_expand">Dodaj na mapę</string>
+    <string name="map_action_collapse">Zamknij menu</string>
+    <string name="map_action_check_in">Meldunek</string>
+    <string name="map_action_alert">Ostrzeżenie</string>
+
+    <!-- Ostrzeżenia nawigacyjne -->
+    <string name="alert_pick_location_hint">Przesuń mapę, aby wskazać miejsce ostrzeżenia.</string>
+    <string name="alert_pin_content_description">Pinezka ostrzeżenia na środku mapy</string>
+    <string name="alert_next">Dalej</string>
+    <string name="alert_cancel">Anuluj</string>
+    <string name="alert_form_title">Nowe ostrzeżenie</string>
+    <string name="alert_form_close">Zamknij</string>
+    <string name="alert_form_category_label">Kategoria</string>
+    <string name="alert_form_content_label">Opis</string>
+    <string name="alert_form_content_placeholder">Opisz ostrzeżenie nawigacyjne…</string>
+    <string name="alert_form_save">Zapisz</string>
+    <string name="alert_error_content_required">Opis jest wymagany.</string>
+    <string name="alert_success">Ostrzeżenie zostało dodane.</string>
+    <string name="alert_error_network">Brak połączenia z internetem. Spróbuj ponownie.</string>
+    <string name="alert_error_auth">Zaloguj się ponownie, aby dodać ostrzeżenie.</string>
+    <string name="alert_error_generic">Nie udało się dodać ostrzeżenia. Spróbuj ponownie.</string>
+
+    <!-- Kategorie ostrzeżeń -->
+    <string name="alert_category_navigation_warning">Ostrzeżenie nawigacyjne</string>
+    <string name="alert_category_navtex">NAVTEX</string>
+    <string name="alert_category_notice_to_mariners">Notice to mariners</string>
+    <string name="alert_category_obstruction">Przeszkoda</string>
+    <string name="alert_category_works">Prace</string>
+    <string name="alert_category_regatta">Regaty</string>
+    <string name="alert_category_diving">Nurkowanie</string>
+    <string name="alert_category_military_exercise">Ćwiczenia wojskowe</string>
+    <string name="alert_category_weather">Ostrzeżenie pogodowe</string>
+    <string name="alert_category_other">Ostrzeżenie</string>
+
     <string name="menu_my_profile">Mój profil</string>
     <string name="menu_saved">Zapisane</string>
     <string name="menu_settings">Ustawienia</string>
