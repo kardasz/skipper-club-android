@@ -51,6 +51,24 @@ sealed interface MapEntryAttributes {
         val checkedInAt: String,
         val locationName: String?,
     ) : MapEntryAttributes
+
+    /**
+     * Full payload for a `navigation_alert` map item. The map endpoint already
+     * inlines the alert body (see openapi `MapAlertAttributes`), so the detail
+     * view can render without a separate `GET /v1/alerts/{id}` fetch.
+     *
+     * [sourceName] / [sourceNumber] / [sourceUrl] are flattened from the
+     * optional source-specific attribution (`sourceAttributes`); they are only
+     * present for official imports and `null` for user-created alerts.
+     */
+    data class NavigationAlert(
+        val category: AlertCategory,
+        val content: String,
+        val source: String,
+        val sourceName: String? = null,
+        val sourceNumber: String? = null,
+        val sourceUrl: String? = null,
+    ) : MapEntryAttributes
 }
 
 data class MapUserProjection(
@@ -135,6 +153,34 @@ private data class MapCheckInAttributesDto(
 }
 
 @Serializable
+private data class MapAlertAttributesDto(
+    val category: AlertCategory,
+    val content: String,
+    val language: String? = null,
+    val source: String = "user",
+    val sourceId: String? = null,
+    val sourceAttributes: MapAlertSourceAttributesDto? = null,
+) {
+    fun toDomain(): MapEntryAttributes.NavigationAlert =
+        MapEntryAttributes.NavigationAlert(
+            category = category,
+            content = content,
+            source = source,
+            sourceName = sourceAttributes?.externalSourceName,
+            sourceNumber = sourceAttributes?.externalNumber,
+            sourceUrl = sourceAttributes?.externalSourceUrl,
+        )
+}
+
+@Serializable
+private data class MapAlertSourceAttributesDto(
+    val type: String? = null,
+    val externalSourceName: String? = null,
+    val externalSourceUrl: String? = null,
+    val externalNumber: String? = null,
+)
+
+@Serializable
 private data class MapUserProjectionDto(
     val id: String,
     val displayName: String,
@@ -170,9 +216,12 @@ private fun MapEntryType.toDomainAttributes(attributes: JsonObject?): MapEntryAt
                 .decodeFromJsonElement<MapCheckInAttributesDto>(attributes)
                 .toDomain()
 
+            MapEntryType.NavigationAlert -> mapAttributesJson
+                .decodeFromJsonElement<MapAlertAttributesDto>(attributes)
+                .toDomain()
+
             MapEntryType.Post,
             MapEntryType.Spot,
-            MapEntryType.NavigationAlert,
             -> null
         }
     } catch (_: SerializationException) {

@@ -146,6 +146,9 @@
     <string name="alert_error_network">No internet connection. Please try again.</string>
     <string name="alert_error_auth">Please sign in again to add an alert.</string>
     <string name="alert_error_generic">Couldn\'t add the alert. Please try again.</string>
+    <string name="alert_marker_content_description">Alert: %1$s. Tap for details.</string>
+    <string name="alert_detail_source">Source: %1$s</string>
+    <string name="alert_detail_source_number">Source: %1$s · No. %2$s</string>
 
     <!-- Alert categories -->
     <string name="alert_category_navigation_warning">Navigation warning</string>

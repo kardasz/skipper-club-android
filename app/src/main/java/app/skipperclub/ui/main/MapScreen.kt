@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -490,6 +491,7 @@ private fun MapEntryMarker(
     onClick: () -> Unit,
 ) {
     val checkInAttributes = entry.checkInAttributes
+    val alertAttributes = entry.alertAttributes
     val avatarUrl = checkInAttributes?.user?.avatarUrl?.takeIf { it.isNotBlank() }
     val context = LocalContext.current
     val avatarPainter = avatarUrl?.let { url ->
@@ -526,18 +528,28 @@ private fun MapEntryMarker(
             onClick()
             true
         },
-        zIndex = if (entry.kind == MapEntryKind.Cluster) 2f else 1f,
+        zIndex = when {
+            selected -> 3f
+            entry.kind == MapEntryKind.Cluster -> 2f
+            else -> 1f
+        },
     ) {
-        if (entry.type == MapEntryType.CheckIn && checkInAttributes != null) {
-            CheckInMapMarker(
+        when {
+            entry.type == MapEntryType.CheckIn && checkInAttributes != null -> CheckInMapMarker(
                 name = entry.name,
                 attributes = checkInAttributes,
                 selected = selected,
                 avatarPainter = avatarPainter,
                 isAvatarLoaded = isAvatarLoaded,
             )
-        } else {
-            MapEntryMarkerLabel(entry = entry)
+
+            alertAttributes != null -> AlertMapMarker(
+                title = entry.name,
+                attributes = alertAttributes,
+                selected = selected,
+            )
+
+            else -> MapEntryMarkerLabel(entry = entry)
         }
     }
 }
@@ -684,6 +696,129 @@ private fun CheckInAvatarPin(
                     color = colors.onSecondaryContainer,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlertMapMarker(
+    title: String,
+    attributes: MapEntryAttributes.NavigationAlert,
+    selected: Boolean,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        if (selected) {
+            AlertInfoBubble(
+                title = title,
+                content = attributes.content,
+                sourceName = attributes.sourceName,
+                sourceNumber = attributes.sourceNumber,
+                modifier = Modifier.widthIn(max = 264.dp),
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+        }
+        AlertMarkerPin()
+    }
+}
+
+/**
+ * Collapsed alert marker: a warning icon in a teardrop pin. Visually distinct
+ * from check-in pins (error colour, warning glyph) so every alert reads as an
+ * alert at a glance, per the product ask.
+ */
+@Composable
+private fun AlertMarkerPin(modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Box(
+        modifier = modifier
+            .width(44.dp)
+            .height(50.dp),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .offset(y = (-4).dp)
+                .size(14.dp)
+                .rotate(45f)
+                .clip(MaterialTheme.shapes.extraSmall)
+                .background(colors.error),
+        )
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(colors.error)
+                .border(2.dp, colors.surface, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Warning,
+                contentDescription = null,
+                tint = colors.onError,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun AlertInfoBubble(
+    title: String,
+    content: String,
+    sourceName: String?,
+    sourceNumber: String?,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = colors.surface.copy(alpha = 0.97f),
+        contentColor = colors.onSurface,
+        tonalElevation = 4.dp,
+        shadowElevation = 8.dp,
+        border = BorderStroke(1.dp, colors.outlineVariant),
+        modifier = modifier,
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Filled.Warning,
+                    contentDescription = null,
+                    tint = colors.error,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = content,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+                maxLines = 14,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (!sourceName.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = if (!sourceNumber.isNullOrBlank()) {
+                        stringResource(R.string.alert_detail_source_number, sourceName, sourceNumber)
+                    } else {
+                        stringResource(R.string.alert_detail_source, sourceName)
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -908,6 +1043,9 @@ private val MapEntry.markerKey: String
 private val MapEntry.checkInAttributes: MapEntryAttributes.CheckIn?
     get() = attributes as? MapEntryAttributes.CheckIn
 
+private val MapEntry.alertAttributes: MapEntryAttributes.NavigationAlert?
+    get() = attributes as? MapEntryAttributes.NavigationAlert
+
 private val AsyncImagePainter.State.snapshotKey: String
     get() = when (this) {
         is AsyncImagePainter.State.Empty -> "empty"
@@ -1047,6 +1185,72 @@ private fun CheckInMarkerPreviewContent() {
             selected = true,
             avatarPainter = null,
             isAvatarLoaded = false,
+        )
+    }
+}
+
+@Preview(showBackground = true, locale = "en")
+@Composable
+private fun AlertMapMarkerPreviewEn() {
+    SkipperClubTheme {
+        AlertMarkerPreviewContent(title = "Weather alert", selected = true)
+    }
+}
+
+@Preview(showBackground = true, locale = "pl")
+@Composable
+private fun AlertMapMarkerPreviewPl() {
+    SkipperClubTheme {
+        AlertMarkerPreviewContent(
+            title = "Ostrzeżenie nawigacyjne",
+            selected = true,
+            content = "Wrak w pozycji 54°30'N 18°40'E oznaczony pławą kardynalną. " +
+                "Zachować szczególną ostrożność, omijać w odległości co najmniej 200 m.",
+            sourceName = "Biuro Hydrograficzne MW",
+            sourceNumber = "161/2026",
+        )
+    }
+}
+
+@Preview(showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+private fun AlertMapMarkerPreviewDark() {
+    SkipperClubTheme {
+        AlertMarkerPreviewContent(title = "Weather alert", selected = true)
+    }
+}
+
+@Preview(showBackground = true, locale = "en")
+@Composable
+private fun AlertMapMarkerCollapsedPreview() {
+    SkipperClubTheme {
+        AlertMarkerPreviewContent(title = "Weather alert", selected = false)
+    }
+}
+
+@Composable
+private fun AlertMarkerPreviewContent(
+    title: String,
+    selected: Boolean,
+    content: String = "Gale warning in force. Winds gusting to 35 knots expected from the NW.",
+    sourceName: String? = null,
+    sourceNumber: String? = null,
+) {
+    Box(
+        modifier = Modifier
+            .background(MaterialTheme.colorScheme.background)
+            .padding(32.dp),
+    ) {
+        AlertMapMarker(
+            title = title,
+            attributes = MapEntryAttributes.NavigationAlert(
+                category = AlertCategory.Weather,
+                content = content,
+                source = if (sourceName != null) "hhi_rnw" else "user",
+                sourceName = sourceName,
+                sourceNumber = sourceNumber,
+            ),
+            selected = selected,
         )
     }
 }

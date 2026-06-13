@@ -143,6 +143,86 @@ class MapItemsApiTest {
     }
 
     @Test
+    fun decodeResponseMapsUserNavigationAlertAttributes() {
+        val decoded = MapItemsApi.decodeResponse(
+            """
+                {
+                  "data": [
+                    {
+                      "kind": "item",
+                      "type": "navigation_alert",
+                      "id": "019eac4a-3e2d-7c11-8761-f9d85d6e6419",
+                      "name": "Weather alert",
+                      "coordinates": { "lat": 54.49, "lng": 18.55 },
+                      "geometry": { "type": "Point", "coordinates": [18.55, 54.49] },
+                      "attributes": {
+                        "category": "weather",
+                        "content": "Gale warning in force. Winds gusting to 35 knots.",
+                        "language": "en",
+                        "source": "user",
+                        "sourceId": "01985af0-b793-7d54-a10f-a0d18100b4a0",
+                        "sourceAttributes": null
+                      }
+                    }
+                  ],
+                  "meta": { "hasMoreDetail": false }
+                }
+            """.trimIndent(),
+        )
+
+        val entry = decoded.entries.single()
+        val attributes = entry.attributes as MapEntryAttributes.NavigationAlert
+        assertEquals(MapEntryType.NavigationAlert, entry.type)
+        assertEquals("Weather alert", entry.name)
+        assertEquals(AlertCategory.Weather, attributes.category)
+        assertEquals("Gale warning in force. Winds gusting to 35 knots.", attributes.content)
+        assertEquals("user", attributes.source)
+        assertNull(attributes.sourceName)
+        assertNull(attributes.sourceNumber)
+    }
+
+    @Test
+    fun decodeResponseFlattensOfficialNavigationAlertSourceAttributes() {
+        val decoded = MapItemsApi.decodeResponse(
+            """
+                {
+                  "data": [
+                    {
+                      "kind": "item",
+                      "type": "navigation_alert",
+                      "id": "019eac4a-3e2d-7c11-8761-f9d85d6e6420",
+                      "name": "Navigation warning",
+                      "coordinates": { "lat": 54.40, "lng": 18.60 },
+                      "geometry": { "type": "Point", "coordinates": [18.60, 54.40] },
+                      "attributes": {
+                        "category": "navigation_warning",
+                        "content": "Wreck marked by cardinal buoy.",
+                        "language": "en",
+                        "source": "hhi_rnw",
+                        "sourceId": null,
+                        "sourceAttributes": {
+                          "type": "hhi_rnw",
+                          "externalSourceName": "Hydrographic Institute",
+                          "externalSourceUrl": "https://www.hhi.hr/en/warnings",
+                          "externalNumber": "161/2026"
+                        }
+                      }
+                    }
+                  ],
+                  "meta": { "hasMoreDetail": false }
+                }
+            """.trimIndent(),
+        )
+
+        val attributes = decoded.entries.single().attributes as MapEntryAttributes.NavigationAlert
+        assertEquals(AlertCategory.NavigationWarning, attributes.category)
+        assertEquals("hhi_rnw", attributes.source)
+        assertEquals("Hydrographic Institute", attributes.sourceName)
+        assertEquals("161/2026", attributes.sourceNumber)
+        assertEquals("https://www.hhi.hr/en/warnings", attributes.sourceUrl)
+    }
+
+    @Test
     fun unauthorizedProblemMapsToAuthenticationRequired() {
         val error = response(
             code = 401,
