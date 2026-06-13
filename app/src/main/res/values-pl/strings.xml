@@ -334,4 +334,193 @@
     <string name="new_chat_empty">Nie znaleziono członków.</string>
     <string name="new_chat_search_failed">Nie udało się wyszukać członków.</string>
     <string name="new_chat_remove_participant">Usuń %1$s</string>
+
+    <!-- Rejsy: lista -->
+    <string name="cruises_scope_mine">Moje rejsy</string>
+    <string name="cruises_scope_all">Wszystkie rejsy</string>
+    <string name="cruises_search_placeholder">Szukaj rejsów</string>
+    <string name="cruises_search_clear">Wyczyść wyszukiwanie</string>
+    <string name="cruises_load_failed">Nie udało się wczytać rejsów.</string>
+    <string name="cruises_retry">Ponów</string>
+    <string name="cruises_empty_search">Brak rejsów pasujących do wyszukiwania.</string>
+    <string name="cruises_empty_mine_title">Nie masz jeszcze rejsów</string>
+    <string name="cruises_empty_mine_subtitle">Utwórz swój pierwszy rejs lub dołącz do jednego z Wszystkich rejsów.</string>
+    <string name="cruises_empty_all_title">Brak dostępnych publicznych rejsów.</string>
+    <string name="cruises_create">Utwórz rejs</string>
+    <string name="cruise_error_network">Brak połączenia. Sprawdź sieć i spróbuj ponownie.</string>
+    <string name="cruise_error_auth">Sesja wygasła. Zaloguj się ponownie.</string>
+    <string name="cruise_error_generic">Coś poszło nie tak. Spróbuj ponownie.</string>
+
+    <!-- Rejsy: karta / wspólne -->
+    <string name="cruise_per_person">os.</string>
+    <string name="cruise_private">Rejs prywatny</string>
+    <string name="participation_organizer">Organizator</string>
+    <string name="cruise_availability_full">Pełny</string>
+    <string name="cruise_availability_filling_up">Prawie pełny</string>
+    <plurals name="cruise_nights">
+        <item quantity="one">%1$d noc</item>
+        <item quantity="few">%1$d noce</item>
+        <item quantity="many">%1$d nocy</item>
+        <item quantity="other">%1$d nocy</item>
+    </plurals>
+
+    <!-- Typy jednostek -->
+    <string name="vessel_type_sailing_yacht">Jacht żaglowy</string>
+    <string name="vessel_type_catamaran">Katamaran</string>
+    <string name="vessel_type_motorboat">Motorówka</string>
+    <string name="vessel_type_trimaran">Trimaran</string>
+    <string name="vessel_type_gulet">Gulet</string>
+    <string name="vessel_type_schooner">Szkuner</string>
+
+    <!-- Typy rejsów -->
+    <string name="cruise_type_beginner_intro">Dla początkujących</string>
+    <string name="cruise_type_training">Szkoleniowy</string>
+    <string name="cruise_type_milebuilding">Zbieranie mil</string>
+    <string name="cruise_type_advanced">Zaawansowany</string>
+    <string name="cruise_type_sport_regatta">Sport / regaty</string>
+    <string name="cruise_type_family">Rodzinny</string>
+    <string name="cruise_type_singles">Dla singli</string>
+    <string name="cruise_type_couples">Dla par</string>
+    <string name="cruise_type_seniors">Dla seniorów</string>
+    <string name="cruise_type_women_only">Tylko kobiety</string>
+    <string name="cruise_type_men_only">Tylko mężczyźni</string>
+    <string name="cruise_type_party">Imprezowy</string>
+    <string name="cruise_type_relax">Relaksacyjny</string>
+    <string name="cruise_type_survival">Survivalowy</string>
+    <string name="cruise_type_photography">Fotograficzny</string>
+    <string name="cruise_type_culinary">Kulinarny</string>
+    <string name="cruise_type_cultural_historical">Kulturowo-historyczny</string>
+    <string name="cruise_type_exploration">Eksploracyjny</string>
+
+    <!-- Stany uczestnika -->
+    <string name="participant_state_pending">Oczekuje</string>
+    <string name="participant_state_invited">Zaproszony</string>
+    <string name="participant_state_accepted">Załoga</string>
+    <string name="participant_state_rejected_by_participant">Odrzucił</string>
+    <string name="participant_state_rejected_by_organizer">Odrzucony</string>
+    <string name="participant_state_withdrawn_by_participant">Wycofany</string>
+    <string name="participant_state_withdrawn_by_organizer">Zaproszenie cofnięte</string>
+    <string name="participant_state_canceled_by_participant">Zrezygnował</string>
+    <string name="participant_state_canceled_by_organizer">Usunięty</string>
+
+    <!-- Szczegóły rejsu -->
+    <string name="cruise_detail_title">Rejs</string>
+    <string name="cruise_detail_load_failed">Nie udało się wczytać rejsu.</string>
+    <string name="cruise_organizer_label">Organizator</string>
+    <string name="cruise_section_schedule">Termin i trasa</string>
+    <string name="cruise_section_vessel">Jednostka</string>
+    <string name="cruise_section_crew">Załoga i koszt</string>
+    <string name="cruise_section_requirements">Wymagania</string>
+    <string name="cruise_section_rules">Zasady na pokładzie</string>
+    <string name="cruise_vessel_length_value">%1$.1f m</string>
+    <plurals name="cruise_vessel_cabins_value">
+        <item quantity="one">%1$d kabina</item>
+        <item quantity="few">%1$d kabiny</item>
+        <item quantity="many">%1$d kabin</item>
+        <item quantity="other">%1$d kabin</item>
+    </plurals>
+    <string name="cruise_action_join">Poproś o dołączenie</string>
+    <string name="cruise_action_cancel_request">Anuluj prośbę</string>
+    <string name="cruise_action_accept">Akceptuj</string>
+    <string name="cruise_action_decline">Odrzuć</string>
+    <string name="cruise_action_reject">Odrzuć</string>
+    <string name="cruise_action_cancel_invitation">Cofnij zaproszenie</string>
+    <string name="cruise_action_leave">Opuść rejs</string>
+    <string name="cruise_action_remove">Usuń z rejsu</string>
+    <string name="cruise_action_edit">Edytuj</string>
+    <string name="cruise_action_delete">Usuń</string>
+    <string name="cruise_action_manage">Zarządzaj załogą</string>
+    <string name="cruise_rule_smoking_yes">Palenie dozwolone</string>
+    <string name="cruise_rule_smoking_no">Zakaz palenia</string>
+    <string name="cruise_rule_alcohol_yes">Alkohol dozwolony</string>
+    <string name="cruise_rule_alcohol_no">Bez alkoholu</string>
+    <string name="cruise_rule_pets_yes">Zwierzęta dozwolone</string>
+    <string name="cruise_rule_pets_no">Bez zwierząt</string>
+    <string name="cruise_rule_children_yes">Dzieci mile widziane</string>
+    <string name="cruise_rule_children_no">Tylko dorośli</string>
+
+    <!-- Potwierdzenia -->
+    <string name="cruise_confirm_join_title">Poprosić o dołączenie?</string>
+    <string name="cruise_confirm_join_text">Organizator otrzyma powiadomienie i może zaakceptować lub odrzucić Twoją prośbę.</string>
+    <string name="cruise_confirm_cancel_title">Anulować prośbę?</string>
+    <string name="cruise_confirm_cancel_text">Twoja oczekująca prośba zostanie wycofana.</string>
+    <string name="cruise_confirm_decline_title">Odrzucić zaproszenie?</string>
+    <string name="cruise_confirm_decline_text">Nie dołączysz do tego rejsu.</string>
+    <string name="cruise_confirm_leave_title">Opuścić rejs?</string>
+    <string name="cruise_confirm_leave_text">Zostaniesz usunięty z załogi tego rejsu.</string>
+    <string name="cruise_confirm_delete_title">Usunąć rejs?</string>
+    <string name="cruise_confirm_delete_text">To trwale usunie rejs dla wszystkich.</string>
+
+    <!-- Zarządzanie uczestnikami -->
+    <string name="cruise_manage_title">Zarządzaj załogą</string>
+    <string name="cruise_manage_tab_crew">Załoga (%1$d)</string>
+    <string name="cruise_manage_tab_invitations">Prośby (%1$d)</string>
+    <string name="cruise_manage_crew_empty">Brak członków załogi.</string>
+    <string name="cruise_manage_invitations_empty">Brak próśb i zaproszeń.</string>
+    <string name="cruise_participant_unknown">Nieznany użytkownik</string>
+    <string name="cruise_invite_user">Zaproś osobę</string>
+    <string name="cruise_invite_search_hint">Szukaj osób</string>
+    <string name="cruise_invite_empty">Nie znaleziono osób.</string>
+    <string name="cruise_done">Gotowe</string>
+
+    <!-- Kreator rejsu -->
+    <string name="cruise_wizard_title_create">Nowy rejs</string>
+    <string name="cruise_wizard_title_edit">Edytuj rejs</string>
+    <string name="cruise_wizard_save">Zapisz</string>
+    <string name="cruise_wizard_publish_failed">Nie udało się zapisać rejsu. Spróbuj ponownie.</string>
+    <string name="cruise_wizard_step_basics">Podstawy</string>
+    <string name="cruise_wizard_step_route">Trasa</string>
+    <string name="cruise_wizard_step_vessel">Jednostka</string>
+    <string name="cruise_wizard_step_crew">Załoga i koszt</string>
+    <string name="cruise_wizard_step_summary">Podsumowanie</string>
+    <string name="cruise_field_title">Tytuł</string>
+    <string name="cruise_field_title_hint">np. Letni rejs po Adriatyku</string>
+    <string name="cruise_field_description">Opis</string>
+    <string name="cruise_field_description_hint">Opisz trasę, tempo i dla kogo jest ten rejs.</string>
+    <string name="cruise_field_type">Typ</string>
+    <string name="cruise_field_route">Trasa</string>
+    <string name="cruise_field_departure_port">Port startowy</string>
+    <string name="cruise_field_departure_port_hint">Wybierz port startowy</string>
+    <string name="cruise_field_arrival_port">Port docelowy</string>
+    <string name="cruise_field_arrival_port_hint">Wybierz port docelowy</string>
+    <string name="cruise_field_dates">Terminy</string>
+    <string name="cruise_field_departure_date">Wypłynięcie</string>
+    <string name="cruise_field_arrival_date">Przypłynięcie</string>
+    <string name="cruise_field_stops">Postoje</string>
+    <string name="cruise_stops_add">Dodaj postój</string>
+    <string name="cruise_stop_remove">Usuń postój</string>
+    <string name="cruise_field_vessel">Nazwa jednostki</string>
+    <string name="cruise_field_vessel_hint">np. Bavaria Cruiser 46</string>
+    <string name="cruise_field_vessel_type">Typ jednostki</string>
+    <string name="cruise_field_vessel_brand">Marka</string>
+    <string name="cruise_field_vessel_model">Model</string>
+    <string name="cruise_field_vessel_year">Rok</string>
+    <string name="cruise_field_vessel_length">Długość (ft)</string>
+    <string name="cruise_field_vessel_cabins">Kabiny</string>
+    <string name="cruise_field_required_skills">Wymagane umiejętności</string>
+    <string name="cruise_field_required_skills_hint">Certyfikaty lub doświadczenie oczekiwane od załogi.</string>
+    <string name="cruise_field_cost">Koszt na osobę</string>
+    <string name="cruise_field_currency">Waluta</string>
+    <string name="cruise_field_max_participants">Maks. uczestników</string>
+    <string name="cruise_field_private">Rejs prywatny</string>
+    <string name="cruise_field_private_subtitle">Ukryty w wyszukiwaniu; widoczny tylko dla zaproszonych.</string>
+    <string name="cruise_field_rules">Zasady na pokładzie</string>
+    <string name="cruise_rule_smoking">Palenie</string>
+    <string name="cruise_rule_alcohol">Alkohol</string>
+    <string name="cruise_rule_pets">Zwierzęta</string>
+    <string name="cruise_rule_children">Dzieci</string>
+    <string name="cruise_rule_yes">Dozwolone</string>
+    <string name="cruise_rule_no">Niedozwolone</string>
+    <string name="cruise_date_confirm">OK</string>
+    <string name="cruise_port_search_hint">Szukaj portów lub miejsc</string>
+    <string name="cruise_port_search_empty">Nie znaleziono miejsc.</string>
+    <string name="cruise_error_title">Tytuł musi mieć co najmniej 3 znaki.</string>
+    <string name="cruise_error_description">Opis musi mieć co najmniej 10 znaków.</string>
+    <string name="cruise_error_departure_port">Wybierz port startowy.</string>
+    <string name="cruise_error_arrival_port">Wybierz port docelowy.</string>
+    <string name="cruise_error_dates">Przypłynięcie musi być w dniu wypłynięcia lub później.</string>
+    <string name="cruise_error_vessel">Nazwa jednostki musi mieć co najmniej 5 znaków.</string>
+    <string name="cruise_error_vessel_type">Wybierz typ jednostki.</string>
+    <string name="cruise_error_cost">Podaj prawidłowy koszt.</string>
+    <string name="cruise_error_max_participants">Podaj od 1 do 50 uczestników.</string>
 </resources>

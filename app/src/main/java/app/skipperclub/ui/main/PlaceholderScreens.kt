@@ -20,11 +20,6 @@ import androidx.compose.ui.unit.dp
 import app.skipperclub.R
 
 @Composable
-fun CruisesScreen(modifier: Modifier = Modifier) {
-    PlaceholderScreen(R.string.nav_cruises, modifier)
-}
-
-@Composable
 fun MenuScreen(modifier: Modifier = Modifier) {
     PlaceholderScreen(R.string.nav_menu, modifier)
 }
