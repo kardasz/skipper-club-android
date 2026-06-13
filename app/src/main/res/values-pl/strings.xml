@@ -599,4 +599,34 @@
     <string name="invitation_delete">Usuń</string>
     <string name="invitation_delete_confirm_title">Usunąć zaproszenie?</string>
     <string name="invitation_delete_confirm_message">Zaproszenie dla %1$s przestanie działać. Tej operacji nie można cofnąć.</string>
+
+    <!-- Mój profil -->
+    <string name="profile_title">Mój profil</string>
+    <string name="profile_back">Wstecz</string>
+    <string name="profile_role_admin">Administrator</string>
+    <string name="profile_member_since">Z nami od %1$s</string>
+    <string name="profile_stat_cruises">Rejsy</string>
+    <string name="profile_stat_friends">Znajomi</string>
+    <string name="profile_stat_posts">Posty</string>
+    <string name="profile_section_about">O mnie</string>
+    <string name="profile_section_sailing">Żeglarstwo</string>
+    <string name="profile_section_social">Social media</string>
+    <string name="profile_label_experience">Poziom doświadczenia</string>
+    <string name="profile_label_years">Lata doświadczenia</string>
+    <string name="profile_label_licenses">Licencje i certyfikaty</string>
+    <string name="profile_label_languages">Języki</string>
+    <string name="profile_label_voyage_styles">Preferowane style rejsów</string>
+    <string name="profile_experience_beginner">Początkujący</string>
+    <string name="profile_experience_intermediate">Średnio zaawansowany</string>
+    <string name="profile_experience_advanced">Zaawansowany</string>
+    <string name="profile_experience_professional">Zawodowiec</string>
+    <string name="profile_social_facebook">Facebook</string>
+    <string name="profile_social_instagram">Instagram</string>
+    <string name="profile_social_tiktok">TikTok</string>
+    <string name="profile_social_whatsapp">WhatsApp</string>
+    <string name="profile_load_failed">Nie udało się wczytać Twojego profilu.</string>
+    <string name="profile_retry">Spróbuj ponownie</string>
+    <string name="profile_error_network">Brak połączenia. Sprawdź sieć i spróbuj ponownie.</string>
+    <string name="profile_error_auth">Twoja sesja wygasła. Zaloguj się ponownie.</string>
+    <string name="profile_error_generic">Coś poszło nie tak. Spróbuj ponownie.</string>
 </resources>

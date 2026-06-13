@@ -38,6 +38,7 @@ import app.skipperclub.ui.main.invitations.InvitationsScreen
 import app.skipperclub.ui.main.messages.MessagesScreen
 import app.skipperclub.ui.main.notifications.NotificationsScreen
 import app.skipperclub.ui.main.posts.PostsScreen
+import app.skipperclub.ui.main.profile.ProfileScreen
 import app.skipperclub.ui.theme.SkipperClubTheme
 
 @Composable
@@ -70,6 +71,7 @@ private fun MainScreenContent(
     var isMenuOpen by menuOpenState
     var showNotifications by rememberSaveable { mutableStateOf(value = false) }
     var showInvitations by rememberSaveable { mutableStateOf(value = false) }
+    var showProfile by rememberSaveable { mutableStateOf(value = false) }
 
     Box(
         modifier = modifier.fillMaxSize(),
@@ -105,6 +107,10 @@ private fun MainScreenContent(
             MainMenuSheet(
                 user = user,
                 onClose = { menuOpenState.value = false },
+                onOpenProfile = {
+                    menuOpenState.value = false
+                    showProfile = true
+                },
                 onOpenNotifications = {
                     menuOpenState.value = false
                     showNotifications = true
@@ -142,12 +148,22 @@ private fun MainScreenContent(
             InvitationsScreen(onClose = { showInvitations = false })
         }
     }
+
+    if (showProfile) {
+        Dialog(
+            onDismissRequest = { showProfile = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) {
+            ProfileScreen(onClose = { showProfile = false })
+        }
+    }
 }
 
 @Composable
 private fun MainMenuSheet(
     user: SessionUser,
     onClose: () -> Unit,
+    onOpenProfile: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenInvitations: () -> Unit,
     onLogout: () -> Unit,
@@ -181,7 +197,7 @@ private fun MainMenuSheet(
         MainMenuItem(
             label = stringResource(R.string.menu_my_profile),
             iconRes = R.drawable.ic_person,
-            onClick = onClose,
+            onClick = onOpenProfile,
         )
         MainMenuItem(
             label = stringResource(R.string.menu_notifications),

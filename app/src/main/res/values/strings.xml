@@ -581,4 +581,34 @@
     <string name="invitation_delete">Delete</string>
     <string name="invitation_delete_confirm_title">Delete invitation?</string>
     <string name="invitation_delete_confirm_message">The invitation for %1$s will no longer work. This can\'t be undone.</string>
+
+    <!-- My profile -->
+    <string name="profile_title">My profile</string>
+    <string name="profile_back">Back</string>
+    <string name="profile_role_admin">Administrator</string>
+    <string name="profile_member_since">Member since %1$s</string>
+    <string name="profile_stat_cruises">Cruises</string>
+    <string name="profile_stat_friends">Friends</string>
+    <string name="profile_stat_posts">Posts</string>
+    <string name="profile_section_about">About</string>
+    <string name="profile_section_sailing">Sailing</string>
+    <string name="profile_section_social">Social</string>
+    <string name="profile_label_experience">Experience level</string>
+    <string name="profile_label_years">Years of experience</string>
+    <string name="profile_label_licenses">Licenses</string>
+    <string name="profile_label_languages">Languages</string>
+    <string name="profile_label_voyage_styles">Preferred voyage styles</string>
+    <string name="profile_experience_beginner">Beginner</string>
+    <string name="profile_experience_intermediate">Intermediate</string>
+    <string name="profile_experience_advanced">Advanced</string>
+    <string name="profile_experience_professional">Professional</string>
+    <string name="profile_social_facebook">Facebook</string>
+    <string name="profile_social_instagram">Instagram</string>
+    <string name="profile_social_tiktok">TikTok</string>
+    <string name="profile_social_whatsapp">WhatsApp</string>
+    <string name="profile_load_failed">Couldn\'t load your profile.</string>
+    <string name="profile_retry">Retry</string>
+    <string name="profile_error_network">No connection. Check your network and try again.</string>
+    <string name="profile_error_auth">Your session has expired. Please sign in again.</string>
+    <string name="profile_error_generic">Something went wrong. Please try again.</string>
 </resources>
