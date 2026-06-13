@@ -34,6 +34,7 @@ import androidx.compose.ui.window.DialogProperties
 import app.skipperclub.R
 import app.skipperclub.data.SessionUser
 import app.skipperclub.ui.main.cruises.CruisesScreen
+import app.skipperclub.ui.main.invitations.InvitationsScreen
 import app.skipperclub.ui.main.messages.MessagesScreen
 import app.skipperclub.ui.main.notifications.NotificationsScreen
 import app.skipperclub.ui.main.posts.PostsScreen
@@ -68,6 +69,7 @@ private fun MainScreenContent(
     val menuOpenState = rememberSaveable { mutableStateOf(value = false) }
     var isMenuOpen by menuOpenState
     var showNotifications by rememberSaveable { mutableStateOf(value = false) }
+    var showInvitations by rememberSaveable { mutableStateOf(value = false) }
 
     Box(
         modifier = modifier.fillMaxSize(),
@@ -107,6 +109,10 @@ private fun MainScreenContent(
                     menuOpenState.value = false
                     showNotifications = true
                 },
+                onOpenInvitations = {
+                    menuOpenState.value = false
+                    showInvitations = true
+                },
                 onLogout = {
                     menuOpenState.value = false
                     onLogout()
@@ -127,6 +133,15 @@ private fun MainScreenContent(
             NotificationsScreen(onClose = { showNotifications = false })
         }
     }
+
+    if (showInvitations) {
+        Dialog(
+            onDismissRequest = { showInvitations = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) {
+            InvitationsScreen(onClose = { showInvitations = false })
+        }
+    }
 }
 
 @Composable
@@ -134,6 +149,7 @@ private fun MainMenuSheet(
     user: SessionUser,
     onClose: () -> Unit,
     onOpenNotifications: () -> Unit,
+    onOpenInvitations: () -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -172,6 +188,14 @@ private fun MainMenuSheet(
             iconRes = R.drawable.ic_notifications,
             onClick = onOpenNotifications,
         )
+        // Invitations are an admin-only surface (see docs/api/invitations) — hide it for standard users.
+        if (user.isAdmin) {
+            MainMenuItem(
+                label = stringResource(R.string.menu_invitations),
+                iconRes = R.drawable.ic_mail,
+                onClick = onOpenInvitations,
+            )
+        }
         MainMenuItem(
             label = stringResource(R.string.menu_saved),
             iconRes = R.drawable.ic_favorite,

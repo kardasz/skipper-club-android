@@ -57,6 +57,31 @@ class MainScreensTest {
     }
 
     @Test
+    fun invitationsMenuItemHiddenForStandardUser() {
+        compose.setContent {
+            SkipperClubTheme {
+                MainScreen(user = user, onLogout = {})
+            }
+        }
+
+        compose.onNodeWithTag("main-nav-menu").performClick()
+        compose.onNodeWithText(text(R.string.menu_notifications)).assertExists()
+        compose.onNodeWithText(text(R.string.menu_invitations)).assertDoesNotExist()
+    }
+
+    @Test
+    fun invitationsMenuItemVisibleForAdmin() {
+        compose.setContent {
+            SkipperClubTheme {
+                MainScreen(user = admin, onLogout = {})
+            }
+        }
+
+        compose.onNodeWithTag("main-nav-menu").performClick()
+        compose.onNodeWithText(text(R.string.menu_invitations)).assertExists()
+    }
+
+    @Test
     fun checkInOverlayActiveStateConfirmsAndCancels() {
         var confirmCount = 0
         var cancelCount = 0
@@ -138,5 +163,6 @@ class MainScreensTest {
             name = "Anna Nowak",
             avatarUrl = null,
         )
+        val admin = user.copy(id = "admin-1", role = SessionUser.ROLE_ADMIN)
     }
 }

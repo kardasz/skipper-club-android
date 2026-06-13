@@ -564,4 +564,39 @@
     <string name="notification_friend_request_rejected">%1$s odrzucił(a) Twoje zaproszenie do znajomych</string>
     <string name="notification_review_pending_received">%1$s ocenił(a) Cię po „%2$s” — wystaw ocenę, aby ją zobaczyć</string>
     <string name="notification_review_published">Twoja ocena z „%1$s” jest już opublikowana</string>
+
+    <!-- Invitations -->
+    <string name="menu_invitations">Zaproszenia</string>
+    <string name="invitations_title">Zaproszenia</string>
+    <string name="invitations_back">Wstecz</string>
+    <string name="invitations_sent_on">Wysłano %1$s</string>
+    <string name="invitations_empty_title">Brak zaproszeń</string>
+    <string name="invitations_empty_subtitle">Wysłane przez Ciebie zaproszenia pojawią się tutaj.</string>
+    <string name="invitations_load_failed">Nie udało się załadować zaproszeń.</string>
+    <string name="invitations_retry">Ponów</string>
+    <string name="invitations_cancel">Anuluj</string>
+    <string name="invitations_resent">Nowe zaproszenie zostało wysłane na adres %1$s.</string>
+    <string name="invitations_created">Zaproszenie zostało wysłane na adres %1$s.</string>
+    <string name="invitation_create">Nowe zaproszenie</string>
+    <string name="invitation_create_title">Wyślij zaproszenie</string>
+    <string name="invitation_create_subtitle">Podaj adres e-mail osoby, którą chcesz zaprosić.</string>
+    <string name="invitation_create_email_label">Adres e-mail</string>
+    <string name="invitation_create_submit">Wyślij zaproszenie</string>
+    <string name="invitations_error_network">Brak połączenia. Sprawdź sieć i spróbuj ponownie.</string>
+    <string name="invitations_error_auth">Twoja sesja wygasła. Zaloguj się ponownie.</string>
+    <string name="invitations_error_forbidden">Tylko administratorzy mogą zarządzać zaproszeniami.</string>
+    <string name="invitations_error_generic">Coś poszło nie tak. Spróbuj ponownie.</string>
+    <string name="invitation_status_pending">Oczekujące</string>
+    <string name="invitation_status_accepted">Zaakceptowane</string>
+    <string name="invitation_status_expired">Wygasłe</string>
+    <string name="invitation_status_unknown">Nieznane</string>
+    <string name="invitation_detail_email">E-mail</string>
+    <string name="invitation_detail_sent">Wysłano</string>
+    <string name="invitation_detail_expires">Ważne do</string>
+    <string name="invitation_detail_status">Status</string>
+    <string name="invitation_detail_inviter">Zapraszający</string>
+    <string name="invitation_resend">Wyślij ponownie</string>
+    <string name="invitation_delete">Usuń</string>
+    <string name="invitation_delete_confirm_title">Usunąć zaproszenie?</string>
+    <string name="invitation_delete_confirm_message">Zaproszenie dla %1$s przestanie działać. Tej operacji nie można cofnąć.</string>
 </resources>

@@ -54,7 +54,17 @@ data class SessionUser(
     val email: String,
     val name: String,
     val avatarUrl: String? = null,
-)
+    /** Authorization role (`docs/api/reference/enums/user-roles.md`). Defaults to standard user. */
+    val role: String = ROLE_USER,
+) {
+    /** True for accounts with elevated (admin) privileges, e.g. managing invitations. */
+    val isAdmin: Boolean get() = role.equals(ROLE_ADMIN, ignoreCase = true)
+
+    companion object {
+        const val ROLE_USER = "user"
+        const val ROLE_ADMIN = "admin"
+    }
+}
 
 @Serializable
 internal data class ProblemDetails(

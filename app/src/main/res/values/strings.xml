@@ -546,4 +546,39 @@
     <string name="notification_friend_request_rejected">%1$s declined your friend request</string>
     <string name="notification_review_pending_received">%1$s reviewed you after “%2$s” — leave a review to see it</string>
     <string name="notification_review_published">Your review from “%1$s” is now published</string>
+
+    <!-- Invitations -->
+    <string name="menu_invitations">Invitations</string>
+    <string name="invitations_title">Invitations</string>
+    <string name="invitations_back">Back</string>
+    <string name="invitations_sent_on">Sent %1$s</string>
+    <string name="invitations_empty_title">No invitations yet</string>
+    <string name="invitations_empty_subtitle">Invitations you send will appear here.</string>
+    <string name="invitations_load_failed">Couldn\'t load invitations.</string>
+    <string name="invitations_retry">Retry</string>
+    <string name="invitations_cancel">Cancel</string>
+    <string name="invitations_resent">A new invitation was sent to %1$s.</string>
+    <string name="invitations_created">An invitation was sent to %1$s.</string>
+    <string name="invitation_create">New invitation</string>
+    <string name="invitation_create_title">Send an invitation</string>
+    <string name="invitation_create_subtitle">Enter the email address of the person you want to invite.</string>
+    <string name="invitation_create_email_label">Email address</string>
+    <string name="invitation_create_submit">Send invitation</string>
+    <string name="invitations_error_network">No connection. Check your network and try again.</string>
+    <string name="invitations_error_auth">Your session has expired. Please sign in again.</string>
+    <string name="invitations_error_forbidden">Only administrators can manage invitations.</string>
+    <string name="invitations_error_generic">Something went wrong. Please try again.</string>
+    <string name="invitation_status_pending">Pending</string>
+    <string name="invitation_status_accepted">Accepted</string>
+    <string name="invitation_status_expired">Expired</string>
+    <string name="invitation_status_unknown">Unknown</string>
+    <string name="invitation_detail_email">Email</string>
+    <string name="invitation_detail_sent">Sent</string>
+    <string name="invitation_detail_expires">Valid until</string>
+    <string name="invitation_detail_status">Status</string>
+    <string name="invitation_detail_inviter">Invited by</string>
+    <string name="invitation_resend">Resend invitation</string>
+    <string name="invitation_delete">Delete</string>
+    <string name="invitation_delete_confirm_title">Delete invitation?</string>
+    <string name="invitation_delete_confirm_message">The invitation for %1$s will no longer work. This can\'t be undone.</string>
 </resources>
