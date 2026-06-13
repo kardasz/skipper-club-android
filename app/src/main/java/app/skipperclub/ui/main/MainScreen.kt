@@ -29,10 +29,13 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import app.skipperclub.R
 import app.skipperclub.data.SessionUser
 import app.skipperclub.ui.main.cruises.CruisesScreen
 import app.skipperclub.ui.main.messages.MessagesScreen
+import app.skipperclub.ui.main.notifications.NotificationsScreen
 import app.skipperclub.ui.main.posts.PostsScreen
 import app.skipperclub.ui.theme.SkipperClubTheme
 
@@ -64,6 +67,7 @@ private fun MainScreenContent(
 ) {
     val menuOpenState = rememberSaveable { mutableStateOf(value = false) }
     var isMenuOpen by menuOpenState
+    var showNotifications by rememberSaveable { mutableStateOf(value = false) }
 
     Box(
         modifier = modifier.fillMaxSize(),
@@ -99,15 +103,28 @@ private fun MainScreenContent(
             MainMenuSheet(
                 user = user,
                 onClose = { menuOpenState.value = false },
+                onOpenNotifications = {
+                    menuOpenState.value = false
+                    showNotifications = true
+                },
                 onLogout = {
                     menuOpenState.value = false
                     onLogout()
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.52f)
+                    .fillMaxHeight(0.6f)
                     .navigationBarsPadding(),
             )
+        }
+    }
+
+    if (showNotifications) {
+        Dialog(
+            onDismissRequest = { showNotifications = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) {
+            NotificationsScreen(onClose = { showNotifications = false })
         }
     }
 }
@@ -116,6 +133,7 @@ private fun MainScreenContent(
 private fun MainMenuSheet(
     user: SessionUser,
     onClose: () -> Unit,
+    onOpenNotifications: () -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -148,6 +166,11 @@ private fun MainMenuSheet(
             label = stringResource(R.string.menu_my_profile),
             iconRes = R.drawable.ic_person,
             onClick = onClose,
+        )
+        MainMenuItem(
+            label = stringResource(R.string.menu_notifications),
+            iconRes = R.drawable.ic_notifications,
+            onClick = onOpenNotifications,
         )
         MainMenuItem(
             label = stringResource(R.string.menu_saved),

@@ -25,6 +25,7 @@ import app.skipperclub.data.ValidityVoteType
  */
 interface PostsGateway {
     suspend fun list(accessToken: String, query: PostFeedQuery): PostsPage
+    suspend fun get(accessToken: String, postId: String): Post
     suspend fun create(accessToken: String, payload: CreatePostRequest): Post
     suspend fun updateStatus(accessToken: String, postId: String, status: PostStatus): Post
     suspend fun delete(accessToken: String, postId: String)
@@ -51,6 +52,9 @@ interface PostsGateway {
 object RealPostsGateway : PostsGateway {
     override suspend fun list(accessToken: String, query: PostFeedQuery): PostsPage =
         PostsApi.list(accessToken, query)
+
+    override suspend fun get(accessToken: String, postId: String): Post =
+        PostsApi.get(accessToken, postId)
 
     override suspend fun create(accessToken: String, payload: CreatePostRequest): Post =
         PostsApi.create(accessToken, payload)

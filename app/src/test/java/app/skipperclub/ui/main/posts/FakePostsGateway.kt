@@ -64,6 +64,8 @@ internal class FakePostsGateway : PostsGateway {
     var reactionSummary: ReactionSummary = ReactionSummary()
     var voteResult: ValidityVoteResult = ValidityVoteResult("post", ValidityVoteType.Confirm, 1, 0)
     var createdPost: Post = testPost("created")
+    var fetchedPost: Post = testPost("fetched")
+    var getError: PostsError? = null
     var regions: List<Region> = emptyList()
     var locations: List<GeocodedLocation> = emptyList()
 
@@ -79,6 +81,12 @@ internal class FakePostsGateway : PostsGateway {
         val page = pages[minOf(listCallCount, pages.lastIndex)]
         listCallCount++
         return page
+    }
+
+    override suspend fun get(accessToken: String, postId: String): Post {
+        calls += "get:$postId"
+        getError?.let { throw it }
+        return fetchedPost
     }
 
     override suspend fun create(accessToken: String, payload: CreatePostRequest): Post {

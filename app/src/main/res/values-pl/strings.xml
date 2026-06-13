@@ -523,4 +523,45 @@
     <string name="cruise_error_vessel_type">Wybierz typ jednostki.</string>
     <string name="cruise_error_cost">Podaj prawidłowy koszt.</string>
     <string name="cruise_error_max_participants">Podaj od 1 do 50 uczestników.</string>
+
+    <!-- Powiadomienia -->
+    <string name="menu_notifications">Powiadomienia</string>
+    <string name="notifications_title">Powiadomienia</string>
+    <string name="notifications_back">Wstecz</string>
+    <string name="notifications_mark_all_read">Oznacz wszystkie jako przeczytane</string>
+    <string name="notifications_delete">Usuń</string>
+    <string name="notifications_empty_title">Brak powiadomień</string>
+    <string name="notifications_empty_subtitle">Gdy coś wydarzy się przy Twoich rejsach i postach, pojawi się to tutaj.</string>
+    <string name="notifications_load_failed">Nie udało się wczytać powiadomień.</string>
+    <string name="notifications_retry">Ponów</string>
+    <string name="notifications_error_network">Brak połączenia. Sprawdź sieć i spróbuj ponownie.</string>
+    <string name="notifications_error_auth">Twoja sesja wygasła. Zaloguj się ponownie.</string>
+    <string name="notifications_error_generic">Coś poszło nie tak. Spróbuj ponownie.</string>
+    <string name="notifications_target_unavailable">To nie jest jeszcze dostępne.</string>
+    <string name="notification_unread">Nieprzeczytane</string>
+    <string name="post_detail_title">Post</string>
+    <string name="post_detail_load_failed">Nie udało się wczytać tego posta.</string>
+
+    <!-- Treść powiadomień -->
+    <string name="notification_actor_someone">Ktoś</string>
+    <string name="notification_a_cruise">rejs</string>
+    <string name="notification_unknown">Nowe powiadomienie</string>
+    <string name="notification_cruise_invitation_sent">%1$s zaprosił(a) Cię do „%2$s”</string>
+    <string name="notification_cruise_request_pending">%1$s poprosił(a) o dołączenie do „%2$s”</string>
+    <string name="notification_cruise_request_accepted">Twoja prośba o dołączenie do „%1$s” została zaakceptowana</string>
+    <string name="notification_cruise_invitation_accepted">%1$s przyjął(ęła) Twoje zaproszenie do „%2$s”</string>
+    <string name="notification_cruise_participant_joined">%1$s dołączył(a) do „%2$s”</string>
+    <string name="notification_cruise_request_rejected">Twoja prośba o dołączenie do „%1$s” została odrzucona</string>
+    <string name="notification_cruise_participant_left">%1$s opuścił(a) „%2$s”</string>
+    <string name="notification_cruise_participant_removed">Zostałeś(aś) usunięty(a) z „%1$s”</string>
+    <string name="notification_cruise_details_changed">„%1$s” zostało zaktualizowane przez %2$s</string>
+    <string name="notification_cruise_review_reminder">Twój rejs „%1$s” dobiegł końca. Oceń swoją załogę!</string>
+    <string name="notification_post_reacted">%1$s zareagował(a) na Twój post</string>
+    <string name="notification_post_commented">%1$s skomentował(a): „%2$s”</string>
+    <string name="notification_post_commented_no_text">%1$s skomentował(a) Twój post</string>
+    <string name="notification_friend_request_sent">%1$s wysłał(a) Ci zaproszenie do znajomych</string>
+    <string name="notification_friend_request_accepted">%1$s przyjął(ęła) Twoje zaproszenie do znajomych</string>
+    <string name="notification_friend_request_rejected">%1$s odrzucił(a) Twoje zaproszenie do znajomych</string>
+    <string name="notification_review_pending_received">%1$s ocenił(a) Cię po „%2$s” — wystaw ocenę, aby ją zobaczyć</string>
+    <string name="notification_review_published">Twoja ocena z „%1$s” jest już opublikowana</string>
 </resources>
