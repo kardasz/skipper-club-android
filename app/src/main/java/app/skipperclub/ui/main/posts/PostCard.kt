@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.AssistChip
@@ -83,6 +84,8 @@ data class PostCardActions(
     val onArchive: (Post) -> Unit,
     val onResolve: (Post) -> Unit,
     val onDeleteRequest: (Post) -> Unit,
+    val onEditRequest: (Post) -> Unit = {},
+    val onReportRequest: (Post) -> Unit = {},
 )
 
 @Composable
@@ -110,6 +113,9 @@ fun PostCard(
                 PostTypeContent(post = post, nowMillis = nowMillis, actions = actions)
                 if (!post.description.isNullOrBlank()) {
                     PostDescription(description = post.description)
+                }
+                if (post.taggedUsers.isNotEmpty()) {
+                    PostTaggedUsers(taggedUsers = post.taggedUsers)
                 }
                 PostActionsRow(post = post, actions = actions)
             }
@@ -180,18 +186,31 @@ private fun PostHeaderMenu(
     actions: PostCardActions,
 ) {
     val permissions = post.permissions
-    val hasMenuItems = permissions.archive || permissions.resolve || permissions.delete
+    val hasMenuItems = permissions.edit || permissions.archive || permissions.resolve ||
+        permissions.delete || permissions.report
     if (!hasMenuItems) return
 
     var expanded by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { expanded = true }) {
+        IconButton(
+            onClick = { expanded = true },
+            modifier = Modifier.testTag("post_menu"),
+        ) {
             Icon(
                 imageVector = Icons.Outlined.MoreVert,
                 contentDescription = stringResource(R.string.post_more_actions),
             )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            if (permissions.edit) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.post_action_edit)) },
+                    onClick = {
+                        expanded = false
+                        actions.onEditRequest(post)
+                    },
+                )
+            }
             if (permissions.archive) {
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.post_action_archive)) },
@@ -207,6 +226,15 @@ private fun PostHeaderMenu(
                     onClick = {
                         expanded = false
                         actions.onResolve(post)
+                    },
+                )
+            }
+            if (permissions.report) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.post_action_report)) },
+                    onClick = {
+                        expanded = false
+                        actions.onReportRequest(post)
                     },
                 )
             }
@@ -494,6 +522,29 @@ private fun PostValidityRow(
                     },
                 )
             },
+        )
+    }
+}
+
+@Composable
+private fun PostTaggedUsers(taggedUsers: List<PostUser>) {
+    val names = taggedUsers.joinToString(", ") { it.name }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.People,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = stringResource(R.string.post_tagged_with, names),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

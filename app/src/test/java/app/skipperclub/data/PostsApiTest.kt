@@ -57,6 +57,96 @@ class PostsApiTest {
     }
 
     @Test
+    fun listRequestEncodesLifecycleAndLocationFilters() {
+        val request = PostsApi.listRequest(
+            accessToken = "token",
+            query = PostFeedQuery(
+                statuses = setOf(PostStatus.Archived, PostStatus.Published),
+                userId = "me",
+                crossRegionTypes = setOf(PostType.Photo, PostType.Tips),
+                locationName = "Split",
+                lat = 43.5,
+                lng = 16.4,
+                distanceKm = 25,
+                fromDate = "2025-01-01T00:00:00Z",
+                toDate = "2025-12-31T00:00:00Z",
+                sort = PostSortField.Distance,
+            ),
+        )
+
+        val url = request.url
+        assertEquals(listOf("published", "archived"), url.queryParameterValues("status"))
+        assertEquals("me", url.queryParameter("userId"))
+        assertEquals(listOf("photo", "tips"), url.queryParameterValues("crossRegionTypes"))
+        assertEquals("Split", url.queryParameter("locationName"))
+        assertEquals("43.5", url.queryParameter("lat"))
+        assertEquals("16.4", url.queryParameter("lng"))
+        assertEquals("25", url.queryParameter("distance"))
+        assertEquals("2025-01-01T00:00:00Z", url.queryParameter("fromDate"))
+        assertEquals("2025-12-31T00:00:00Z", url.queryParameter("toDate"))
+        assertEquals("distance", url.queryParameter("sort"))
+    }
+
+    @Test
+    fun bookmarksRequestTargetsProfilePath() {
+        val request = PostsApi.bookmarksRequest(
+            accessToken = "token",
+            query = BookmarksQuery(sort = BookmarkSortField.UpdatedAt, order = SortOrder.Asc, limit = 15, offset = 30),
+        )
+
+        assertEquals("GET", request.method)
+        assertEquals("/v1/profile/bookmarks/posts", request.url.encodedPath)
+        assertEquals("updatedAt", request.url.queryParameter("sort"))
+        assertEquals("asc", request.url.queryParameter("order"))
+        assertEquals("15", request.url.queryParameter("limit"))
+        assertEquals("30", request.url.queryParameter("offset"))
+    }
+
+    @Test
+    fun updateRequestSerializesFullPostUpdateWithoutType() {
+        val request = PostsApi.updateRequest(
+            accessToken = "token",
+            postId = "post-1",
+            payload = UpdatePostRequest(
+                regionCode = "ADR-HR",
+                description = "Updated text",
+                locationName = "Hvar",
+                coordinates = CoordinatesDto(43.1, 16.4),
+                mediaIds = listOf("media-1"),
+                taggedUserIds = listOf("user-1"),
+            ),
+        )
+
+        assertEquals("PUT", request.method)
+        assertEquals("/v1/posts/post-1", request.url.encodedPath)
+        assertEquals(
+            """{"regionCode":"ADR-HR","description":"Updated text","locationName":"Hvar",""" +
+                """"coordinates":{"lat":43.1,"lng":16.4},"mediaIds":["media-1"],"taggedUserIds":["user-1"]}""",
+            request.bodyString(),
+        )
+    }
+
+    @Test
+    fun updateCommentRequestUsesPutOnNestedPath() {
+        val request = PostsApi.updateCommentRequest("token", "post-1", "comment-9", "Edited")
+
+        assertEquals("PUT", request.method)
+        assertEquals("/v1/posts/post-1/comments/comment-9", request.url.encodedPath)
+        assertEquals("""{"text":"Edited"}""", request.bodyString())
+    }
+
+    @Test
+    fun reportRequestSerializesReasonAndOmitsBlankDetails() {
+        val withDetails = PostsApi.reportRequest("token", "post-1", ReportReason.Spam, "ad spam")
+        val withoutDetails = PostsApi.reportRequest("token", "post-1", ReportReason.Other, "  ")
+
+        assertEquals("POST", withDetails.method)
+        assertEquals("/v1/posts/post-1/reports", withDetails.url.encodedPath)
+        assertEquals("""{"reason":"spam","details":"ad spam"}""", withDetails.bodyString())
+        assertEquals("""{"reason":"other"}""", withoutDetails.bodyString())
+    }
+
+    @Test
     fun createRequestSerializesPhotoPostWithoutRouteFields() {
         val request = PostsApi.createRequest(
             accessToken = "token",

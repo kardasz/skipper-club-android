@@ -254,6 +254,39 @@ class PostsFeedControllerTest {
     }
 
     @Test
+    fun reportPostCallsGatewayAndEmitsReported() {
+        val post = testPost("p1")
+        gateway.pages = listOf(page(listOf(post), hasMore = false))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.reportPost(post, app.skipperclub.data.ReportReason.Spam, "looks fake")
+
+        assertEquals("report:p1:spam:looks fake", gateway.calls.last())
+        assertTrue(events.contains(PostsFeedEvent.PostReported))
+        // Reporting never removes the card.
+        assertEquals(listOf("p1"), controller.state.value.posts.map { it.id })
+    }
+
+    @Test
+    fun editPostReplacesCardAndEmitsUpdated() {
+        val post = testPost("p1")
+        gateway.pages = listOf(page(listOf(post, testPost("p2")), hasMore = false))
+        gateway.updatedPost = testPost("p1").copy(description = "updated body")
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.editPost(
+            "p1",
+            app.skipperclub.data.UpdatePostRequest(regionCode = "ADR-HR", description = "updated body"),
+        )
+
+        assertEquals("update:p1", gateway.calls.last())
+        assertEquals("updated body", controller.state.value.posts.first { it.id == "p1" }.description)
+        assertTrue(events.any { it is PostsFeedEvent.PostUpdated })
+    }
+
+    @Test
     fun failedMutationEmitsOperationFailedAndKeepsState() {
         val post = testPost("p1")
         gateway.pages = listOf(page(listOf(post), hasMore = false))
@@ -265,6 +298,70 @@ class PostsFeedControllerTest {
 
         assertEquals(listOf("p1"), controller.state.value.posts.map { it.id })
         assertTrue(events.any { it is PostsFeedEvent.OperationFailed })
+    }
+
+    @Test
+    fun postFiltersToQueryMapsLifecycleAndExtras() {
+        val filters = PostFilters(
+            hashtag = "sailing",
+            locationName = "Split",
+            userId = "me",
+            statuses = setOf(app.skipperclub.data.PostStatus.Archived),
+            crossRegionTypes = setOf(PostType.Photo),
+            center = app.skipperclub.data.PostCoordinates(43.5, 16.4),
+            radiusKm = 25,
+            sort = PostSortField.Distance,
+            fromDate = "2025-01-01T00:00:00Z",
+            toDate = "2025-12-31T00:00:00Z",
+        )
+
+        val query = filters.toQuery(limit = 20, offset = 0)
+
+        assertEquals("sailing", query.hashtag)
+        assertEquals("Split", query.locationName)
+        assertEquals("me", query.userId)
+        assertEquals(setOf(app.skipperclub.data.PostStatus.Archived), query.statuses)
+        assertEquals(setOf(PostType.Photo), query.crossRegionTypes)
+        assertEquals(43.5, query.lat!!, 0.0)
+        assertEquals(25, query.distanceKm)
+        assertEquals("2025-01-01T00:00:00Z", query.fromDate)
+        assertEquals(PostSortField.Distance, query.sort)
+    }
+
+    @Test
+    fun postFiltersDropDistanceSortAndCoordsWithoutRadius() {
+        val query = PostFilters(sort = PostSortField.Distance).toQuery(limit = 20, offset = 0)
+
+        assertEquals(PostSortField.CreatedAt, query.sort)
+        assertEquals(null, query.lat)
+        assertEquals(null, query.distanceKm)
+    }
+
+    @Test
+    fun postFiltersStatusesIgnoredWithoutUserId() {
+        val query = PostFilters(statuses = setOf(app.skipperclub.data.PostStatus.Archived)).toQuery(20, 0)
+
+        assertTrue(query.statuses.isEmpty())
+    }
+
+    @Test
+    fun pageLoaderSourcesBookmarksInsteadOfFeed() {
+        gateway.bookmarkPages = listOf(page(listOf(testPost("b1"), testPost("b2")), hasMore = false))
+        val controller = PostsFeedController(
+            scope = scope,
+            accessToken = { "token" },
+            gateway = gateway,
+            pageSize = 2,
+            pageLoader = { token, offset, limit ->
+                gateway.listBookmarks(token, app.skipperclub.data.BookmarksQuery(limit = limit, offset = offset))
+            },
+        )
+
+        controller.loadInitialIfNeeded()
+
+        assertEquals(listOf("b1", "b2"), controller.state.value.posts.map { it.id })
+        assertTrue(gateway.calls.contains("listBookmarks"))
+        assertFalse(gateway.calls.contains("list"))
     }
 
     @Test

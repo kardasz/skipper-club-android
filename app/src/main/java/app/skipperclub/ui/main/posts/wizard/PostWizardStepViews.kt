@@ -34,6 +34,7 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -458,8 +459,7 @@ internal fun WizardMediaStep(state: PostWizardState) {
                         fileName = picked.fileName,
                         mimeType = picked.mimeType,
                         bytes = picked.bytes,
-                        width = picked.width,
-                        height = picked.height,
+                        meta = picked.meta,
                     )
                 }
             }
@@ -594,6 +594,70 @@ internal fun WizardMediaStep(state: PostWizardState) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun WizardTagsStep(state: PostWizardState) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = stringResource(R.string.wizard_tags_subtitle),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(
+            value = state.tagQuery,
+            onValueChange = state::updateTagQuery,
+            label = { Text(stringResource(R.string.wizard_tags_search)) },
+            enabled = state.taggedUsers.size < POST_TAGGED_USERS_MAX_COUNT,
+            singleLine = true,
+            trailingIcon = {
+                if (state.isSearchingTags) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("wizard_tag_search"),
+        )
+        state.tagResults.forEach { user ->
+            ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                headlineContent = { Text(user.name) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { state.addTag(user) },
+            )
+        }
+        if (state.taggedUsers.isEmpty()) {
+            Text(
+                text = stringResource(R.string.wizard_tags_empty),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                state.taggedUsers.forEach { user ->
+                    InputChip(
+                        selected = true,
+                        onClick = { state.removeTag(user.id) },
+                        label = { Text(user.name) },
+                        trailingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.wizard_tags_remove),
+                                modifier = Modifier.size(16.dp),
+                            )
+                        },
+                        modifier = Modifier.testTag("wizard_tag_chip_${user.id}"),
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 internal fun WizardSummaryStep(state: PostWizardState) {
     val type = state.selectedType ?: return
@@ -633,6 +697,12 @@ internal fun WizardSummaryStep(state: PostWizardState) {
                     state.media.size,
                     state.media.size,
                 ),
+            )
+        }
+        if (state.taggedUsers.isNotEmpty()) {
+            SummaryRow(
+                label = stringResource(R.string.wizard_step_tags),
+                value = state.taggedUsers.joinToString(", ") { it.name },
             )
         }
         expiryNoteRes(type)?.let { noteRes ->

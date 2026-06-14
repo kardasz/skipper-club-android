@@ -132,6 +132,7 @@ private fun PostsScreenPreview() {
             nowMillis = previewNow,
             cardActions = previewActions,
             onOpenFilters = {},
+            onOpenBookmarks = {},
             onCreate = {},
             onRefresh = {},
             onLoadMore = {},
@@ -153,6 +154,7 @@ private fun PostsScreenPreviewPl() {
             nowMillis = previewNow,
             cardActions = previewActions,
             onOpenFilters = {},
+            onOpenBookmarks = {},
             onCreate = {},
             onRefresh = {},
             onLoadMore = {},
@@ -175,6 +177,7 @@ private fun PostsScreenPreviewDark() {
             nowMillis = previewNow,
             cardActions = previewActions,
             onOpenFilters = {},
+            onOpenBookmarks = {},
             onCreate = {},
             onRefresh = {},
             onLoadMore = {},
@@ -192,6 +195,7 @@ private fun PostsScreenEmptyPreviewPl() {
             nowMillis = previewNow,
             cardActions = previewActions,
             onOpenFilters = {},
+            onOpenBookmarks = {},
             onCreate = {},
             onRefresh = {},
             onLoadMore = {},
@@ -255,6 +259,8 @@ private fun FilterSheetPreviewPl() {
             filters = PostFilters(types = setOf(PostType.Photo, PostType.Berth)),
             regions = emptyList(),
             regionsLoadFailed = false,
+            currentUserId = "u1",
+            onSearchLocations = { emptyList() },
             onApply = {},
         )
     }
@@ -272,6 +278,8 @@ private fun FilterSheetPreviewDark() {
             filters = PostFilters(),
             regions = emptyList(),
             regionsLoadFailed = true,
+            currentUserId = "u1",
+            onSearchLocations = { emptyList() },
             onApply = {},
         )
     }

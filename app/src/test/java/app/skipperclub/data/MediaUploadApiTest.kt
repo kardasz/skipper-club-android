@@ -36,6 +36,35 @@ class MediaUploadApiTest {
     }
 
     @Test
+    fun presignedUrlRequestSerializesRichCaptureMetadata() {
+        val request = MediaUploadApi.presignedUrlRequest(
+            accessToken = "token",
+            payload = PresignedUrlRequest(
+                fileName = "clip.mp4",
+                fileType = "video/mp4",
+                fileSize = 2048,
+                width = 1920,
+                height = 1080,
+                duration = 30.5,
+                frameRate = 30.0,
+                camera = "Pixel 10",
+                lat = 54.35,
+                lon = 18.64,
+                orientation = 6,
+                dateTaken = "2024-07-28T15:30:00Z",
+                metadata = mapOf("iso" to "100"),
+            ),
+        )
+
+        assertEquals(
+            """{"fileName":"clip.mp4","fileType":"video/mp4","fileSize":2048,"width":1920,"height":1080,""" +
+                """"duration":30.5,"frameRate":30.0,"camera":"Pixel 10","lat":54.35,"lon":18.64,""" +
+                """"orientation":6,"dateTaken":"2024-07-28T15:30:00Z","metadata":{"iso":"100"}}""",
+            request.bodyString(),
+        )
+    }
+
+    @Test
     fun storageUploadRequestPutsRawBytesWithoutAuth() {
         val request = MediaUploadApi.storageUploadRequest(
             uploadUrl = "https://storage.example.com/upload?sig=abc",

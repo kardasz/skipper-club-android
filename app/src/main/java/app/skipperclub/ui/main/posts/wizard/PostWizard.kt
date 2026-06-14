@@ -90,6 +90,7 @@ fun PostWizard(
                         PostWizardStep.Details -> WizardDetailsStep(state)
                         PostWizardStep.RouteStops -> WizardRouteStopsStep(state)
                         PostWizardStep.Media -> WizardMediaStep(state)
+                        PostWizardStep.Tags -> WizardTagsStep(state)
                         PostWizardStep.Summary -> WizardSummaryStep(state)
                     }
                 }
@@ -179,6 +180,12 @@ private fun WizardBottomBar(state: PostWizardState) {
             }
         }
         if (state.step == PostWizardStep.Summary) {
+            val publishLabel = when {
+                state.isPublishing && state.isEditing -> R.string.wizard_saving
+                state.isPublishing -> R.string.wizard_publishing
+                state.isEditing -> R.string.wizard_save
+                else -> R.string.wizard_publish
+            }
             Button(
                 onClick = { state.publish() },
                 enabled = !state.isPublishing,
@@ -186,11 +193,7 @@ private fun WizardBottomBar(state: PostWizardState) {
                     .weight(2f)
                     .testTag("wizard_publish"),
             ) {
-                Text(
-                    text = stringResource(
-                        if (state.isPublishing) R.string.wizard_publishing else R.string.wizard_publish,
-                    ),
-                )
+                Text(text = stringResource(publishLabel))
             }
         } else {
             Button(
@@ -211,5 +214,6 @@ private fun PostWizardStep.titleRes(): Int = when (this) {
     PostWizardStep.Details -> R.string.wizard_step_details
     PostWizardStep.RouteStops -> R.string.wizard_step_route
     PostWizardStep.Media -> R.string.wizard_step_media
+    PostWizardStep.Tags -> R.string.wizard_step_tags
     PostWizardStep.Summary -> R.string.wizard_step_summary
 }

@@ -1,7 +1,9 @@
 package app.skipperclub.ui.main.posts
 
+import app.skipperclub.data.BookmarksQuery
 import app.skipperclub.data.CommentsPage
 import app.skipperclub.data.CreatePostRequest
+import app.skipperclub.data.FriendUser
 import app.skipperclub.data.GeocodedLocation
 import app.skipperclub.data.PageMeta
 import app.skipperclub.data.Post
@@ -17,6 +19,8 @@ import app.skipperclub.data.PostsPage
 import app.skipperclub.data.ReactionSummary
 import app.skipperclub.data.ReactionType
 import app.skipperclub.data.Region
+import app.skipperclub.data.ReportReason
+import app.skipperclub.data.UpdatePostRequest
 import app.skipperclub.data.UploadedMedia
 import app.skipperclub.data.ValidityVoteResult
 import app.skipperclub.data.ValidityVoteType
@@ -68,11 +72,19 @@ internal class FakePostsGateway : PostsGateway {
     var getError: PostsError? = null
     var regions: List<Region> = emptyList()
     var locations: List<GeocodedLocation> = emptyList()
+    var friends: List<FriendUser> = emptyList()
+
+    var bookmarkPages: List<PostsPage> = listOf(PostsPage(emptyList(), PageMeta(0, 20, 0, false)))
+    var bookmarksError: PostsError? = null
+    val bookmarkQueries = mutableListOf<BookmarksQuery>()
+    var updatedPost: Post = testPost("updated")
+    var updatedComment: PostComment = testComment("edited-comment")
 
     val calls = mutableListOf<String>()
 
     private var listCallCount = 0
     private var commentsCallCount = 0
+    private var bookmarksCallCount = 0
 
     override suspend fun list(accessToken: String, query: PostFeedQuery): PostsPage {
         calls += "list"
@@ -80,6 +92,15 @@ internal class FakePostsGateway : PostsGateway {
         listError?.let { throw it }
         val page = pages[minOf(listCallCount, pages.lastIndex)]
         listCallCount++
+        return page
+    }
+
+    override suspend fun listBookmarks(accessToken: String, query: BookmarksQuery): PostsPage {
+        calls += "listBookmarks"
+        bookmarkQueries += query
+        bookmarksError?.let { throw it }
+        val page = bookmarkPages[minOf(bookmarksCallCount, bookmarkPages.lastIndex)]
+        bookmarksCallCount++
         return page
     }
 
@@ -95,6 +116,12 @@ internal class FakePostsGateway : PostsGateway {
         return createdPost
     }
 
+    override suspend fun update(accessToken: String, postId: String, payload: UpdatePostRequest): Post {
+        calls += "update:$postId"
+        mutationError?.let { throw it }
+        return updatedPost
+    }
+
     override suspend fun updateStatus(accessToken: String, postId: String, status: PostStatus): Post {
         calls += "updateStatus:$postId:${status.wireValue}"
         mutationError?.let { throw it }
@@ -103,6 +130,11 @@ internal class FakePostsGateway : PostsGateway {
 
     override suspend fun delete(accessToken: String, postId: String) {
         calls += "delete:$postId"
+        mutationError?.let { throw it }
+    }
+
+    override suspend fun report(accessToken: String, postId: String, reason: ReportReason, details: String?) {
+        calls += "report:$postId:${reason.wireValue}:${details ?: ""}"
         mutationError?.let { throw it }
     }
 
@@ -118,6 +150,17 @@ internal class FakePostsGateway : PostsGateway {
         calls += "addComment:$postId:$text"
         mutationError?.let { throw it }
         return addedComment
+    }
+
+    override suspend fun updateComment(
+        accessToken: String,
+        postId: String,
+        commentId: String,
+        text: String,
+    ): PostComment {
+        calls += "updateComment:$postId:$commentId:$text"
+        mutationError?.let { throw it }
+        return updatedComment.copy(id = commentId, text = text)
     }
 
     override suspend fun deleteComment(accessToken: String, postId: String, commentId: String) {
@@ -170,15 +213,22 @@ internal class FakePostsGateway : PostsGateway {
         return locations
     }
 
+    override suspend fun searchFriends(accessToken: String, query: String): List<FriendUser> {
+        calls += "searchFriends:$query"
+        return friends
+    }
+
+    var lastUploadMeta: app.skipperclub.data.MediaUploadMeta? = null
+
     override suspend fun uploadMedia(
         accessToken: String,
         fileName: String,
         mimeType: String,
         bytes: ByteArray,
-        width: Int?,
-        height: Int?,
+        meta: app.skipperclub.data.MediaUploadMeta,
     ): UploadedMedia {
         calls += "uploadMedia:$fileName"
+        lastUploadMeta = meta
         mutationError?.let { throw it }
         return UploadedMedia(mediaId = "media-$fileName", publicUrl = "https://cdn/$fileName")
     }

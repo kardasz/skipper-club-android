@@ -1,13 +1,17 @@
 package app.skipperclub.ui.main.posts
 
 import app.skipperclub.data.Post
+import app.skipperclub.data.PostCoordinates
 import app.skipperclub.data.PostFeedQuery
 import app.skipperclub.data.PostSortField
 import app.skipperclub.data.PostStatus
 import app.skipperclub.data.PostType
 import app.skipperclub.data.PostsError
+import app.skipperclub.data.PostsPage
 import app.skipperclub.data.ReactionType
+import app.skipperclub.data.ReportReason
 import app.skipperclub.data.SortOrder
+import app.skipperclub.data.UpdatePostRequest
 import app.skipperclub.data.ValidityVoteType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -24,19 +28,56 @@ import kotlinx.coroutines.launch
 data class PostFilters(
     val types: Set<PostType> = emptySet(),
     val regionCode: String? = null,
+    val crossRegionTypes: Set<PostType> = emptySet(),
+    val hashtag: String? = null,
+    val locationName: String? = null,
+    val fromDate: String? = null,
+    val toDate: String? = null,
+    /** Radius-search center; paired with [radiusKm]. */
+    val center: PostCoordinates? = null,
+    val centerLabel: String? = null,
+    val radiusKm: Int? = null,
+    /** Author scope; set to the current user for lifecycle ("My posts") filtering. */
+    val userId: String? = null,
+    val statuses: Set<PostStatus> = emptySet(),
     val sort: PostSortField = PostSortField.CreatedAt,
     val order: SortOrder = SortOrder.Desc,
 ) {
+    /** Radius search requires a center; `sort=distance` requires the radius. */
+    private val hasRadius: Boolean get() = center != null && radiusKm != null
+
+    private val effectiveSort: PostSortField
+        get() = if (sort == PostSortField.Distance && !hasRadius) PostSortField.CreatedAt else sort
+
     val activeCount: Int
-        get() = (if (types.isEmpty()) 0 else 1) +
-            (if (regionCode == null) 0 else 1) +
-            (if (sort != PostSortField.CreatedAt || order != SortOrder.Desc) 1 else 0)
+        get() = listOf(
+            types.isNotEmpty(),
+            regionCode != null,
+            crossRegionTypes.isNotEmpty(),
+            !hashtag.isNullOrBlank(),
+            !locationName.isNullOrBlank(),
+            fromDate != null || toDate != null,
+            hasRadius,
+            userId != null,
+            statuses.isNotEmpty(),
+            effectiveSort != PostSortField.CreatedAt || order != SortOrder.Desc,
+        ).count { it }
 
     fun toQuery(limit: Int, offset: Int): PostFeedQuery =
         PostFeedQuery(
             types = types,
             regionCode = regionCode,
-            sort = sort,
+            statuses = if (userId != null) statuses else emptySet(),
+            crossRegionTypes = crossRegionTypes,
+            locationName = locationName?.takeIf { it.isNotBlank() },
+            lat = center?.lat?.takeIf { hasRadius },
+            lng = center?.lng?.takeIf { hasRadius },
+            distanceKm = radiusKm?.takeIf { hasRadius },
+            fromDate = fromDate,
+            toDate = toDate,
+            hashtag = hashtag?.takeIf { it.isNotBlank() },
+            userId = userId,
+            sort = effectiveSort,
             order = order,
             limit = limit,
             offset = offset,
@@ -60,6 +101,8 @@ sealed interface PostsFeedEvent {
     data object PostDeleted : PostsFeedEvent
     data object PostArchived : PostsFeedEvent
     data object PostResolved : PostsFeedEvent
+    data object PostReported : PostsFeedEvent
+    data class PostUpdated(val post: Post) : PostsFeedEvent
 }
 
 /**
@@ -72,6 +115,12 @@ class PostsFeedController(
     private val accessToken: suspend () -> String?,
     private val gateway: PostsGateway = RealPostsGateway,
     private val pageSize: Int = 20,
+    /**
+     * Alternate page source (offset-paginated). When set, [reload]/[loadMore] use it
+     * instead of the filtered `/posts` feed — e.g. the bookmarks list. Filters are
+     * inert in that mode.
+     */
+    private val pageLoader: (suspend (token: String, offset: Int, limit: Int) -> PostsPage)? = null,
 ) {
     private val _state = MutableStateFlow(PostsFeedUiState())
     val state: StateFlow<PostsFeedUiState> = _state.asStateFlow()
@@ -108,10 +157,7 @@ class PostsFeedController(
             }
             try {
                 val snapshot = _state.value
-                val page = gateway.list(
-                    token,
-                    snapshot.filters.toQuery(limit = pageSize, offset = snapshot.posts.size),
-                )
+                val page = loadPage(token, offset = snapshot.posts.size)
                 _state.update { state ->
                     val knownIds = state.posts.mapTo(mutableSetOf()) { it.id }
                     state.copy(
@@ -209,6 +255,32 @@ class PostsFeedController(
         }
     }
 
+    fun reportPost(post: Post, reason: ReportReason, details: String?) {
+        scope.launch {
+            val token = requireToken() ?: return@launch
+            try {
+                gateway.report(token, post.id, reason, details)
+                _events.tryEmit(PostsFeedEvent.PostReported)
+            } catch (error: PostsError) {
+                _events.tryEmit(PostsFeedEvent.OperationFailed(error))
+            }
+        }
+    }
+
+    /** Applies a full content edit and refreshes the affected card in place. */
+    fun editPost(postId: String, payload: UpdatePostRequest) {
+        scope.launch {
+            val token = requireToken() ?: return@launch
+            try {
+                val updated = gateway.update(token, postId, payload)
+                updatePost(postId) { updated }
+                _events.tryEmit(PostsFeedEvent.PostUpdated(updated))
+            } catch (error: PostsError) {
+                _events.tryEmit(PostsFeedEvent.OperationFailed(error))
+            }
+        }
+    }
+
     /** Keeps the card's comment counter in sync with the comments sheet. */
     fun adjustCommentsCount(postId: String, delta: Int) {
         updatePost(postId) { it.copy(commentsCount = (it.commentsCount + delta).coerceAtLeast(0)) }
@@ -246,10 +318,7 @@ class PostsFeedController(
                 return@launch
             }
             try {
-                val page = gateway.list(
-                    token,
-                    _state.value.filters.toQuery(limit = pageSize, offset = 0),
-                )
+                val page = loadPage(token, offset = 0)
                 _state.update {
                     it.copy(
                         posts = page.posts,
@@ -268,6 +337,10 @@ class PostsFeedController(
             }
         }
     }
+
+    private suspend fun loadPage(token: String, offset: Int): PostsPage =
+        pageLoader?.invoke(token, offset, pageSize)
+            ?: gateway.list(token, _state.value.filters.toQuery(limit = pageSize, offset = offset))
 
     private suspend fun requireToken(): String? {
         val token = runCatching { accessToken() }.getOrNull()

@@ -56,6 +56,7 @@ class PostsScreenTest {
                     nowMillis = nowMillis,
                     cardActions = actions(),
                     onOpenFilters = {},
+                    onOpenBookmarks = {},
                     onCreate = {},
                     onRefresh = {},
                     onLoadMore = {},
@@ -81,6 +82,7 @@ class PostsScreenTest {
                     nowMillis = nowMillis,
                     cardActions = actions(),
                     onOpenFilters = {},
+                    onOpenBookmarks = {},
                     onCreate = {},
                     onRefresh = {},
                     onLoadMore = {},
@@ -186,6 +188,7 @@ class PostsScreenTest {
                     nowMillis = nowMillis,
                     onLoadMore = {},
                     onSend = { sent = it },
+                    onEdit = { _, _ -> },
                     onDelete = {},
                 )
             }
@@ -207,6 +210,8 @@ class PostsScreenTest {
                     filters = PostFilters(),
                     regions = emptyList(),
                     regionsLoadFailed = false,
+                    currentUserId = "u1",
+                    onSearchLocations = { emptyList() },
                     onApply = { applied = it },
                 )
             }

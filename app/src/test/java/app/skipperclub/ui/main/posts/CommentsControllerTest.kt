@@ -102,6 +102,33 @@ class CommentsControllerTest {
     }
 
     @Test
+    fun editReplacesCommentTextAndEmitsUpdated() {
+        gateway.commentPages = listOf(
+            commentsPage(listOf(testComment("c1", text = "old"), testComment("c2")), total = 2),
+        )
+        val controller = controller()
+        controller.load()
+
+        controller.edit("c1", "  new text  ")
+
+        assertEquals("updateComment:post-1:c1:new text", gateway.calls.last())
+        assertEquals("new text", controller.state.value.comments.first { it.id == "c1" }.text)
+        assertEquals(2, controller.state.value.total)
+        assertTrue(events.contains(CommentsEvent.CommentUpdated))
+    }
+
+    @Test
+    fun blankEditIsNotSent() {
+        gateway.commentPages = listOf(commentsPage(listOf(testComment("c1")), total = 1))
+        val controller = controller()
+        controller.load()
+
+        controller.edit("c1", "   ")
+
+        assertFalse(gateway.calls.any { it.startsWith("updateComment") })
+    }
+
+    @Test
     fun failedLoadSetsFlagAndEmitsEvent() {
         gateway.commentsError = PostsError.Server(500, null)
         val controller = controller()

@@ -25,6 +25,7 @@ data class CommentsUiState(
 sealed interface CommentsEvent {
     data class OperationFailed(val error: Exception) : CommentsEvent
     data object CommentAdded : CommentsEvent
+    data object CommentUpdated : CommentsEvent
     data object CommentDeleted : CommentsEvent
     data object SessionExpired : CommentsEvent
 }
@@ -120,6 +121,31 @@ class CommentsController(
                     )
                 }
                 _events.tryEmit(CommentsEvent.CommentAdded)
+            } catch (error: PostsError) {
+                _state.update { it.copy(isSending = false) }
+                _events.tryEmit(CommentsEvent.OperationFailed(error))
+            }
+        }
+    }
+
+    fun edit(commentId: String, text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty() || _state.value.isSending) return
+        _state.update { it.copy(isSending = true) }
+        scope.launch {
+            val token = requireToken() ?: run {
+                _state.update { it.copy(isSending = false) }
+                return@launch
+            }
+            try {
+                val updated = gateway.updateComment(token, postId, commentId, trimmed)
+                _state.update { state ->
+                    state.copy(
+                        comments = state.comments.map { if (it.id == commentId) updated else it },
+                        isSending = false,
+                    )
+                }
+                _events.tryEmit(CommentsEvent.CommentUpdated)
             } catch (error: PostsError) {
                 _state.update { it.copy(isSending = false) }
                 _events.tryEmit(CommentsEvent.OperationFailed(error))

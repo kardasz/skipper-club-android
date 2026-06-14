@@ -36,10 +36,15 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import app.skipperclub.R
 import app.skipperclub.data.Post
 import app.skipperclub.data.PostsError
 import app.skipperclub.data.SessionStore
+import app.skipperclub.ui.main.posts.wizard.PostWizard
+import app.skipperclub.ui.main.posts.wizard.PostWizardEvent
+import app.skipperclub.ui.main.posts.wizard.PostWizardState
 import app.skipperclub.ui.notification.InAppNotificationHost
 import app.skipperclub.ui.notification.InAppNotificationType
 import app.skipperclub.ui.notification.rememberInAppNotificationHostState
@@ -86,6 +91,8 @@ fun PostDetailScreen(
     val postDeletedMessage = stringResource(R.string.posts_deleted)
     val postArchivedMessage = stringResource(R.string.posts_archived)
     val postResolvedMessage = stringResource(R.string.posts_resolved)
+    val postReportedMessage = stringResource(R.string.posts_reported)
+    val postUpdatedMessage = stringResource(R.string.posts_updated)
     val commentsErrorMessage = stringResource(R.string.comments_error_generic)
 
     fun errorMessage(error: Exception): String = when (error) {
@@ -98,6 +105,9 @@ fun PostDetailScreen(
     var reactionPickerPostId by remember { mutableStateOf<String?>(null) }
     var commentsPostId by remember { mutableStateOf<String?>(null) }
     var postPendingDelete by remember { mutableStateOf<Post?>(null) }
+    var postPendingReport by remember { mutableStateOf<Post?>(null) }
+    var editingPost by remember { mutableStateOf<Post?>(null) }
+    val postUpdatedFailedMessage = stringResource(R.string.wizard_media_failed)
 
     suspend fun fetch() {
         loadPhase = PostLoadPhase.Loading
@@ -138,6 +148,12 @@ fun PostDetailScreen(
 
                 PostsFeedEvent.PostResolved ->
                     notificationHostState.show(postResolvedMessage, InAppNotificationType.Success)
+
+                PostsFeedEvent.PostReported ->
+                    notificationHostState.show(postReportedMessage, InAppNotificationType.Success)
+
+                is PostsFeedEvent.PostUpdated ->
+                    notificationHostState.show(postUpdatedMessage, InAppNotificationType.Success)
             }
         }
     }
@@ -152,6 +168,8 @@ fun PostDetailScreen(
             onArchive = { post -> controller.archivePost(post) },
             onResolve = { post -> controller.resolvePost(post) },
             onDeleteRequest = { post -> postPendingDelete = post },
+            onEditRequest = { post -> editingPost = post },
+            onReportRequest = { post -> postPendingReport = post },
         )
     }
 
@@ -256,6 +274,7 @@ fun PostDetailScreen(
                             notificationHostState.show(errorAuthMessage, InAppNotificationType.Error)
 
                         CommentsEvent.CommentAdded -> controller.adjustCommentsCount(id, +1)
+                        CommentsEvent.CommentUpdated -> Unit
                         CommentsEvent.CommentDeleted -> controller.adjustCommentsCount(id, -1)
                     }
                 }
@@ -267,10 +286,21 @@ fun PostDetailScreen(
                 nowMillis = nowMillis,
                 onLoadMore = commentsController::loadMore,
                 onSend = commentsController::send,
+                onEdit = { comment, text -> commentsController.edit(comment.id, text) },
                 onDelete = { comment -> commentsController.delete(comment.id) },
                 onDismiss = { commentsPostId = null },
             )
         }
+    }
+
+    postPendingReport?.let { target ->
+        ReportPostSheet(
+            onSubmit = { reason, details ->
+                postPendingReport = null
+                controller.reportPost(target, reason, details)
+            },
+            onDismiss = { postPendingReport = null },
+        )
     }
 
     postPendingDelete?.let { target ->
@@ -294,5 +324,48 @@ fun PostDetailScreen(
                 }
             },
         )
+    }
+
+    editingPost?.let { target ->
+        val editState = remember(target.id) {
+            PostWizardState(
+                scope = scope,
+                accessToken = { SessionStore.validSession()?.accessToken },
+                editingPost = target,
+            )
+        }
+        LaunchedEffect(editState) {
+            editState.events.collect { event ->
+                when (event) {
+                    is PostWizardEvent.Updated -> {
+                        controller.editPost(event.postId, event.request)
+                        editingPost = null
+                    }
+
+                    is PostWizardEvent.MediaUploadFailed ->
+                        notificationHostState.show(postUpdatedFailedMessage, InAppNotificationType.Error)
+
+                    PostWizardEvent.SessionExpired ->
+                        notificationHostState.show(errorAuthMessage, InAppNotificationType.Error)
+
+                    is PostWizardEvent.Published,
+                    is PostWizardEvent.PublishFailed,
+                    -> Unit
+                }
+            }
+        }
+        Dialog(
+            onDismissRequest = { editingPost = null },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                dismissOnBackPress = false,
+                dismissOnClickOutside = false,
+            ),
+        ) {
+            PostWizard(
+                state = editState,
+                onClose = { editingPost = null },
+            )
+        }
     }
 }

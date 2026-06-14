@@ -16,8 +16,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.Bookmarks
 import androidx.compose.material.icons.outlined.FilterList
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
@@ -27,7 +27,6 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -91,6 +90,8 @@ fun PostsScreen(modifier: Modifier = Modifier) {
     val postDeletedMessage = stringResource(R.string.posts_deleted)
     val postArchivedMessage = stringResource(R.string.posts_archived)
     val postResolvedMessage = stringResource(R.string.posts_resolved)
+    val postReportedMessage = stringResource(R.string.posts_reported)
+    val postUpdatedMessage = stringResource(R.string.posts_updated)
     val postCreatedMessage = stringResource(R.string.posts_created)
     val publishFailedMessage = stringResource(R.string.wizard_publish_failed)
     val mediaUploadFailedMessage = stringResource(R.string.wizard_media_failed)
@@ -121,14 +122,19 @@ fun PostsScreen(modifier: Modifier = Modifier) {
 
                 PostsFeedEvent.PostResolved ->
                     notificationHostState.show(postResolvedMessage, InAppNotificationType.Success)
+
+                PostsFeedEvent.PostReported ->
+                    notificationHostState.show(postReportedMessage, InAppNotificationType.Success)
+
+                is PostsFeedEvent.PostUpdated ->
+                    notificationHostState.show(postUpdatedMessage, InAppNotificationType.Success)
             }
         }
     }
 
-    var reactionPickerPostId by remember { mutableStateOf<String?>(null) }
-    var commentsPostId by remember { mutableStateOf<String?>(null) }
+    val overlay = rememberPostOverlayState()
     var showFilters by remember { mutableStateOf(false) }
-    var postPendingDelete by remember { mutableStateOf<Post?>(null) }
+    var showBookmarks by remember { mutableStateOf(false) }
     var showWizard by rememberSaveable { mutableStateOf(false) }
 
     var regions by remember { mutableStateOf<List<Region>>(emptyList()) }
@@ -144,18 +150,7 @@ fun PostsScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    val cardActions = remember(controller) {
-        PostCardActions(
-            onToggleReaction = { post, reaction -> controller.toggleReaction(post, reaction) },
-            onOpenReactionPicker = { post -> reactionPickerPostId = post.id },
-            onOpenComments = { post -> commentsPostId = post.id },
-            onToggleBookmark = { post -> controller.toggleBookmark(post) },
-            onCastVote = { post, vote -> controller.castValidityVote(post, vote) },
-            onArchive = { post -> controller.archivePost(post) },
-            onResolve = { post -> controller.resolvePost(post) },
-            onDeleteRequest = { post -> postPendingDelete = post },
-        )
-    }
+    val cardActions = remember(controller, overlay) { postCardActions(controller, overlay) }
 
     Box(modifier = modifier.fillMaxSize()) {
         PostsScreenContent(
@@ -163,6 +158,7 @@ fun PostsScreen(modifier: Modifier = Modifier) {
             nowMillis = nowMillis,
             cardActions = cardActions,
             onOpenFilters = { showFilters = true },
+            onOpenBookmarks = { showBookmarks = true },
             onCreate = { showWizard = true },
             onRefresh = controller::refresh,
             onLoadMore = controller::loadMore,
@@ -174,63 +170,25 @@ fun PostsScreen(modifier: Modifier = Modifier) {
         )
     }
 
-    reactionPickerPostId?.let { postId ->
-        val post = state.posts.firstOrNull { it.id == postId }
-        if (post == null) {
-            reactionPickerPostId = null
-        } else {
-            ReactionPickerSheet(
-                userReactions = post.reactions.userReactions,
-                onSelect = { reaction ->
-                    controller.toggleReaction(post, reaction)
-                    reactionPickerPostId = null
-                },
-                onDismiss = { reactionPickerPostId = null },
-            )
-        }
-    }
+    PostOverlays(
+        controller = controller,
+        overlay = overlay,
+        posts = state.posts,
+        currentUserId = currentUserId,
+        nowMillis = nowMillis,
+        notificationHostState = notificationHostState,
+    )
 
-    commentsPostId?.let { postId ->
-        val post = state.posts.firstOrNull { it.id == postId }
-        if (post == null) {
-            commentsPostId = null
-        } else {
-            val commentsController = remember(postId) {
-                CommentsController(
-                    scope = scope,
-                    accessToken = { SessionStore.validSession()?.accessToken },
-                    postId = postId,
-                )
-            }
-            val commentsState by commentsController.state.collectAsState()
-            val commentsErrorMessage = stringResource(R.string.comments_error_generic)
-            LaunchedEffect(commentsController) {
-                commentsController.load()
-            }
-            LaunchedEffect(commentsController) {
-                commentsController.events.collect { event ->
-                    when (event) {
-                        is CommentsEvent.OperationFailed ->
-                            notificationHostState.show(commentsErrorMessage, InAppNotificationType.Error)
-
-                        CommentsEvent.SessionExpired ->
-                            notificationHostState.show(errorAuthMessage, InAppNotificationType.Error)
-
-                        CommentsEvent.CommentAdded -> controller.adjustCommentsCount(postId, +1)
-                        CommentsEvent.CommentDeleted -> controller.adjustCommentsCount(postId, -1)
-                    }
-                }
-            }
-            CommentsSheet(
-                state = commentsState,
-                currentUserId = currentUserId,
-                canComment = post.permissions.comment,
-                nowMillis = nowMillis,
-                onLoadMore = commentsController::loadMore,
-                onSend = commentsController::send,
-                onDelete = { comment -> commentsController.delete(comment.id) },
-                onDismiss = { commentsPostId = null },
-            )
+    if (showBookmarks) {
+        Dialog(
+            onDismissRequest = { showBookmarks = false },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                dismissOnBackPress = true,
+                dismissOnClickOutside = false,
+            ),
+        ) {
+            BookmarksScreen(onClose = { showBookmarks = false })
         }
     }
 
@@ -239,34 +197,16 @@ fun PostsScreen(modifier: Modifier = Modifier) {
             filters = state.filters,
             regions = regions,
             regionsLoadFailed = regionsLoadFailed,
+            currentUserId = currentUserId,
+            onSearchLocations = { query ->
+                val token = SessionStore.validSession()?.accessToken
+                if (token == null) emptyList() else RealPostsGateway.searchLocations(token, query)
+            },
             onApply = { filters ->
                 showFilters = false
                 controller.applyFilters(filters)
             },
             onDismiss = { showFilters = false },
-        )
-    }
-
-    postPendingDelete?.let { post ->
-        AlertDialog(
-            onDismissRequest = { postPendingDelete = null },
-            title = { Text(stringResource(R.string.post_delete_confirm_title)) },
-            text = { Text(stringResource(R.string.post_delete_confirm_text)) },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        postPendingDelete = null
-                        controller.deletePost(post)
-                    },
-                ) {
-                    Text(stringResource(R.string.post_action_delete))
-                }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = { postPendingDelete = null }) {
-                    Text(stringResource(R.string.post_cancel))
-                }
-            },
         )
     }
 
@@ -291,6 +231,8 @@ fun PostsScreen(modifier: Modifier = Modifier) {
 
                     is PostWizardEvent.MediaUploadFailed ->
                         notificationHostState.show(mediaUploadFailedMessage, InAppNotificationType.Error)
+
+                    is PostWizardEvent.Updated -> Unit
 
                     PostWizardEvent.SessionExpired ->
                         notificationHostState.show(errorAuthMessage, InAppNotificationType.Error)
@@ -320,6 +262,7 @@ internal fun PostsScreenContent(
     nowMillis: Long,
     cardActions: PostCardActions,
     onOpenFilters: () -> Unit,
+    onOpenBookmarks: () -> Unit,
     onCreate: () -> Unit,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
@@ -356,6 +299,15 @@ internal fun PostsScreenContent(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f),
                 )
+                IconButton(
+                    onClick = onOpenBookmarks,
+                    modifier = Modifier.testTag("posts_bookmarks"),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Bookmarks,
+                        contentDescription = stringResource(R.string.bookmarks_open),
+                    )
+                }
                 BadgedBox(
                     badge = {
                         if (state.filters.activeCount > 0) {

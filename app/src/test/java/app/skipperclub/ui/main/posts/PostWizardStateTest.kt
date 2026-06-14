@@ -1,6 +1,9 @@
 package app.skipperclub.ui.main.posts
 
+import app.skipperclub.data.FriendUser
+import app.skipperclub.data.MediaUploadMeta
 import app.skipperclub.data.PostType
+import app.skipperclub.data.PostUser
 import app.skipperclub.data.PostsError
 import app.skipperclub.ui.main.posts.wizard.PostWizardError
 import app.skipperclub.ui.main.posts.wizard.PostWizardEvent
@@ -43,6 +46,7 @@ class PostWizardStateTest {
                 PostWizardStep.Type,
                 PostWizardStep.Details,
                 PostWizardStep.Media,
+                PostWizardStep.Tags,
                 PostWizardStep.Summary,
             ),
             state.steps,
@@ -55,6 +59,7 @@ class PostWizardStateTest {
                 PostWizardStep.Details,
                 PostWizardStep.RouteStops,
                 PostWizardStep.Media,
+                PostWizardStep.Tags,
                 PostWizardStep.Summary,
             ),
             state.steps,
@@ -114,7 +119,9 @@ class PostWizardStateTest {
         assertEquals(PostWizardStep.Media, state.step)
         assertEquals(setOf(PostWizardError.MediaRequired), state.visibleErrors)
 
-        state.uploadMedia("a.jpg", "image/jpeg", byteArrayOf(1), 10, 10)
+        state.uploadMedia("a.jpg", "image/jpeg", byteArrayOf(1), MediaUploadMeta(width = 10, height = 10))
+        state.next()
+        assertEquals(PostWizardStep.Tags, state.step)
         state.next()
         assertEquals(PostWizardStep.Summary, state.step)
     }
@@ -215,12 +222,18 @@ class PostWizardStateTest {
         state.selectType(PostType.Photo)
         state.selectRegion("ADR-HR")
 
-        state.uploadMedia("a.jpg", "image/jpeg", byteArrayOf(1, 2), 100, 80)
+        state.uploadMedia(
+            "a.jpg",
+            "image/jpeg",
+            byteArrayOf(1, 2),
+            MediaUploadMeta(width = 100, height = 80, camera = "Pixel", duration = null),
+        )
 
         val item = state.media.single()
         assertFalse(item.isUploading)
         assertEquals("media-a.jpg", item.mediaId)
         assertEquals("https://cdn/a.jpg", item.publicUrl)
+        assertEquals("Pixel", gateway.lastUploadMeta?.camera)
 
         val request = state.buildRequest()!!
         assertEquals(listOf("media-a.jpg"), request.mediaIds)
@@ -232,7 +245,7 @@ class PostWizardStateTest {
         val state = wizard()
         state.selectType(PostType.Photo)
 
-        state.uploadMedia("a.jpg", "image/jpeg", byteArrayOf(1), null, null)
+        state.uploadMedia("a.jpg", "image/jpeg", byteArrayOf(1), MediaUploadMeta())
 
         assertTrue(state.media.single().failed)
         assertTrue(events.any { it is PostWizardEvent.MediaUploadFailed })
@@ -245,6 +258,7 @@ class PostWizardStateTest {
         state.selectType(PostType.Tips)
         state.updateDescription("Tip")
         state.selectRegion("ADR-HR")
+        state.next()
         state.next()
         state.next()
         state.next()
@@ -316,5 +330,78 @@ class PostWizardStateTest {
         val state = wizard()
         state.updateDescription("x".repeat(3000))
         assertEquals(2200, state.description.length)
+    }
+
+    @Test
+    fun tagSearchExcludesAlreadyTaggedAndBuildRequestIncludesIds() {
+        gateway.friends = listOf(FriendUser("u1", "Ann"), FriendUser("u2", "Bo"))
+        val state = wizard()
+        state.selectType(PostType.Tips)
+        state.updateDescription("Tip")
+        state.selectRegion("ADR-HR")
+
+        state.updateTagQuery("an")
+        assertEquals(2, state.tagResults.size)
+        state.addTag(FriendUser("u1", "Ann"))
+        assertEquals(listOf("Ann"), state.taggedUsers.map { it.name })
+
+        // Already-tagged users are filtered out of subsequent results.
+        state.updateTagQuery("bo")
+        assertEquals(listOf("u2"), state.tagResults.map { it.id })
+
+        state.removeTag("u1")
+        assertTrue(state.taggedUsers.isEmpty())
+        state.addTag(FriendUser("u2", "Bo"))
+
+        assertEquals(listOf("u2"), state.buildRequest()!!.taggedUserIds)
+    }
+
+    @Test
+    fun editModeSkipsTypeStepAndPrefillsFields() {
+        val post = testPost("p1", type = PostType.Tips).copy(
+            description = "old body",
+            regionCode = "ADR-HR",
+            taggedUsers = listOf(PostUser("u1", "Ann")),
+        )
+        val state = PostWizardState(
+            scope = scope,
+            accessToken = { "token" },
+            gateway = gateway,
+            locationSearchDebounceMillis = 0,
+            editingPost = post,
+        )
+
+        assertTrue(state.isEditing)
+        assertEquals(PostWizardStep.Details, state.step)
+        assertEquals(
+            listOf(PostWizardStep.Details, PostWizardStep.Media, PostWizardStep.Tags, PostWizardStep.Summary),
+            state.steps,
+        )
+        assertEquals("old body", state.description)
+        assertEquals("ADR-HR", state.regionCode)
+        assertEquals(listOf("Ann"), state.taggedUsers.map { it.name })
+    }
+
+    @Test
+    fun editModePublishEmitsUpdatedWithRequest() {
+        val post = testPost("p1", type = PostType.Tips).copy(description = "old", regionCode = "ADR-HR")
+        val state = PostWizardState(
+            scope = scope,
+            accessToken = { "token" },
+            gateway = gateway,
+            locationSearchDebounceMillis = 0,
+            editingPost = post,
+        )
+        scope.launch { state.events.collect { events += it } }
+        state.updateDescription("new body")
+
+        state.publish()
+
+        val updated = events.filterIsInstance<PostWizardEvent.Updated>().single()
+        assertEquals("p1", updated.postId)
+        assertEquals("new body", updated.request.description)
+        assertEquals("ADR-HR", updated.request.regionCode)
+        // Edit never calls create.
+        assertFalse(gateway.calls.any { it.startsWith("create") })
     }
 }

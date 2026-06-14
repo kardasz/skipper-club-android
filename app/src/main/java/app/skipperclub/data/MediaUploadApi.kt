@@ -26,6 +26,32 @@ data class PresignedUrlRequest(
     val fileSize: Long,
     val width: Int? = null,
     val height: Int? = null,
+    val duration: Double? = null,
+    val frameRate: Double? = null,
+    val camera: String? = null,
+    val lat: Double? = null,
+    val lon: Double? = null,
+    val orientation: Int? = null,
+    val dateTaken: String? = null,
+    val metadata: Map<String, String>? = null,
+)
+
+/**
+ * Optional capture metadata extracted from a picked photo/video (EXIF for images,
+ * MediaMetadataRetriever for videos). All fields are best-effort; absent ones are
+ * omitted from the presigned-URL request.
+ */
+data class MediaUploadMeta(
+    val width: Int? = null,
+    val height: Int? = null,
+    val duration: Double? = null,
+    val frameRate: Double? = null,
+    val camera: String? = null,
+    val lat: Double? = null,
+    val lon: Double? = null,
+    val orientation: Int? = null,
+    val dateTaken: String? = null,
+    val extra: Map<String, String> = emptyMap(),
 )
 
 data class PresignedUpload(
@@ -122,8 +148,7 @@ object MediaUploadApi {
         fileName: String,
         mimeType: String,
         bytes: ByteArray,
-        width: Int? = null,
-        height: Int? = null,
+        meta: MediaUploadMeta = MediaUploadMeta(),
     ): UploadedMedia {
         val presigned = createPresignedUrl(
             accessToken,
@@ -131,8 +156,16 @@ object MediaUploadApi {
                 fileName = fileName,
                 fileType = mimeType,
                 fileSize = bytes.size.toLong(),
-                width = width,
-                height = height,
+                width = meta.width,
+                height = meta.height,
+                duration = meta.duration,
+                frameRate = meta.frameRate,
+                camera = meta.camera,
+                lat = meta.lat,
+                lon = meta.lon,
+                orientation = meta.orientation,
+                dateTaken = meta.dateTaken,
+                metadata = meta.extra.takeIf { it.isNotEmpty() },
             ),
         )
         uploadToStorage(presigned.uploadUrl, mimeType, bytes)

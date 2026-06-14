@@ -16,7 +16,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -57,6 +60,7 @@ fun CommentsSheet(
     nowMillis: Long,
     onLoadMore: () -> Unit,
     onSend: (String) -> Unit,
+    onEdit: (PostComment, String) -> Unit,
     onDelete: (PostComment) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -68,6 +72,7 @@ fun CommentsSheet(
             nowMillis = nowMillis,
             onLoadMore = onLoadMore,
             onSend = onSend,
+            onEdit = onEdit,
             onDelete = onDelete,
             modifier = Modifier
                 .fillMaxHeight(0.75f)
@@ -85,10 +90,12 @@ internal fun CommentsSheetContent(
     nowMillis: Long,
     onLoadMore: () -> Unit,
     onSend: (String) -> Unit,
+    onEdit: (PostComment, String) -> Unit,
     onDelete: (PostComment) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var draft by rememberSaveable { mutableStateOf("") }
+    var editing by remember { mutableStateOf<PostComment?>(null) }
     val listState = rememberLazyListState()
 
     val shouldLoadMore by remember(state.hasMore) {
@@ -146,10 +153,15 @@ internal fun CommentsSheetContent(
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         items(state.comments, key = { it.id }) { comment ->
+                            val isOwn = comment.user.id == currentUserId
                             CommentRow(
                                 comment = comment,
-                                canDelete = comment.user.id == currentUserId,
+                                canModify = isOwn && canComment,
                                 nowMillis = nowMillis,
+                                onEdit = {
+                                    editing = comment
+                                    draft = comment.text
+                                },
                                 onDelete = { onDelete(comment) },
                             )
                         }
@@ -169,39 +181,79 @@ internal fun CommentsSheetContent(
             }
         }
         if (canComment) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedTextField(
-                    value = draft,
-                    onValueChange = { draft = it.take(COMMENT_MAX_LENGTH) },
-                    placeholder = { Text(stringResource(R.string.comments_input_placeholder)) },
+            val isEditing = editing != null
+            Column {
+                if (isEditing) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 20.dp, end = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.comments_editing),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(onClick = {
+                            editing = null
+                            draft = ""
+                        }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Close,
+                                contentDescription = stringResource(R.string.comments_edit_cancel),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .testTag("comment_input"),
-                    maxLines = 3,
-                )
-                IconButton(
-                    onClick = {
-                        onSend(draft)
-                        draft = ""
-                    },
-                    enabled = draft.isNotBlank() && !state.isSending,
-                    modifier = Modifier.testTag("comment_send"),
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = stringResource(R.string.comments_send),
-                        tint = if (draft.isNotBlank()) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = { draft = it.take(COMMENT_MAX_LENGTH) },
+                        placeholder = { Text(stringResource(R.string.comments_input_placeholder)) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("comment_input"),
+                        maxLines = 3,
                     )
+                    IconButton(
+                        onClick = {
+                            val target = editing
+                            if (target != null) {
+                                onEdit(target, draft)
+                                editing = null
+                            } else {
+                                onSend(draft)
+                            }
+                            draft = ""
+                        },
+                        enabled = draft.isNotBlank() && !state.isSending,
+                        modifier = Modifier.testTag("comment_send"),
+                    ) {
+                        Icon(
+                            imageVector = if (isEditing) {
+                                Icons.Filled.Check
+                            } else {
+                                Icons.AutoMirrored.Filled.Send
+                            },
+                            contentDescription = stringResource(
+                                if (isEditing) R.string.comments_edit_save else R.string.comments_send,
+                            ),
+                            tint = if (draft.isNotBlank()) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -211,8 +263,9 @@ internal fun CommentsSheetContent(
 @Composable
 private fun CommentRow(
     comment: PostComment,
-    canDelete: Boolean,
+    canModify: Boolean,
     nowMillis: Long,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
     Row(
@@ -235,13 +288,34 @@ private fun CommentRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 8.dp),
                 )
+                if (comment.updatedAt != comment.createdAt) {
+                    Text(
+                        text = stringResource(R.string.comments_edited),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp),
+                    )
+                }
             }
             Text(
                 text = comment.text,
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
-        if (canDelete) {
+        if (canModify) {
+            IconButton(
+                onClick = onEdit,
+                modifier = Modifier
+                    .size(28.dp)
+                    .testTag("comment_edit"),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.EditNote,
+                    contentDescription = stringResource(R.string.comments_edit),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
             IconButton(
                 onClick = onDelete,
                 modifier = Modifier.size(28.dp),

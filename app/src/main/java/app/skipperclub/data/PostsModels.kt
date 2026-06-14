@@ -100,6 +100,21 @@ enum class ValidityVoteType(val wireValue: String) {
     }
 }
 
+/** Moderation report reasons for `POST /v1/posts/{id}/reports`. */
+enum class ReportReason(val wireValue: String) {
+    Spam("spam"),
+    Scam("scam"),
+    Offensive("offensive"),
+    Misinformation("misinformation"),
+    Danger("danger"),
+    Other("other"),
+    ;
+
+    companion object {
+        fun fromWire(value: String): ReportReason? = entries.firstOrNull { it.wireValue == value }
+    }
+}
+
 data class PostUser(
     val id: String,
     val name: String,
@@ -254,6 +269,32 @@ data class RouteStopDto(
             RouteStopDto(name = stop.name, coordinates = CoordinatesDto.from(stop.coordinates))
     }
 }
+
+/**
+ * Full content update for `PUT /v1/posts/{id}` (`PostUpdate` schema). `type` is
+ * immutable so it is intentionally absent. With `explicitNulls = false` omitted
+ * optional fields are dropped, matching the spec's "only valid for route posts"
+ * route fields. Route-stop/duration/length only set for route posts.
+ */
+@Serializable
+data class UpdatePostRequest(
+    val regionCode: String,
+    val status: String? = null,
+    val description: String? = null,
+    val locationName: String? = null,
+    val coordinates: CoordinatesDto? = null,
+    val mediaIds: List<String>? = null,
+    val taggedUserIds: List<String>? = null,
+    val stops: List<RouteStopDto>? = null,
+    val durationDays: Int? = null,
+    val lengthNm: Double? = null,
+)
+
+@Serializable
+internal data class PostReportRequest(
+    val reason: String,
+    val details: String? = null,
+)
 
 @Serializable
 internal data class PostStatusPatchRequest(
