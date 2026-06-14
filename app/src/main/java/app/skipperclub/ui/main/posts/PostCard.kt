@@ -1,20 +1,21 @@
 package app.skipperclub.ui.main.posts
 
 import android.text.format.DateUtils
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -24,7 +25,6 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.outlined.AddReaction
-import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
@@ -100,15 +100,16 @@ fun PostCard(
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 1.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f)),
     ) {
-        Column(modifier = Modifier.padding(bottom = 12.dp)) {
+        Column(modifier = Modifier.padding(bottom = 14.dp)) {
             PostHeader(post = post, nowMillis = nowMillis, actions = actions)
             if (post.media.isNotEmpty()) {
                 PostMediaPager(post = post)
             }
             Column(
                 modifier = Modifier.padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 PostTypeContent(post = post, nowMillis = nowMillis, actions = actions)
                 if (!post.description.isNullOrBlank()) {
@@ -132,7 +133,7 @@ private fun PostHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+            .padding(start = 16.dp, end = 4.dp, top = 14.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -163,7 +164,7 @@ private fun PostTypeBadge(post: Post) {
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
@@ -175,6 +176,7 @@ private fun PostTypeBadge(post: Post) {
             Text(
                 text = stringResource(post.type.labelRes()),
                 style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
             )
         }
     }
@@ -346,9 +348,9 @@ private fun PostMediaPager(post: Post) {
                     val selected = pagerState.currentPage == index
                     Box(
                         modifier = Modifier
-                            .size(if (selected) 7.dp else 5.dp)
+                            .size(if (selected) 8.dp else 6.dp)
                             .clip(CircleShape)
-                            .background(if (selected) Color.White else Color.White.copy(alpha = 0.5f)),
+                            .background(if (selected) Color.White else Color.White.copy(alpha = 0.56f)),
                     )
                 }
             }
@@ -569,60 +571,75 @@ private fun PostDescription(description: String) {
     Text(
         text = annotated,
         style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurface,
+        lineHeight = 20.sp,
     )
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PostActionsRow(
     post: Post,
     actions: PostCardActions,
 ) {
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+    val topReactions = post.reactions.byType.entries
+        .sortedByDescending { it.value }
+        .take(3)
+    val totalReactions = post.reactions.byType.values.sum()
+    val userReaction = post.reactions.userReactions.firstOrNull()
+    val reactionSummary = topReactions
+        .takeIf { it.isNotEmpty() }
+        ?.joinToString(separator = "") { it.key.emoji }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        val topReactions = post.reactions.byType.entries
-            .sortedByDescending { it.value }
-            .take(4)
-        topReactions.forEach { (reaction, count) ->
-            ReactionChip(
-                reaction = reaction,
-                count = count,
-                selected = reaction in post.reactions.userReactions,
+        if (post.permissions.react || totalReactions > 0) {
+            PostActionPill(
+                label = reactionSummary ?: "♡",
+                count = totalReactions.takeIf { it > 0 },
+                selected = userReaction != null,
                 enabled = post.permissions.react,
-                onClick = { actions.onToggleReaction(post, reaction) },
+                onClick = {
+                    if (userReaction != null) {
+                        actions.onToggleReaction(post, userReaction)
+                    } else {
+                        actions.onOpenReactionPicker(post)
+                    }
+                },
+                modifier = Modifier.widthIn(min = 58.dp, max = 116.dp),
             )
         }
         if (post.permissions.react) {
-            IconButton(onClick = { actions.onOpenReactionPicker(post) }) {
-                Icon(
-                    imageVector = Icons.Outlined.AddReaction,
-                    contentDescription = stringResource(R.string.post_add_reaction),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            PostIconAction(
+                icon = {
+                    Icon(
+                        imageVector = Icons.Outlined.AddReaction,
+                        contentDescription = stringResource(R.string.post_add_reaction),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                onClick = { actions.onOpenReactionPicker(post) },
+            )
         }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = { actions.onOpenComments(post) }) {
+        PostIconAction(
+            icon = {
                 Icon(
                     imageVector = Icons.Outlined.ChatBubbleOutline,
                     contentDescription = stringResource(R.string.post_comments),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-            if (post.commentsCount > 0) {
-                Text(
-                    text = post.commentsCount.toString(),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (post.permissions.bookmark) {
-                IconButton(onClick = { actions.onToggleBookmark(post) }) {
+            },
+            count = post.commentsCount.takeIf { it > 0 },
+            onClick = { actions.onOpenComments(post) },
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        if (post.permissions.bookmark) {
+            PostIconAction(
+                icon = {
                     Icon(
                         imageVector = if (post.bookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
                         contentDescription = stringResource(
@@ -634,7 +651,93 @@ private fun PostActionsRow(
                             MaterialTheme.colorScheme.onSurfaceVariant
                         },
                     )
-                }
+                },
+                selected = post.bookmarked,
+                onClick = { actions.onToggleBookmark(post) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PostActionPill(
+    label: String,
+    count: Int?,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(50),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f)
+        },
+        contentColor = if (selected) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        modifier = modifier.heightIn(min = 42.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(text = label, fontSize = 16.sp, maxLines = 1)
+            if (count != null) {
+                Text(
+                    text = count.toString(),
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PostIconAction(
+    icon: @Composable () -> Unit,
+    onClick: () -> Unit,
+    count: Int? = null,
+    selected: Boolean = false,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+        } else {
+            Color.Transparent
+        },
+        contentColor = if (selected) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+    ) {
+        Row(
+            modifier = Modifier
+                .heightIn(min = 42.dp)
+                .padding(horizontal = if (count == null) 10.dp else 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                icon()
+            }
+            if (count != null) {
+                Text(
+                    text = count.toString(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -653,14 +756,9 @@ fun ReactionChip(
         enabled = enabled,
         shape = RoundedCornerShape(50),
         color = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
         } else {
-            MaterialTheme.colorScheme.surfaceVariant
-        },
-        modifier = if (selected) {
-            Modifier.border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(50))
-        } else {
-            Modifier
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f)
         },
     ) {
         Row(
