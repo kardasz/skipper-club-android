@@ -115,6 +115,21 @@ class CruiseListControllerTest {
     }
 
     @Test
+    fun filterCountExcludesSearchWhileActiveCountIncludesIt() {
+        val searchOnly = CruiseFilters(search = "adriatic")
+        assertEquals(1, searchOnly.activeCount)
+        assertEquals(0, searchOnly.filterCount)
+
+        val searchAndScope = CruiseFilters(search = "adriatic", scope = CruiseScope.Mine)
+        assertEquals(2, searchAndScope.activeCount)
+        assertEquals(1, searchAndScope.filterCount)
+
+        val blankSearch = CruiseFilters(search = "   ", type = CruiseType.Training)
+        assertEquals(1, blankSearch.activeCount)
+        assertEquals(1, blankSearch.filterCount)
+    }
+
+    @Test
     fun loadMoreAppendsNextPageWithOffsetAndDedup() {
         gateway.cruisePages = listOf(
             cruisesPage(listOf(testCruise("c1"), testCruise("c2")), total = 3),

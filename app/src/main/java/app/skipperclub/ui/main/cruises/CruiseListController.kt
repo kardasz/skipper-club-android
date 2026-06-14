@@ -41,6 +41,13 @@ data class CruiseFilters(
             sort != CruiseSortField.DepartureDate,
             order != SortOrder.Desc,
         ).count { it }
+
+    /**
+     * Active criteria excluding the free-text [search], which is surfaced separately
+     * via the search bar. Drives the filter-icon badge and the sheet's "clear" button.
+     */
+    val filterCount: Int
+        get() = activeCount - (if (search.isNotBlank()) 1 else 0)
 }
 
 data class CruiseListUiState(

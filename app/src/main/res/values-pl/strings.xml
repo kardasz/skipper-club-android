@@ -435,7 +435,6 @@
     <string name="cruises_search_placeholder">Szukaj rejsów</string>
     <string name="cruises_search_clear">Wyczyść wyszukiwanie</string>
     <string name="cruises_filter">Filtruj rejsy</string>
-    <string name="cruises_filter_search">Wyszukiwanie</string>
     <string name="cruises_filter_scope">Zakres</string>
     <string name="cruises_filter_type">Typ rejsu</string>
     <string name="cruises_filter_vessel_type">Typ jednostki</string>

@@ -78,23 +78,13 @@ internal fun CruiseFilterSheetContent(
                 modifier = Modifier.weight(1f),
             )
             TextButton(
-                onClick = { draft = CruiseFilters() },
-                enabled = draft.activeCount > 0,
+                // Clear filters only; the free-text search is owned by the search bar.
+                onClick = { draft = CruiseFilters(search = draft.search) },
+                enabled = draft.filterCount > 0,
             ) {
                 Text(stringResource(R.string.filter_clear))
             }
         }
-
-        OutlinedTextField(
-            value = draft.search,
-            onValueChange = { draft = draft.copy(search = it) },
-            singleLine = true,
-            label = { Text(stringResource(R.string.cruises_filter_search)) },
-            placeholder = { Text(stringResource(R.string.cruises_search_placeholder)) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("cruise_filter_search"),
-        )
 
         CruiseFilterSectionLabel(R.string.cruises_filter_scope)
         FlowRow(
