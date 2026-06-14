@@ -640,6 +640,52 @@
     <string name="invitation_delete_confirm_title">Usunąć zaproszenie?</string>
     <string name="invitation_delete_confirm_message">Zaproszenie dla %1$s przestanie działać. Tej operacji nie można cofnąć.</string>
 
+    <!-- Miejsca (administrator) -->
+    <string name="menu_spots">Miejsca</string>
+    <string name="spots_title">Miejsca</string>
+    <string name="spots_back">Wstecz</string>
+    <string name="spots_search_hint">Szukaj miejsc po nazwie</string>
+    <string name="spots_search_clear">Wyczyść wyszukiwanie</string>
+    <string name="spots_empty_title">Brak miejsc</string>
+    <string name="spots_empty_subtitle">Dodane miejsca pojawią się tutaj.</string>
+    <string name="spots_load_failed">Nie udało się wczytać miejsc.</string>
+    <string name="spots_retry">Ponów</string>
+    <string name="spots_cancel">Anuluj</string>
+    <string name="spot_create">Nowe miejsce</string>
+    <string name="spot_edit">Edytuj</string>
+    <string name="spot_delete">Usuń</string>
+    <string name="spot_delete_confirm_title">Usunąć miejsce?</string>
+    <string name="spot_delete_confirm_message">%1$s oraz wszystkie jego kontakty i kanały zostaną usunięte. Tej operacji nie można cofnąć.</string>
+    <string name="spots_created">Miejsce „%1$s” zostało dodane.</string>
+    <string name="spots_updated">Miejsce „%1$s” zostało zaktualizowane.</string>
+    <string name="spots_deleted">Miejsce „%1$s” zostało usunięte.</string>
+    <string name="spots_error_network">Brak połączenia. Sprawdź sieć i spróbuj ponownie.</string>
+    <string name="spots_error_auth">Twoja sesja wygasła. Zaloguj się ponownie.</string>
+    <string name="spots_error_forbidden">Tylko administratorzy mogą zarządzać miejscami.</string>
+    <string name="spots_error_duplicate">Miejsce o tej samej nazwie lub w pobliżu już istnieje.</string>
+    <string name="spots_error_validation">Sprawdź wprowadzone dane i spróbuj ponownie.</string>
+    <string name="spots_error_generic">Coś poszło nie tak. Spróbuj ponownie.</string>
+    <string name="spot_form_create_title">Nowe miejsce</string>
+    <string name="spot_form_edit_title">Edytuj miejsce</string>
+    <string name="spot_form_save">Zapisz</string>
+    <string name="spot_form_remove">Usuń</string>
+    <string name="spot_form_name_label">Nazwa</string>
+    <string name="spot_form_lat_label">Szerokość geogr.</string>
+    <string name="spot_form_lng_label">Długość geogr.</string>
+    <string name="spot_form_contacts_title">Kontakty telefoniczne</string>
+    <string name="spot_form_add_contact">Dodaj</string>
+    <string name="spot_form_contact_label">Etykieta</string>
+    <string name="spot_form_contact_phone">Telefon</string>
+    <string name="spot_form_contact_extension">Wewnętrzny</string>
+    <string name="spot_form_channels_title">Kanały radiowe</string>
+    <string name="spot_form_add_channel">Dodaj</string>
+    <string name="spot_form_channel_name">Nazwa</string>
+    <string name="spot_form_channel_kind_vhf">VHF</string>
+    <string name="spot_form_channel_kind_mhz">MHz</string>
+    <string name="spot_form_channel_vhf_label">Kanał VHF (1–88)</string>
+    <string name="spot_form_channel_mhz_label">Częstotliwość (MHz)</string>
+    <string name="spot_form_channel_primary">Kanał główny</string>
+
     <!-- Znajomi -->
     <string name="menu_friends">Znajomi</string>
     <string name="friends_title">Znajomi</string>

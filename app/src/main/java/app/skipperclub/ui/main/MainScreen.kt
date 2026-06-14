@@ -40,6 +40,7 @@ import app.skipperclub.ui.main.messages.MessagesScreen
 import app.skipperclub.ui.main.notifications.NotificationsScreen
 import app.skipperclub.ui.main.posts.PostsScreen
 import app.skipperclub.ui.main.profile.ProfileScreen
+import app.skipperclub.ui.main.spots.SpotsScreen
 import app.skipperclub.ui.theme.SkipperClubTheme
 
 @Composable
@@ -73,6 +74,7 @@ private fun MainScreenContent(
     var showNotifications by rememberSaveable { mutableStateOf(value = false) }
     var showFriends by rememberSaveable { mutableStateOf(value = false) }
     var showInvitations by rememberSaveable { mutableStateOf(value = false) }
+    var showSpots by rememberSaveable { mutableStateOf(value = false) }
     var showProfile by rememberSaveable { mutableStateOf(value = false) }
 
     Box(
@@ -125,6 +127,10 @@ private fun MainScreenContent(
                     menuOpenState.value = false
                     showInvitations = true
                 },
+                onOpenSpots = {
+                    menuOpenState.value = false
+                    showSpots = true
+                },
                 onLogout = {
                     menuOpenState.value = false
                     onLogout()
@@ -164,6 +170,15 @@ private fun MainScreenContent(
         }
     }
 
+    if (showSpots) {
+        Dialog(
+            onDismissRequest = { showSpots = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) {
+            SpotsScreen(onClose = { showSpots = false })
+        }
+    }
+
     if (showProfile) {
         Dialog(
             onDismissRequest = { showProfile = false },
@@ -182,6 +197,7 @@ private fun MainMenuSheet(
     onOpenNotifications: () -> Unit,
     onOpenFriends: () -> Unit,
     onOpenInvitations: () -> Unit,
+    onOpenSpots: () -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -225,12 +241,17 @@ private fun MainMenuSheet(
             iconRes = R.drawable.ic_group,
             onClick = onOpenFriends,
         )
-        // Invitations are an admin-only surface (see docs/api/invitations) — hide it for standard users.
+        // Invitations and Spots are admin-only surfaces — hide them for standard users.
         if (user.isAdmin) {
             MainMenuItem(
                 label = stringResource(R.string.menu_invitations),
                 iconRes = R.drawable.ic_mail,
                 onClick = onOpenInvitations,
+            )
+            MainMenuItem(
+                label = stringResource(R.string.menu_spots),
+                iconRes = R.drawable.ic_place,
+                onClick = onOpenSpots,
             )
         }
         MainMenuItem(

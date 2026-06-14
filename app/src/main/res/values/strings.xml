@@ -622,6 +622,52 @@
     <string name="invitation_delete_confirm_title">Delete invitation?</string>
     <string name="invitation_delete_confirm_message">The invitation for %1$s will no longer work. This can\'t be undone.</string>
 
+    <!-- Spots (admin) -->
+    <string name="menu_spots">Spots</string>
+    <string name="spots_title">Spots</string>
+    <string name="spots_back">Back</string>
+    <string name="spots_search_hint">Search spots by name</string>
+    <string name="spots_search_clear">Clear search</string>
+    <string name="spots_empty_title">No spots yet</string>
+    <string name="spots_empty_subtitle">Spots you add will appear here.</string>
+    <string name="spots_load_failed">Couldn\'t load spots.</string>
+    <string name="spots_retry">Retry</string>
+    <string name="spots_cancel">Cancel</string>
+    <string name="spot_create">New spot</string>
+    <string name="spot_edit">Edit</string>
+    <string name="spot_delete">Delete</string>
+    <string name="spot_delete_confirm_title">Delete spot?</string>
+    <string name="spot_delete_confirm_message">%1$s and all of its contacts and channels will be removed. This can\'t be undone.</string>
+    <string name="spots_created">Spot “%1$s” was created.</string>
+    <string name="spots_updated">Spot “%1$s” was updated.</string>
+    <string name="spots_deleted">Spot “%1$s” was deleted.</string>
+    <string name="spots_error_network">No connection. Check your network and try again.</string>
+    <string name="spots_error_auth">Your session has expired. Please sign in again.</string>
+    <string name="spots_error_forbidden">Only administrators can manage spots.</string>
+    <string name="spots_error_duplicate">A spot with the same name or at a nearby location already exists.</string>
+    <string name="spots_error_validation">Please check the entered values and try again.</string>
+    <string name="spots_error_generic">Something went wrong. Please try again.</string>
+    <string name="spot_form_create_title">New spot</string>
+    <string name="spot_form_edit_title">Edit spot</string>
+    <string name="spot_form_save">Save</string>
+    <string name="spot_form_remove">Remove</string>
+    <string name="spot_form_name_label">Name</string>
+    <string name="spot_form_lat_label">Latitude</string>
+    <string name="spot_form_lng_label">Longitude</string>
+    <string name="spot_form_contacts_title">Phone contacts</string>
+    <string name="spot_form_add_contact">Add</string>
+    <string name="spot_form_contact_label">Label</string>
+    <string name="spot_form_contact_phone">Phone</string>
+    <string name="spot_form_contact_extension">Extension</string>
+    <string name="spot_form_channels_title">Radio channels</string>
+    <string name="spot_form_add_channel">Add</string>
+    <string name="spot_form_channel_name">Name</string>
+    <string name="spot_form_channel_kind_vhf">VHF</string>
+    <string name="spot_form_channel_kind_mhz">MHz</string>
+    <string name="spot_form_channel_vhf_label">VHF channel (1–88)</string>
+    <string name="spot_form_channel_mhz_label">Frequency (MHz)</string>
+    <string name="spot_form_channel_primary">Primary channel</string>
+
     <!-- Friends -->
     <string name="menu_friends">Friends</string>
     <string name="friends_title">Friends</string>
