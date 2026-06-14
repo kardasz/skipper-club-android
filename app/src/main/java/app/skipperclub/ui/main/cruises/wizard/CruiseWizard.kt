@@ -11,12 +11,14 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.skipperclub.R
 import app.skipperclub.data.Cruise
@@ -70,6 +73,7 @@ fun CruiseWizardHost(
     val sessionExpired = stringResource(R.string.cruise_error_auth)
     val draftGenerated = stringResource(R.string.cruise_ai_generated)
     val draftFailed = stringResource(R.string.cruise_ai_failed)
+    val mediaUploadFailed = stringResource(R.string.wizard_media_failed)
 
     LaunchedEffect(state) {
         state.events.collect { event ->
@@ -83,6 +87,9 @@ fun CruiseWizardHost(
 
                 is CruiseWizardEvent.DraftFailed ->
                     notificationHostState.show(draftFailed, InAppNotificationType.Error)
+
+                is CruiseWizardEvent.MediaUploadFailed ->
+                    notificationHostState.show(mediaUploadFailed, InAppNotificationType.Error)
 
                 CruiseWizardEvent.SessionExpired ->
                     notificationHostState.show(sessionExpired, InAppNotificationType.Error)
@@ -138,7 +145,10 @@ fun CruiseWizard(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(scrollState)
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                        .widthIn(max = 720.dp)
+                        .align(Alignment.TopCenter)
+                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
                     when (state.step) {
                         CruiseWizardStep.AiDraft -> WizardAiDraftStep(state)
@@ -146,6 +156,7 @@ fun CruiseWizard(
                         CruiseWizardStep.Route -> WizardRouteStep(state)
                         CruiseWizardStep.Vessel -> WizardVesselStep(state)
                         CruiseWizardStep.Crew -> WizardCrewStep(state)
+                        CruiseWizardStep.Media -> WizardCruiseMediaStep(state)
                         CruiseWizardStep.Summary -> WizardSummaryStep(state)
                     }
                 }
@@ -183,19 +194,28 @@ private fun WizardTopBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 4.dp, end = 20.dp, top = 4.dp),
+                .widthIn(max = 760.dp)
+                .align(Alignment.CenterHorizontally)
+                .padding(start = 8.dp, end = 20.dp, top = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onCloseRequest, modifier = Modifier.testTag("cruise_wizard_close")) {
                 Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.wizard_close))
             }
-            Text(
-                text = stringResource(
-                    if (state.isEditing) R.string.cruise_wizard_title_edit else R.string.cruise_wizard_title_create,
-                ),
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.weight(1f),
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(
+                        if (state.isEditing) R.string.cruise_wizard_title_edit else R.string.cruise_wizard_title_create,
+                    ),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = stringResource(state.step.titleRes()),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Text(
                 text = "${state.stepIndex + 1}/${state.steps.size}",
                 style = MaterialTheme.typography.labelMedium,
@@ -206,76 +226,84 @@ private fun WizardTopBar(
             progress = { (state.stepIndex + 1f) / state.steps.size },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp),
-        )
-        Text(
-            text = stringResource(state.step.titleRes()),
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.padding(start = 20.dp, top = 8.dp),
+                .widthIn(max = 720.dp)
+                .align(Alignment.CenterHorizontally)
+                .padding(horizontal = 20.dp, vertical = 8.dp),
         )
     }
 }
 
 @Composable
 private fun WizardBottomBar(state: CruiseWizardState) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        if (state.step == CruiseWizardStep.AiDraft) {
-            OutlinedButton(
-                onClick = { state.next() },
-                enabled = !state.isGeneratingDraft,
-                modifier = Modifier.weight(1f).testTag("cruise_wizard_ai_skip"),
+    Surface(shadowElevation = 3.dp, color = MaterialTheme.colorScheme.surface) {
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 760.dp)
+                    .align(Alignment.Center)
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(stringResource(R.string.cruise_ai_skip))
-            }
-            Button(
-                onClick = { state.generateDraft() },
-                enabled = state.canGenerateDraft,
-                modifier = Modifier.weight(2f).testTag("cruise_wizard_ai_generate"),
-            ) {
-                if (state.isGeneratingDraft) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp))
-                } else {
-                    Text(stringResource(R.string.cruise_ai_generate))
+                if (state.step == CruiseWizardStep.AiDraft) {
+                    OutlinedButton(
+                        onClick = { state.next() },
+                        enabled = !state.isGeneratingDraft,
+                        modifier = Modifier.weight(1f).testTag("cruise_wizard_ai_skip"),
+                        contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+                    ) {
+                        Text(stringResource(R.string.cruise_ai_skip))
+                    }
+                    Button(
+                        onClick = { state.generateDraft() },
+                        enabled = state.canGenerateDraft,
+                        modifier = Modifier.weight(2f).testTag("cruise_wizard_ai_generate"),
+                        contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+                    ) {
+                        if (state.isGeneratingDraft) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                        } else {
+                            Text(stringResource(R.string.cruise_ai_generate))
+                        }
+                    }
+                    return@Row
                 }
-            }
-            return@Row
-        }
-        if (state.stepIndex > 0) {
-            OutlinedButton(
-                onClick = { state.back() },
-                modifier = Modifier.weight(1f).testTag("cruise_wizard_back"),
-            ) {
-                Text(stringResource(R.string.wizard_back))
-            }
-        }
-        if (state.step == CruiseWizardStep.Summary) {
-            Button(
-                onClick = { state.publish() },
-                enabled = !state.isPublishing,
-                modifier = Modifier.weight(2f).testTag("cruise_wizard_publish"),
-            ) {
-                if (state.isPublishing) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp))
-                } else {
-                    Text(
-                        stringResource(
-                            if (state.isEditing) R.string.cruise_wizard_save else R.string.wizard_publish,
-                        ),
-                    )
+                if (state.stepIndex > 0) {
+                    OutlinedButton(
+                        onClick = { state.back() },
+                        modifier = Modifier.weight(1f).testTag("cruise_wizard_back"),
+                        contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+                    ) {
+                        Text(stringResource(R.string.wizard_back))
+                    }
                 }
-            }
-        } else {
-            Button(
-                onClick = { state.next() },
-                enabled = state.canGoNext,
-                modifier = Modifier.weight(2f).testTag("cruise_wizard_next"),
-            ) {
-                Text(stringResource(R.string.wizard_next))
+                if (state.step == CruiseWizardStep.Summary) {
+                    Button(
+                        onClick = { state.publish() },
+                        enabled = !state.isPublishing,
+                        modifier = Modifier.weight(2f).testTag("cruise_wizard_publish"),
+                        contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+                    ) {
+                        if (state.isPublishing) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                        } else {
+                            Text(
+                                stringResource(
+                                    if (state.isEditing) R.string.cruise_wizard_save else R.string.wizard_publish,
+                                ),
+                            )
+                        }
+                    }
+                } else {
+                    Button(
+                        onClick = { state.next() },
+                        enabled = state.canGoNext,
+                        modifier = Modifier.weight(2f).testTag("cruise_wizard_next"),
+                        contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+                    ) {
+                        Text(stringResource(R.string.wizard_next))
+                    }
+                }
             }
         }
     }
@@ -287,5 +315,6 @@ internal fun CruiseWizardStep.titleRes(): Int = when (this) {
     CruiseWizardStep.Route -> R.string.cruise_wizard_step_route
     CruiseWizardStep.Vessel -> R.string.cruise_wizard_step_vessel
     CruiseWizardStep.Crew -> R.string.cruise_wizard_step_crew
+    CruiseWizardStep.Media -> R.string.cruise_wizard_step_media
     CruiseWizardStep.Summary -> R.string.cruise_wizard_step_summary
 }

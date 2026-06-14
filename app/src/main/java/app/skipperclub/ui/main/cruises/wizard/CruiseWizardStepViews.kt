@@ -4,7 +4,9 @@ import android.content.Intent
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,18 +15,24 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.CircularProgressIndicator
@@ -34,8 +42,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -44,15 +56,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.skipperclub.R
 import app.skipperclub.data.CruiseCurrency
@@ -61,10 +79,15 @@ import app.skipperclub.data.GeocodedLocation
 import app.skipperclub.data.VesselType
 import app.skipperclub.ui.main.cruises.formatLocalDate
 import app.skipperclub.ui.main.cruises.labelRes
+import app.skipperclub.ui.main.posts.wizard.readPickedMedia
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 // ---------------------------------------------------------------------------
 // Step 0 — AI draft (create-only)
@@ -310,16 +333,37 @@ private fun PortField(
     isError: Boolean,
     onClick: () -> Unit,
 ) {
-    OutlinedTextField(
-        value = portName.orEmpty(),
-        onValueChange = {},
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        enabled = false,
-        readOnly = true,
-        placeholder = { Text(stringResource(placeholderRes)) },
-        leadingIcon = { Icon(Icons.Outlined.Place, contentDescription = null) },
-        isError = isError,
-    )
+    val borderColor = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, borderColor),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                Icons.Outlined.Place,
+                contentDescription = null,
+                tint = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = portName ?: stringResource(placeholderRes),
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (portName == null) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -332,16 +376,35 @@ private fun DateField(
     modifier: Modifier = Modifier,
 ) {
     var showPicker by remember { mutableStateOf(false) }
-    OutlinedTextField(
-        value = date?.let { formatLocalDate(it) }.orEmpty(),
-        onValueChange = {},
-        modifier = modifier.clickable { showPicker = true },
-        enabled = false,
-        readOnly = true,
-        label = { Text(label) },
-        leadingIcon = { Icon(Icons.Outlined.CalendarMonth, contentDescription = null) },
-        isError = isError,
-    )
+    val borderColor = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant
+    Surface(
+        onClick = { showPicker = true },
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, borderColor),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                Icons.Outlined.CalendarMonth,
+                contentDescription = null,
+                tint = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+            )
+            Column {
+                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = date?.let { formatLocalDate(it) } ?: "—",
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
     if (showPicker) {
         val pickerState = rememberDatePickerState(
             initialSelectedDateMillis = date?.let { it.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() },
@@ -372,45 +435,63 @@ private fun PortSearchDialog(
     onDismiss: () -> Unit,
     onSelect: (GeocodedLocation) -> Unit,
 ) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        androidx.compose.material3.Surface(
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surface,
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                OutlinedTextField(
-                    value = state.portQuery,
-                    onValueChange = state::updatePortQuery,
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text(stringResource(R.string.cruise_port_search_hint)) },
-                    leadingIcon = { Icon(Icons.Outlined.Place, contentDescription = null) },
-                    singleLine = true,
-                )
-                Box(modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 320.dp)) {
-                    when {
-                        state.isSearchingPorts -> CircularProgressIndicator(Modifier.align(Alignment.Center).padding(16.dp))
-                        state.portResults.isEmpty() && state.portQuery.length >= 3 -> Text(
-                            text = stringResource(R.string.cruise_port_search_empty),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.align(Alignment.Center).padding(16.dp),
-                        )
+            Text(
+                text = stringResource(R.string.cruise_port_search_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            OutlinedTextField(
+                value = state.portQuery,
+                onValueChange = state::updatePortQuery,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text(stringResource(R.string.cruise_port_search_hint)) },
+                leadingIcon = { Icon(Icons.Outlined.Place, contentDescription = null) },
+                singleLine = true,
+            )
+            Box(modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp, max = 420.dp)) {
+                when {
+                    state.isSearchingPorts -> CircularProgressIndicator(Modifier.align(Alignment.Center).padding(16.dp))
+                    state.portResults.isEmpty() && state.portQuery.length >= 3 -> Text(
+                        text = stringResource(R.string.cruise_port_search_empty),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.align(Alignment.Center).padding(16.dp),
+                    )
 
-                        else -> LazyColumn {
-                            items(state.portResults, key = { it.displayName + it.coordinates.lat }) { loc ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().clickable { onSelect(loc) }.padding(vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Icon(Icons.Outlined.Place, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(loc.displayName, modifier = Modifier.padding(start = 8.dp))
-                                }
-                            }
+                    else -> LazyColumn {
+                        items(state.portResults, key = { it.displayName + it.coordinates.lat }) { loc ->
+                            ListItem(
+                                headlineContent = {
+                                    Text(
+                                        text = loc.displayName,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
+                                leadingContent = {
+                                    Icon(
+                                        Icons.Outlined.Place,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onSelect(loc) },
+                            )
                         }
                     }
                 }
-                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
-                    Text(stringResource(R.string.cruise_done))
-                }
+            }
+            TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
+                Text(stringResource(R.string.cruise_done))
             }
         }
     }
@@ -595,43 +676,264 @@ private fun RuleRow(
 }
 
 // ---------------------------------------------------------------------------
-// Step 5 — Summary
+// Step 5 — Media
 // ---------------------------------------------------------------------------
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun WizardSummaryStep(state: CruiseWizardState) {
-    SummaryRow(stringResource(R.string.cruise_field_title), state.title)
-    state.type?.let { SummaryRow(stringResource(R.string.cruise_field_type), stringResource(it.labelRes())) }
-    SummaryRow(
-        stringResource(R.string.cruise_field_route),
-        "${state.departurePort?.name.orEmpty()} → ${state.arrivalPort?.name.orEmpty()}",
-    )
-    SummaryRow(
-        stringResource(R.string.cruise_field_dates),
-        listOfNotNull(
-            state.departureDate?.let { formatLocalDate(it) },
-            state.arrivalDate?.let { formatLocalDate(it) },
-        ).joinToString(" – "),
-    )
-    state.vesselType?.let {
-        SummaryRow(stringResource(R.string.cruise_field_vessel), "${stringResource(it.labelRes())} • ${state.vessel}")
+internal fun WizardCruiseMediaStep(state: CruiseWizardState) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var oversizeRejected by remember { mutableStateOf(false) }
+
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = CRUISE_MEDIA_MAX_COUNT),
+    ) { uris ->
+        oversizeRejected = false
+        val available = CRUISE_MEDIA_MAX_COUNT - state.media.size
+        uris.take(available).forEach { uri ->
+            scope.launch {
+                val picked = readPickedMedia(context, uri)
+                if (picked == null) {
+                    oversizeRejected = true
+                } else {
+                    state.uploadMedia(
+                        fileName = picked.fileName,
+                        mimeType = picked.mimeType,
+                        bytes = picked.bytes,
+                        meta = picked.meta,
+                    )
+                }
+            }
+        }
     }
-    SummaryRow(
-        stringResource(R.string.cruise_field_cost),
-        "${state.costText} ${state.currency.wireValue}",
-    )
-    SummaryRow(stringResource(R.string.cruise_field_max_participants), state.maxParticipantsText)
-    SummaryRow(
-        stringResource(R.string.cruise_field_private),
-        stringResource(if (state.isPrivate) R.string.cruise_rule_yes else R.string.cruise_rule_no),
-    )
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text(
+            text = stringResource(R.string.cruise_media_subtitle),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Surface(
+            onClick = {
+                launcher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo),
+                )
+            },
+            enabled = state.media.size < CRUISE_MEDIA_MAX_COUNT,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("cruise_media_add"),
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        ) {
+            Row(
+                modifier = Modifier.padding(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.AddPhotoAlternate,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(10.dp).size(24.dp),
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.cruise_media_add),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = stringResource(R.string.wizard_media_limit),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        if (oversizeRejected) {
+            Text(
+                text = stringResource(R.string.wizard_media_too_large),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        if (state.media.isEmpty()) {
+            Text(
+                text = stringResource(R.string.cruise_media_empty),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            maxItemsInEachRow = 3,
+        ) {
+            state.media.forEach { item ->
+                CruiseMediaTile(item = item, onRemove = { state.removeMedia(item.localId) })
+            }
+        }
+    }
 }
 
 @Composable
-private fun SummaryRow(label: String, value: String) {
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value.ifBlank { "—" }, style = MaterialTheme.typography.bodyLarge)
+private fun CruiseMediaTile(
+    item: CruiseWizardMedia,
+    onRemove: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier
+            .fillMaxWidth(0.31f)
+            .aspectRatio(1f),
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            when {
+                item.isUploading -> CircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.Center).size(28.dp),
+                    strokeWidth = 2.dp,
+                )
+
+                item.failed -> Icon(
+                    imageVector = Icons.Outlined.BrokenImage,
+                    contentDescription = stringResource(R.string.wizard_media_failed),
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+
+                else -> {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(item.publicUrl)
+                            .crossfade(enable = true)
+                            .build(),
+                        contentDescription = item.fileName,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    if (item.isVideo) {
+                        Icon(
+                            imageVector = Icons.Filled.PlayCircle,
+                            contentDescription = stringResource(R.string.post_video_badge),
+                            tint = Color.White.copy(alpha = 0.9f),
+                            modifier = Modifier.align(Alignment.Center).size(34.dp),
+                        )
+                    }
+                }
+            }
+            IconButton(
+                onClick = onRemove,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(32.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.wizard_media_remove),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Step 6 — Summary
+// ---------------------------------------------------------------------------
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun WizardSummaryStep(state: CruiseWizardState) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SummaryBlock(title = state.title, subtitle = state.type?.let { stringResource(it.labelRes()) })
+        SummaryBlock(
+            title = "${state.departurePort?.name.orEmpty()} → ${state.arrivalPort?.name.orEmpty()}",
+            subtitle = listOfNotNull(
+                state.departureDate?.let { formatLocalDate(it) },
+                state.arrivalDate?.let { formatLocalDate(it) },
+            ).joinToString(" – "),
+            label = stringResource(R.string.cruise_field_route),
+        )
+        state.vesselType?.let {
+            SummaryBlock(
+                title = "${stringResource(it.labelRes())} • ${state.vessel}",
+                subtitle = listOf(state.vesselBrand, state.vesselModel).filterNot { value -> value.isNullOrBlank() }
+                    .joinToString(" ")
+                    .takeIf { value -> value.isNotBlank() },
+                label = stringResource(R.string.cruise_field_vessel),
+            )
+        }
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            SummaryChip(stringResource(R.string.cruise_field_cost), "${state.costText} ${state.currency.wireValue}")
+            SummaryChip(stringResource(R.string.cruise_field_max_participants), state.maxParticipantsText)
+            SummaryChip(
+                stringResource(R.string.cruise_field_private),
+                stringResource(if (state.isPrivate) R.string.cruise_rule_yes else R.string.cruise_rule_no),
+            )
+            if (state.uploadedMediaCount > 0) {
+                SummaryChip(
+                    stringResource(R.string.cruise_wizard_step_media),
+                    pluralStringResource(
+                        R.plurals.wizard_summary_media,
+                        state.uploadedMediaCount,
+                        state.uploadedMediaCount,
+                    ),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SummaryBlock(
+    title: String,
+    subtitle: String? = null,
+    label: String? = null,
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            label?.let {
+                Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(title.ifBlank { "—" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            subtitle?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SummaryChip(label: String, value: String) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value.ifBlank { "—" }, style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }
 

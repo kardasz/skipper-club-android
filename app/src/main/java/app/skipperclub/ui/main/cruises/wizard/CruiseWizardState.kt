@@ -12,6 +12,7 @@ import app.skipperclub.data.CruisePort
 import app.skipperclub.data.CruisePortDto
 import app.skipperclub.data.CruiseType
 import app.skipperclub.data.GeocodedLocation
+import app.skipperclub.data.MediaUploadMeta
 import app.skipperclub.data.VesselType
 import app.skipperclub.ui.main.cruises.CruisesGateway
 import app.skipperclub.ui.main.cruises.RealCruisesGateway
@@ -34,12 +35,13 @@ const val CRUISE_MAX_PARTICIPANTS_LIMIT = 50
 const val CRUISE_COST_LIMIT = 100_000.0
 const val CRUISE_AI_DESCRIPTION_MIN_LENGTH = 10
 const val CRUISE_AI_DESCRIPTION_MAX_LENGTH = 5000
+const val CRUISE_MEDIA_MAX_COUNT = 10
 
 /**
  * [AiDraft] is an optional intro step (create-only) where the user describes the
  * cruise in free text / voice and the AI pre-fills the remaining steps.
  */
-enum class CruiseWizardStep { AiDraft, Basics, Route, Vessel, Crew, Summary }
+enum class CruiseWizardStep { AiDraft, Basics, Route, Vessel, Crew, Media, Summary }
 
 /** Validation problems surfaced under the relevant field / step. */
 enum class CruiseWizardError {
@@ -62,10 +64,21 @@ private val DATE_RELATED_ERRORS =
 sealed interface CruiseWizardEvent {
     data class Published(val cruise: Cruise) : CruiseWizardEvent
     data class PublishFailed(val error: Exception) : CruiseWizardEvent
+    data class MediaUploadFailed(val error: Exception) : CruiseWizardEvent
     data object DraftGenerated : CruiseWizardEvent
     data class DraftFailed(val error: Exception) : CruiseWizardEvent
     data object SessionExpired : CruiseWizardEvent
 }
+
+data class CruiseWizardMedia(
+    val localId: Long,
+    val fileName: String,
+    val isVideo: Boolean = false,
+    val isUploading: Boolean = false,
+    val failed: Boolean = false,
+    val mediaId: String? = null,
+    val publicUrl: String? = null,
+)
 
 /** Which field a geocoder search result should land in. */
 enum class CruisePortTarget { Departure, Arrival, Stop }
@@ -165,6 +178,8 @@ class CruiseWizardState(
     var childrenAllowed by mutableStateOf(existing?.childrenAllowed)
         private set
 
+    val media = mutableStateListOf<CruiseWizardMedia>()
+
     var isPublishing by mutableStateOf(false)
         private set
 
@@ -176,6 +191,21 @@ class CruiseWizardState(
     val events: SharedFlow<CruiseWizardEvent> = _events.asSharedFlow()
 
     private var portSearchJob: Job? = null
+    private var nextMediaLocalId = 0L
+
+    init {
+        existing?.media?.forEach { item ->
+            media.add(
+                CruiseWizardMedia(
+                    localId = nextMediaLocalId++,
+                    fileName = item.url.substringAfterLast('/').ifBlank { "media" },
+                    isVideo = item.isVideo,
+                    mediaId = item.id,
+                    publicUrl = item.url,
+                ),
+            )
+        }
+    }
 
     val stepIndex: Int
         get() = steps.indexOf(step).coerceAtLeast(0)
@@ -408,6 +438,51 @@ class CruiseWizardState(
         childrenAllowed = value
     }
 
+    fun uploadMedia(
+        fileName: String,
+        mimeType: String,
+        bytes: ByteArray,
+        meta: MediaUploadMeta = MediaUploadMeta(),
+    ) {
+        if (media.size >= CRUISE_MEDIA_MAX_COUNT) return
+        val item = CruiseWizardMedia(
+            localId = nextMediaLocalId++,
+            fileName = fileName,
+            isVideo = mimeType.startsWith("video/"),
+            isUploading = true,
+        )
+        media.add(item)
+        scope.launch {
+            val token = runCatching { accessToken() }.getOrNull() ?: run {
+                media.removeAll { it.localId == item.localId }
+                _events.tryEmit(CruiseWizardEvent.SessionExpired)
+                return@launch
+            }
+            try {
+                val uploaded = gateway.uploadMedia(token, fileName, mimeType, bytes, meta)
+                replaceMedia(item.localId) {
+                    it.copy(isUploading = false, mediaId = uploaded.mediaId, publicUrl = uploaded.publicUrl)
+                }
+            } catch (error: Exception) {
+                replaceMedia(item.localId) { it.copy(isUploading = false, failed = true) }
+                _events.tryEmit(CruiseWizardEvent.MediaUploadFailed(error))
+            }
+        }
+    }
+
+    fun removeMedia(localId: Long) {
+        media.removeAll { it.localId == localId }
+    }
+
+    val isUploadingMedia: Boolean
+        get() = media.any { it.isUploading }
+
+    private val uploadedMediaIds: List<String>
+        get() = media.mapNotNull { it.mediaId }
+
+    val uploadedMediaCount: Int
+        get() = uploadedMediaIds.size
+
     private fun parsedCost(): Double? =
         costText.replace(',', '.').toDoubleOrNull()?.takeIf { it in 0.0..CRUISE_COST_LIMIT }
 
@@ -451,11 +526,17 @@ class CruiseWizardState(
                 if (parsedMaxParticipants() == null) add(CruiseWizardError.MaxParticipantsInvalid)
             }
 
+            CruiseWizardStep.Media -> emptySet()
+
             CruiseWizardStep.Summary -> emptySet()
         }
 
     val canGoNext: Boolean
-        get() = if (step == CruiseWizardStep.Summary) !isPublishing else true
+        get() = when (step) {
+            CruiseWizardStep.Media -> !isUploadingMedia
+            CruiseWizardStep.Summary -> !isPublishing
+            else -> true
+        }
 
     /** Advances if the current step validates; otherwise surfaces the errors. */
     fun next() {
@@ -484,7 +565,8 @@ class CruiseWizardState(
         get() = !isEditing &&
             (
                 aiDescription.isNotBlank() || title.isNotBlank() || description.isNotBlank() ||
-                    departurePort != null || arrivalPort != null || vessel.isNotBlank()
+                    departurePort != null || arrivalPort != null || vessel.isNotBlank() ||
+                    media.isNotEmpty()
                 )
 
     internal fun buildPayload(): CruisePayload? {
@@ -515,6 +597,7 @@ class CruiseWizardState(
             vesselLength = vesselLengthText.replace(',', '.').toDoubleOrNull()?.takeIf { it in 15.0..200.0 },
             vesselCabins = vesselCabinsText.toIntOrNull()?.takeIf { it in 1..20 },
             vesselType = vesselTypeValue.wireValue,
+            mediaIds = uploadedMediaIds.takeIf { it.isNotEmpty() },
             type = type?.wireValue,
             smokingAllowed = smokingAllowed,
             alcoholAllowed = alcoholAllowed,
@@ -551,6 +634,13 @@ class CruiseWizardState(
                 isPublishing = false
                 _events.tryEmit(CruiseWizardEvent.PublishFailed(error))
             }
+        }
+    }
+
+    private fun replaceMedia(localId: Long, transform: (CruiseWizardMedia) -> CruiseWizardMedia) {
+        val index = media.indexOfFirst { it.localId == localId }
+        if (index >= 0) {
+            media[index] = transform(media[index])
         }
     }
 }

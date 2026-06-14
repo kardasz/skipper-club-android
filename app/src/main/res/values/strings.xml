@@ -563,6 +563,7 @@
     <string name="cruise_wizard_step_route">Route</string>
     <string name="cruise_wizard_step_vessel">Vessel</string>
     <string name="cruise_wizard_step_crew">Crew &amp; cost</string>
+    <string name="cruise_wizard_step_media">Photos &amp; video</string>
     <string name="cruise_wizard_step_summary">Summary</string>
     <string name="cruise_field_title">Title</string>
     <string name="cruise_field_title_hint">e.g. Mediterranean Summer Sailing</string>
@@ -604,6 +605,7 @@
     <string name="cruise_rule_no">Not allowed</string>
     <string name="cruise_date_confirm">OK</string>
     <string name="cruise_port_search_hint">Search ports or places</string>
+    <string name="cruise_port_search_title">Find a port or place</string>
     <string name="cruise_port_search_empty">No places found.</string>
     <string name="cruise_error_title">Title must be at least 3 characters.</string>
     <string name="cruise_error_description">Description must be at least 10 characters.</string>
@@ -615,6 +617,9 @@
     <string name="cruise_error_vessel_type">Select a vessel type.</string>
     <string name="cruise_error_cost">Enter a valid cost.</string>
     <string name="cruise_error_max_participants">Enter between 1 and 50 participants.</string>
+    <string name="cruise_media_subtitle">Add photos or a short video so people can quickly understand the yacht, route and vibe.</string>
+    <string name="cruise_media_add">Add photos or video</string>
+    <string name="cruise_media_empty">You can skip this for now and add media later.</string>
 
     <!-- Cruise AI draft -->
     <string name="cruise_ai_headline">Start with AI</string>

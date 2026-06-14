@@ -16,9 +16,11 @@ import app.skipperclub.data.CruiseUserRole
 import app.skipperclub.data.CruisesError
 import app.skipperclub.data.CruisesPage
 import app.skipperclub.data.GeocodedLocation
+import app.skipperclub.data.MediaUploadMeta
 import app.skipperclub.data.PostCoordinates
 import app.skipperclub.data.UserSearchQuery
 import app.skipperclub.data.UsersPage
+import app.skipperclub.data.UploadedMedia
 import app.skipperclub.data.VesselType
 
 internal fun testCruise(
@@ -94,6 +96,9 @@ internal class FakeCruisesGateway : CruisesGateway {
 
     var usersPage: UsersPage = UsersPage(emptyList(), total = 0, limit = 20, offset = 0)
     var locations: List<GeocodedLocation> = emptyList()
+    var uploadedMedia: UploadedMedia = UploadedMedia(mediaId = "media-1", publicUrl = "https://cdn.example.com/media-1.jpg")
+    var mediaUploadError: CruisesError? = null
+    val mediaUploads = mutableListOf<String>()
 
     val calls = mutableListOf<String>()
 
@@ -172,5 +177,18 @@ internal class FakeCruisesGateway : CruisesGateway {
     override suspend fun searchLocations(accessToken: String, query: String): List<GeocodedLocation> {
         calls += "searchLocations:$query"
         return locations
+    }
+
+    override suspend fun uploadMedia(
+        accessToken: String,
+        fileName: String,
+        mimeType: String,
+        bytes: ByteArray,
+        meta: MediaUploadMeta,
+    ): UploadedMedia {
+        calls += "uploadMedia:$fileName"
+        mediaUploads += fileName
+        mediaUploadError?.let { throw it }
+        return uploadedMedia
     }
 }

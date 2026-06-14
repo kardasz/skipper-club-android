@@ -6,6 +6,7 @@ import app.skipperclub.data.CruisePort
 import app.skipperclub.data.CruiseType
 import app.skipperclub.data.CruisesError
 import app.skipperclub.data.GeocodedLocation
+import app.skipperclub.data.MediaUploadMeta
 import app.skipperclub.data.PostCoordinates
 import app.skipperclub.data.VesselType
 import app.skipperclub.ui.main.cruises.FakeCruisesGateway
@@ -278,6 +279,12 @@ class CruiseWizardStateTest {
         state.selectPort(CruisePortTarget.Stop, split)
         state.updatePrivate(true)
         state.updateSmokingAllowed(false)
+        state.uploadMedia(
+            fileName = "deck.jpg",
+            mimeType = "image/jpeg",
+            bytes = byteArrayOf(1, 2, 3),
+            meta = MediaUploadMeta(width = 1200, height = 800),
+        )
 
         val payload = state.buildPayload()!!
 
@@ -291,8 +298,33 @@ class CruiseWizardStateTest {
         assertEquals("EUR", payload.currency)
         assertEquals(6, payload.maxParticipants)
         assertEquals("SAILING_YACHT", payload.vesselType)
+        assertEquals(listOf("media-1"), payload.mediaIds)
         assertTrue(payload.isPrivate)
         assertFalse(payload.smokingAllowed!!)
+    }
+
+    @Test
+    fun mediaStepIsOptional() {
+        val state = wizard()
+
+        assertTrue(CruiseWizardStep.Media in state.steps)
+        assertTrue(state.errorsFor(CruiseWizardStep.Media).isEmpty())
+    }
+
+    @Test
+    fun uploadMediaAddsUploadedItem() {
+        val state = wizard()
+
+        state.uploadMedia(
+            fileName = "cockpit.mp4",
+            mimeType = "video/mp4",
+            bytes = byteArrayOf(1, 2, 3),
+        )
+
+        assertEquals(listOf("cockpit.mp4"), gateway.mediaUploads)
+        assertEquals(1, state.media.size)
+        assertEquals("media-1", state.media.first().mediaId)
+        assertTrue(state.media.first().isVideo)
     }
 
     @Test

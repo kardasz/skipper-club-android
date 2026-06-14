@@ -12,8 +12,11 @@ import app.skipperclub.data.CruisesApi
 import app.skipperclub.data.CruisesPage
 import app.skipperclub.data.GeocodedLocation
 import app.skipperclub.data.GeocoderApi
+import app.skipperclub.data.MediaUploadApi
+import app.skipperclub.data.MediaUploadMeta
 import app.skipperclub.data.UserSearchQuery
 import app.skipperclub.data.UsersPage
+import app.skipperclub.data.UploadedMedia
 
 /**
  * Seam between the cruises UI controllers and the API singletons so state-machine
@@ -37,6 +40,13 @@ interface CruisesGateway {
 
     suspend fun searchUsers(accessToken: String, query: UserSearchQuery): UsersPage
     suspend fun searchLocations(accessToken: String, query: String): List<GeocodedLocation>
+    suspend fun uploadMedia(
+        accessToken: String,
+        fileName: String,
+        mimeType: String,
+        bytes: ByteArray,
+        meta: MediaUploadMeta,
+    ): UploadedMedia
 }
 
 object RealCruisesGateway : CruisesGateway {
@@ -80,4 +90,19 @@ object RealCruisesGateway : CruisesGateway {
 
     override suspend fun searchLocations(accessToken: String, query: String): List<GeocodedLocation> =
         GeocoderApi.search(accessToken, query)
+
+    override suspend fun uploadMedia(
+        accessToken: String,
+        fileName: String,
+        mimeType: String,
+        bytes: ByteArray,
+        meta: MediaUploadMeta,
+    ): UploadedMedia =
+        MediaUploadApi.upload(
+            accessToken = accessToken,
+            fileName = fileName,
+            mimeType = mimeType,
+            bytes = bytes,
+            meta = meta,
+        )
 }
