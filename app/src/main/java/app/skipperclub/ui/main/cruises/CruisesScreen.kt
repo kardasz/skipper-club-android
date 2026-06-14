@@ -16,18 +16,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -50,7 +47,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.skipperclub.R
-import app.skipperclub.data.CruiseScope
 import app.skipperclub.data.CruisesError
 import app.skipperclub.data.SessionStore
 import app.skipperclub.ui.main.cruises.wizard.CruiseWizardHost
@@ -59,8 +55,9 @@ import app.skipperclub.ui.notification.InAppNotificationType
 import app.skipperclub.ui.notification.rememberInAppNotificationHostState
 import app.skipperclub.ui.theme.SkipperClubTheme
 
-/** Keeps the list clear of the floating bottom bar + FAB. */
-private val ListBottomInset = 140.dp
+/** Bottom inset that keeps the list viewport clear of the floating [app.skipperclub.ui.main.SkipperBottomBar]. */
+private val ListNavigationInset = 132.dp
+private val ListBottomInset = 20.dp
 
 @Composable
 fun CruisesScreen(modifier: Modifier = Modifier) {
@@ -94,14 +91,14 @@ fun CruisesScreen(modifier: Modifier = Modifier) {
 
     var openCruiseId by rememberSaveable { mutableStateOf<String?>(null) }
     var showCreate by rememberSaveable { mutableStateOf(false) }
+    var showFilters by rememberSaveable { mutableStateOf(false) }
 
     Box(modifier = modifier.fillMaxSize()) {
         CruiseListScreenContent(
             state = state,
-            onSelectScope = controller::selectScope,
-            onSearchChange = controller::updateSearch,
             onOpenCruise = { openCruiseId = it.id },
             onCreate = { showCreate = true },
+            onOpenFilters = { showFilters = true },
             onRefresh = controller::refresh,
             onLoadMore = controller::loadMore,
             onRetry = controller::refresh,
@@ -109,6 +106,17 @@ fun CruisesScreen(modifier: Modifier = Modifier) {
         InAppNotificationHost(
             hostState = notificationHostState,
             modifier = Modifier.align(Alignment.TopCenter),
+        )
+    }
+
+    if (showFilters) {
+        CruiseFilterSheet(
+            filters = state.filters,
+            onApply = { filters ->
+                showFilters = false
+                controller.applyFilters(filters)
+            },
+            onDismiss = { showFilters = false },
         )
     }
 
@@ -164,10 +172,9 @@ internal fun cruiseErrorMessage(
 @Composable
 internal fun CruiseListScreenContent(
     state: CruiseListUiState,
-    onSelectScope: (CruiseScope) -> Unit,
-    onSearchChange: (String) -> Unit,
     onOpenCruise: (app.skipperclub.data.Cruise) -> Unit,
     onCreate: () -> Unit,
+    onOpenFilters: () -> Unit,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
@@ -184,68 +191,68 @@ internal fun CruiseListScreenContent(
         if (shouldLoadMore) onLoadMore()
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
-        ) {
-            Text(
-                text = stringResource(R.string.nav_cruises),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .statusBarsPadding()
-                    .padding(start = 20.dp, top = 12.dp, bottom = 4.dp),
-            )
-
-            SingleChoiceSegmentedButtonRow(
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .statusBarsPadding()
+                    .padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                SegmentedButton(
-                    selected = state.scope == CruiseScope.Mine,
-                    onClick = { onSelectScope(CruiseScope.Mine) },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                    modifier = Modifier.testTag("cruises_scope_mine"),
+                Text(
+                    text = stringResource(R.string.nav_cruises),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(
+                    onClick = onCreate,
+                    modifier = Modifier.testTag("cruises_create"),
                 ) {
-                    Text(stringResource(R.string.cruises_scope_mine))
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = stringResource(R.string.cruises_create),
+                    )
                 }
-                SegmentedButton(
-                    selected = state.scope == CruiseScope.All,
-                    onClick = { onSelectScope(CruiseScope.All) },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                    modifier = Modifier.testTag("cruises_scope_all"),
+                IconButton(
+                    onClick = onOpenFilters,
+                    modifier = Modifier.testTag("cruises_search"),
                 ) {
-                    Text(stringResource(R.string.cruises_scope_all))
+                    Icon(
+                        imageVector = Icons.Outlined.Search,
+                        contentDescription = stringResource(R.string.cruises_search),
+                    )
+                }
+                BadgedBox(
+                    badge = {
+                        if (state.filters.activeCount > 0) {
+                            Badge { Text(state.filters.activeCount.toString()) }
+                        }
+                    },
+                ) {
+                    IconButton(
+                        onClick = onOpenFilters,
+                        modifier = Modifier.testTag("cruises_filters"),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.FilterList,
+                            contentDescription = stringResource(R.string.cruises_filter),
+                        )
+                    }
                 }
             }
-
-            OutlinedTextField(
-                value = state.search,
-                onValueChange = onSearchChange,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .testTag("cruises_search"),
-                placeholder = { Text(stringResource(R.string.cruises_search_placeholder)) },
-                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (state.search.isNotEmpty()) {
-                        IconButton(onClick = { onSearchChange("") }) {
-                            Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.cruises_search_clear))
-                        }
-                    }
-                },
-                singleLine = true,
-                shape = MaterialTheme.shapes.extraLarge,
-            )
 
             PullToRefreshBox(
                 isRefreshing = state.isRefreshing,
                 onRefresh = onRefresh,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = ListNavigationInset),
             ) {
                 when {
                     state.isLoading -> Box(Modifier.fillMaxSize()) {
@@ -259,15 +266,8 @@ internal fun CruiseListScreenContent(
                     )
 
                     state.cruises.isEmpty() && state.hasLoadedOnce -> {
-                        if (state.search.isNotBlank()) {
+                        if (state.filters.activeCount > 0) {
                             CruiseListMessage(title = stringResource(R.string.cruises_empty_search))
-                        } else if (state.scope == CruiseScope.Mine) {
-                            CruiseListMessage(
-                                title = stringResource(R.string.cruises_empty_mine_title),
-                                subtitle = stringResource(R.string.cruises_empty_mine_subtitle),
-                                actionLabel = stringResource(R.string.cruises_create),
-                                onAction = onCreate,
-                            )
                         } else {
                             CruiseListMessage(title = stringResource(R.string.cruises_empty_all_title))
                         }
@@ -279,7 +279,7 @@ internal fun CruiseListScreenContent(
                             .fillMaxSize()
                             .testTag("cruises_list"),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = ListBottomInset),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         items(state.cruises, key = { it.id }) { cruise ->
                             CruiseCard(cruise = cruise, onClick = { onOpenCruise(cruise) })
@@ -296,16 +296,6 @@ internal fun CruiseListScreenContent(
                     }
                 }
             }
-        }
-
-        FloatingActionButton(
-            onClick = onCreate,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 20.dp, bottom = ListBottomInset - 40.dp)
-                .testTag("cruises_create_fab"),
-        ) {
-            Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.cruises_create))
         }
     }
 }
@@ -355,10 +345,9 @@ private fun CruiseListPreview() {
     SkipperClubTheme {
         CruiseListScreenContent(
             state = previewListState,
-            onSelectScope = {},
-            onSearchChange = {},
             onOpenCruise = {},
             onCreate = {},
+            onOpenFilters = {},
             onRefresh = {},
             onLoadMore = {},
             onRetry = {},
@@ -372,10 +361,9 @@ private fun CruiseListPreviewDark() {
     SkipperClubTheme {
         CruiseListScreenContent(
             state = previewListState,
-            onSelectScope = {},
-            onSearchChange = {},
             onOpenCruise = {},
             onCreate = {},
+            onOpenFilters = {},
             onRefresh = {},
             onLoadMore = {},
             onRetry = {},
@@ -388,11 +376,10 @@ private fun CruiseListPreviewDark() {
 private fun CruiseListPreviewEmptyPl() {
     SkipperClubTheme {
         CruiseListScreenContent(
-            state = CruiseListUiState(scope = CruiseScope.Mine, hasLoadedOnce = true),
-            onSelectScope = {},
-            onSearchChange = {},
+            state = CruiseListUiState(filters = CruiseFilters(scope = app.skipperclub.data.CruiseScope.Mine), hasLoadedOnce = true),
             onOpenCruise = {},
             onCreate = {},
+            onOpenFilters = {},
             onRefresh = {},
             onLoadMore = {},
             onRetry = {},

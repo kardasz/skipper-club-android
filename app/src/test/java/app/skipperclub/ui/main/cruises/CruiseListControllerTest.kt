@@ -1,7 +1,11 @@
 package app.skipperclub.ui.main.cruises
 
 import app.skipperclub.data.CruiseScope
+import app.skipperclub.data.CruiseSortField
+import app.skipperclub.data.CruiseType
 import app.skipperclub.data.CruisesError
+import app.skipperclub.data.SortOrder
+import app.skipperclub.data.VesselType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -78,6 +82,36 @@ class CruiseListControllerTest {
 
         assertEquals("adriatic", gateway.listQueries.last().search)
         assertEquals("  adriatic ", controller.state.value.search)
+    }
+
+    @Test
+    fun applyFiltersReloadsWithFullQuery() {
+        gateway.cruisePages = listOf(cruisesPage(emptyList()))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.applyFilters(
+            CruiseFilters(
+                scope = CruiseScope.Organized,
+                search = "  baltic ",
+                fromDate = "2026-07-01",
+                toDate = "2026-07-08",
+                type = CruiseType.Training,
+                vesselType = VesselType.Catamaran,
+                sort = CruiseSortField.CostPerPerson,
+                order = SortOrder.Asc,
+            ),
+        )
+
+        val query = gateway.listQueries.last()
+        assertEquals(CruiseScope.Organized, query.scope)
+        assertEquals("baltic", query.search)
+        assertEquals("2026-07-01", query.fromDate)
+        assertEquals("2026-07-08", query.toDate)
+        assertEquals(CruiseType.Training, query.type)
+        assertEquals(VesselType.Catamaran, query.vesselType)
+        assertEquals(CruiseSortField.CostPerPerson, query.sort)
+        assertEquals(SortOrder.Asc, query.order)
     }
 
     @Test

@@ -4,8 +4,10 @@ import app.skipperclub.data.Cruise
 import app.skipperclub.data.CruiseListQuery
 import app.skipperclub.data.CruiseScope
 import app.skipperclub.data.CruiseSortField
+import app.skipperclub.data.CruiseType
 import app.skipperclub.data.CruisesError
 import app.skipperclub.data.SortOrder
+import app.skipperclub.data.VesselType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -18,17 +20,42 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-data class CruiseListUiState(
-    val cruises: List<Cruise> = emptyList(),
+data class CruiseFilters(
     val scope: CruiseScope = CruiseScope.All,
     val search: String = "",
+    val fromDate: String? = null,
+    val toDate: String? = null,
+    val type: CruiseType? = null,
+    val vesselType: VesselType? = null,
+    val sort: CruiseSortField = CruiseSortField.DepartureDate,
+    val order: SortOrder = SortOrder.Desc,
+) {
+    val activeCount: Int
+        get() = listOf(
+            scope != CruiseScope.All,
+            search.isNotBlank(),
+            !fromDate.isNullOrBlank(),
+            !toDate.isNullOrBlank(),
+            type != null,
+            vesselType != null,
+            sort != CruiseSortField.DepartureDate,
+            order != SortOrder.Desc,
+        ).count { it }
+}
+
+data class CruiseListUiState(
+    val cruises: List<Cruise> = emptyList(),
+    val filters: CruiseFilters = CruiseFilters(),
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val isLoadingMore: Boolean = false,
     val hasMore: Boolean = false,
     val loadFailed: Boolean = false,
     val hasLoadedOnce: Boolean = false,
-)
+) {
+    val scope: CruiseScope get() = filters.scope
+    val search: String get() = filters.search
+}
 
 sealed interface CruiseListEvent {
     data class OperationFailed(val error: Exception) : CruiseListEvent
@@ -68,18 +95,24 @@ class CruiseListController(
 
     fun selectScope(scope: CruiseScope) {
         if (scope == _state.value.scope) return
-        _state.update { it.copy(scope = scope) }
-        reload(showAsRefreshing = false)
+        applyFilters(_state.value.filters.copy(scope = scope))
     }
 
     fun updateSearch(value: String) {
         if (value == _state.value.search) return
-        _state.update { it.copy(search = value) }
+        _state.update { it.copy(filters = it.filters.copy(search = value)) }
         searchJob?.cancel()
         searchJob = scope.launch {
             delay(searchDebounceMillis)
             reload(showAsRefreshing = false)
         }
+    }
+
+    fun applyFilters(filters: CruiseFilters) {
+        if (filters == _state.value.filters) return
+        searchJob?.cancel()
+        _state.update { it.copy(filters = filters) }
+        reload(showAsRefreshing = false)
     }
 
     fun loadMore() {
@@ -131,10 +164,14 @@ class CruiseListController(
 
     private fun CruiseListUiState.toQuery(offset: Int): CruiseListQuery =
         CruiseListQuery(
-            scope = scope,
-            search = search.trim().takeIf { it.isNotEmpty() },
-            sort = CruiseSortField.DepartureDate,
-            order = SortOrder.Desc,
+            scope = filters.scope,
+            search = filters.search.trim().takeIf { it.isNotEmpty() },
+            fromDate = filters.fromDate?.takeIf { it.isNotBlank() },
+            toDate = filters.toDate?.takeIf { it.isNotBlank() },
+            type = filters.type,
+            vesselType = filters.vesselType,
+            sort = filters.sort,
+            order = filters.order,
             limit = pageSize,
             offset = offset,
         )

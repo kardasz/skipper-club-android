@@ -1,6 +1,7 @@
 package app.skipperclub.ui.main.cruises
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -17,10 +18,9 @@ import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.Sailing
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -51,89 +51,79 @@ fun CruiseCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(
+    Surface(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f)),
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(bottom = 14.dp)) {
             CruiseCardHeader(cruise)
 
-            Text(
-                text = cruise.title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 12.dp),
-            )
-
-            cruise.type?.let { type ->
-                CruiseTagChip(
-                    text = stringResource(type.labelRes()),
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-
-            CruiseInfoRow(
-                icon = Icons.Outlined.CalendarMonth,
-                text = formatDateRange(cruise.departureDate, cruise.arrivalDate),
-                modifier = Modifier.padding(top = 10.dp),
-            )
-            CruiseInfoRow(
-                icon = Icons.Outlined.Place,
-                text = "${cruise.departurePort.name} → ${cruise.arrivalPort.name}",
-                modifier = Modifier.padding(top = 6.dp),
-            )
-            if (cruise.vessel.isNotBlank()) {
-                CruiseInfoRow(
-                    icon = Icons.Outlined.Sailing,
-                    text = "${stringResource(cruise.vesselType.labelRes())} • ${cruise.vessel}",
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
-                    text = formatPrice(cruise.costPerPerson, cruise.currency),
+                    text = cruise.title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = " /${stringResource(R.string.cruise_per_person)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                Icon(
-                    imageVector = Icons.Outlined.Group,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp),
-                )
-                Text(
-                    text = " ${cruise.participantsCount}/${cruise.maxParticipants}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(end = 8.dp),
-                )
-                AvailabilityBadge(cruise)
-            }
 
-            val hashtags = cruiseHashtags(cruise)
-            if (hashtags.isNotEmpty()) {
-                CruiseHashtagRow(
-                    hashtags = hashtags,
-                    modifier = Modifier.padding(top = 12.dp),
+                CruiseInfoRow(
+                    icon = Icons.Outlined.CalendarMonth,
+                    text = formatDateRange(cruise.departureDate, cruise.arrivalDate),
                 )
+                CruiseInfoRow(
+                    icon = Icons.Outlined.Place,
+                    text = "${cruise.departurePort.name} → ${cruise.arrivalPort.name}",
+                )
+                if (cruise.vessel.isNotBlank()) {
+                    CruiseInfoRow(
+                        icon = Icons.Outlined.Sailing,
+                        text = "${stringResource(cruise.vesselType.labelRes())} • ${cruise.vessel}",
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = formatPrice(cruise.costPerPerson, cruise.currency),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = " /${stringResource(R.string.cruise_per_person)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Icon(
+                        imageVector = Icons.Outlined.Group,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        text = " ${cruise.participantsCount}/${cruise.maxParticipants}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
+                    AvailabilityBadge(cruise)
+                }
+
+                val hashtags = cruiseHashtags(cruise)
+                if (hashtags.isNotEmpty()) {
+                    CruiseHashtagRow(hashtags = hashtags)
+                }
             }
         }
     }
@@ -141,21 +131,22 @@ fun CruiseCard(
 
 @Composable
 private fun CruiseCardHeader(cruise: Cruise) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 10.dp, top = 14.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         CruiseAvatar(
             name = cruise.organizer.name,
             avatarUrl = cruise.organizer.avatarUrl,
             modifier = Modifier.size(40.dp),
         )
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 12.dp),
-        ) {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = cruise.organizer.name,
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -164,6 +155,9 @@ private fun CruiseCardHeader(cruise: Cruise) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        cruise.type?.let { type ->
+            CruiseTagChip(text = stringResource(type.labelRes()))
         }
         if (cruise.isPrivate) {
             Icon(

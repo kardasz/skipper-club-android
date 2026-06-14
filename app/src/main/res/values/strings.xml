@@ -415,8 +415,23 @@
     <!-- Cruises: list -->
     <string name="cruises_scope_mine">My cruises</string>
     <string name="cruises_scope_all">All cruises</string>
+    <string name="cruises_scope_organized">Organized</string>
+    <string name="cruises_scope_participating">Crew</string>
+    <string name="cruises_search">Search cruises</string>
     <string name="cruises_search_placeholder">Search cruises</string>
     <string name="cruises_search_clear">Clear search</string>
+    <string name="cruises_filter">Filter cruises</string>
+    <string name="cruises_filter_search">Search</string>
+    <string name="cruises_filter_scope">Scope</string>
+    <string name="cruises_filter_type">Cruise type</string>
+    <string name="cruises_filter_vessel_type">Vessel type</string>
+    <string name="cruises_filter_from_date">From</string>
+    <string name="cruises_filter_to_date">To</string>
+    <string name="cruises_filter_date_hint">YYYY-MM-DD</string>
+    <string name="cruises_sort_created">Created</string>
+    <string name="cruises_sort_departure">Departure</string>
+    <string name="cruises_sort_title">Title</string>
+    <string name="cruises_sort_cost">Cost</string>
     <string name="cruises_load_failed">Couldn\'t load cruises.</string>
     <string name="cruises_retry">Retry</string>
     <string name="cruises_empty_search">No cruises match your search.</string>

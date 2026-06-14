@@ -429,8 +429,23 @@
     <!-- Rejsy: lista -->
     <string name="cruises_scope_mine">Moje rejsy</string>
     <string name="cruises_scope_all">Wszystkie rejsy</string>
+    <string name="cruises_scope_organized">Organizowane</string>
+    <string name="cruises_scope_participating">Załoga</string>
+    <string name="cruises_search">Szukaj rejsów</string>
     <string name="cruises_search_placeholder">Szukaj rejsów</string>
     <string name="cruises_search_clear">Wyczyść wyszukiwanie</string>
+    <string name="cruises_filter">Filtruj rejsy</string>
+    <string name="cruises_filter_search">Wyszukiwanie</string>
+    <string name="cruises_filter_scope">Zakres</string>
+    <string name="cruises_filter_type">Typ rejsu</string>
+    <string name="cruises_filter_vessel_type">Typ jednostki</string>
+    <string name="cruises_filter_from_date">Od</string>
+    <string name="cruises_filter_to_date">Do</string>
+    <string name="cruises_filter_date_hint">RRRR-MM-DD</string>
+    <string name="cruises_sort_created">Utworzone</string>
+    <string name="cruises_sort_departure">Wypłynięcie</string>
+    <string name="cruises_sort_title">Tytuł</string>
+    <string name="cruises_sort_cost">Koszt</string>
     <string name="cruises_load_failed">Nie udało się wczytać rejsów.</string>
     <string name="cruises_retry">Ponów</string>
     <string name="cruises_empty_search">Brak rejsów pasujących do wyszukiwania.</string>
