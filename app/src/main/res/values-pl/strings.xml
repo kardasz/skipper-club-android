@@ -628,6 +628,7 @@
     <string name="cruise_error_departure_port">Wybierz port startowy.</string>
     <string name="cruise_error_arrival_port">Wybierz port docelowy.</string>
     <string name="cruise_error_dates">Przypłynięcie musi być w dniu wypłynięcia lub później.</string>
+    <string name="cruise_error_departure_future">Data wypłynięcia musi być w przyszłości.</string>
     <string name="cruise_error_vessel">Nazwa jednostki musi mieć co najmniej 5 znaków.</string>
     <string name="cruise_error_vessel_type">Wybierz typ jednostki.</string>
     <string name="cruise_error_cost">Podaj prawidłowy koszt.</string>

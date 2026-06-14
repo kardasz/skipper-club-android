@@ -245,11 +245,13 @@ internal fun WizardRouteStep(state: CruiseWizardState) {
 
     Spacer(Modifier.size(16.dp))
     WizardSectionLabel(stringResource(R.string.cruise_field_dates))
+    val departureInvalid = CruiseWizardError.DatesInvalid in state.visibleErrors ||
+        CruiseWizardError.DepartureNotInFuture in state.visibleErrors
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         DateField(
             label = stringResource(R.string.cruise_field_departure_date),
             date = state.departureDate,
-            isError = CruiseWizardError.DatesInvalid in state.visibleErrors,
+            isError = departureInvalid,
             onPicked = state::selectDepartureDate,
             modifier = Modifier.weight(1f),
         )
@@ -262,6 +264,7 @@ internal fun WizardRouteStep(state: CruiseWizardState) {
         )
     }
     WizardFieldError(CruiseWizardError.DatesInvalid, state, R.string.cruise_error_dates)
+    WizardFieldError(CruiseWizardError.DepartureNotInFuture, state, R.string.cruise_error_departure_future)
 
     Spacer(Modifier.size(16.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {

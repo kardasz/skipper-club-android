@@ -9,6 +9,10 @@ import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.HttpUrl
@@ -252,7 +256,9 @@ object CruisesApi {
         val problem = runCatching {
             if (payload.isNotBlank()) json.decodeFromString<ProblemDetails>(payload) else null
         }.getOrNull()
-        val detail = problem?.detail ?: problem?.title
+        // The cruise API mixes RFC 7807 problem+json with NestJS `{ message, error,
+        // statusCode }` bodies, so fall back to the `message` field for a usable detail.
+        val detail = problem?.detail ?: problem?.title ?: extractNestMessage(payload)
         return when (code) {
             401 -> CruisesError.AuthenticationRequired(detail)
             403 -> CruisesError.Forbidden(detail)
@@ -269,6 +275,25 @@ object CruisesApi {
             else -> CruisesError.Server(code, detail)
         }
     }
+
+    /**
+     * Pulls a human-readable message out of a NestJS error body
+     * (`{ "message": "...", ... }`), where `message` is either a string or an array
+     * of strings. Returns null for any other shape.
+     */
+    private fun extractNestMessage(payload: String): String? =
+        runCatching {
+            val message = (json.parseToJsonElement(payload) as? JsonObject)?.get("message")
+            when (message) {
+                is JsonArray ->
+                    message.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+                        .takeIf { it.isNotEmpty() }
+                        ?.joinToString(" ")
+
+                is JsonPrimitive -> message.contentOrNull
+                else -> null
+            }
+        }.getOrNull()?.takeIf { it.isNotBlank() }
 }
 
 sealed class CruisesError(message: String) : Exception(message) {

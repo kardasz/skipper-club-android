@@ -610,6 +610,7 @@
     <string name="cruise_error_departure_port">Select a departure port.</string>
     <string name="cruise_error_arrival_port">Select an arrival port.</string>
     <string name="cruise_error_dates">Arrival must be on or after departure.</string>
+    <string name="cruise_error_departure_future">Departure date must be in the future.</string>
     <string name="cruise_error_vessel">Vessel name must be at least 5 characters.</string>
     <string name="cruise_error_vessel_type">Select a vessel type.</string>
     <string name="cruise_error_cost">Enter a valid cost.</string>

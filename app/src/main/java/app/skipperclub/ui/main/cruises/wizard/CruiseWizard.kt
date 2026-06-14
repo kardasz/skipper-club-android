@@ -115,6 +115,11 @@ fun CruiseWizard(
         if (!state.back()) requestClose()
     }
 
+    // Reset scroll to the top whenever the step changes (including a validation jump
+    // back from Summary) so the first field of the new step is in view.
+    val scrollState = rememberScrollState()
+    LaunchedEffect(state.step) { scrollState.scrollTo(0) }
+
     Surface(
         modifier = Modifier
             .fillMaxSize()
@@ -132,7 +137,7 @@ fun CruiseWizard(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(scrollState)
                         .padding(horizontal = 20.dp, vertical = 12.dp),
                 ) {
                     when (state.step) {

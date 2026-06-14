@@ -48,11 +48,16 @@ enum class CruiseWizardError {
     DeparturePortRequired,
     ArrivalPortRequired,
     DatesInvalid,
+    DepartureNotInFuture,
     VesselNameTooShort,
     VesselTypeRequired,
     CostInvalid,
     MaxParticipantsInvalid,
 }
+
+/** Errors tied to the date pickers; cleared together as the user edits dates. */
+private val DATE_RELATED_ERRORS =
+    setOf(CruiseWizardError.DatesInvalid, CruiseWizardError.DepartureNotInFuture)
 
 sealed interface CruiseWizardEvent {
     data class Published(val cruise: Cruise) : CruiseWizardEvent
@@ -77,6 +82,8 @@ class CruiseWizardState(
     private val gateway: CruisesGateway = RealCruisesGateway,
     private val portSearchDebounceMillis: Long = 350,
     val existing: Cruise? = null,
+    /** Injectable "today" so the future-date rule is deterministic in tests. */
+    private val today: () -> LocalDate = { LocalDate.now() },
 ) {
     val isEditing: Boolean
         get() = existing != null
@@ -315,16 +322,18 @@ class CruiseWizardState(
 
     fun selectDepartureDate(date: LocalDate) {
         departureDate = date
-        if (arrivalDate?.isBefore(date) != true) {
-            visibleErrors = visibleErrors - CruiseWizardError.DatesInvalid
-        }
+        clearResolvedDateErrors()
     }
 
     fun selectArrivalDate(date: LocalDate) {
         arrivalDate = date
-        if (departureDate?.isAfter(date) != true) {
-            visibleErrors = visibleErrors - CruiseWizardError.DatesInvalid
-        }
+        clearResolvedDateErrors()
+    }
+
+    /** Drops any date error the latest edit fixed, without surfacing new ones. */
+    private fun clearResolvedDateErrors() {
+        val stillInvalid = errorsFor(CruiseWizardStep.Route)
+        visibleErrors = visibleErrors.filterNot { it in DATE_RELATED_ERRORS && it !in stillInvalid }.toSet()
     }
 
     fun updateVessel(value: String) {
@@ -424,6 +433,9 @@ class CruiseWizardState(
                 val arrival = arrivalDate
                 if (departure == null || arrival == null || arrival.isBefore(departure)) {
                     add(CruiseWizardError.DatesInvalid)
+                } else if (!departure.isAfter(today())) {
+                    // Backend rejects a departure on/before today ("must be in the future").
+                    add(CruiseWizardError.DepartureNotInFuture)
                 }
             }
 
@@ -513,11 +525,15 @@ class CruiseWizardState(
 
     fun publish() {
         if (isPublishing) return
-        val allErrors = steps.flatMap { errorsFor(it) }.toSet()
-        if (allErrors.isNotEmpty()) {
-            visibleErrors = allErrors
+        // Surface every problem, but jump back to the first step that has one so the
+        // user lands on the offending field instead of a Summary that shows nothing.
+        val firstInvalidStep = steps.firstOrNull { errorsFor(it).isNotEmpty() }
+        if (firstInvalidStep != null) {
+            visibleErrors = steps.flatMap { errorsFor(it) }.toSet()
+            step = firstInvalidStep
             return
         }
+        visibleErrors = emptySet()
         val payload = buildPayload() ?: return
         isPublishing = true
         scope.launch {

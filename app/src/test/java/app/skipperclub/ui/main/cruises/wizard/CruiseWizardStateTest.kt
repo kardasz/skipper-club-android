@@ -27,6 +27,9 @@ class CruiseWizardStateTest {
     private val gateway = FakeCruisesGateway()
     private val events = mutableListOf<CruiseWizardEvent>()
 
+    /** Pinned "today" so the future-departure rule is deterministic; sample dates are in 2025-07. */
+    private val today = LocalDate.of(2025, 1, 1)
+
     private fun wizard(existing: app.skipperclub.data.Cruise? = null, token: String? = "token"): CruiseWizardState {
         val state = CruiseWizardState(
             scope = scope,
@@ -34,6 +37,7 @@ class CruiseWizardStateTest {
             gateway = gateway,
             portSearchDebounceMillis = 0,
             existing = existing,
+            today = { today },
         )
         scope.launch { state.events.collect { events += it } }
         return state
@@ -208,6 +212,55 @@ class CruiseWizardStateTest {
     }
 
     @Test
+    fun departureOnTodayIsRejectedAsNotInFuture() {
+        val state = wizard()
+        state.selectPort(CruisePortTarget.Departure, split)
+        state.selectPort(CruisePortTarget.Arrival, dubrovnik)
+        state.selectDepartureDate(today)
+        state.selectArrivalDate(today.plusDays(7))
+
+        val errors = state.errorsFor(CruiseWizardStep.Route)
+        assertTrue(CruiseWizardError.DepartureNotInFuture in errors)
+        assertFalse(CruiseWizardError.DatesInvalid in errors)
+    }
+
+    @Test
+    fun routeStepDoesNotAdvanceWhenDepartureNotInFuture() {
+        val state = wizardAtBasics()
+        state.updateTitle("Adriatic Summer")
+        state.updateDescription("A relaxed week along the coast.")
+        state.next()
+        state.selectPort(CruisePortTarget.Departure, split)
+        state.selectPort(CruisePortTarget.Arrival, dubrovnik)
+        state.selectDepartureDate(today)
+        state.selectArrivalDate(today.plusDays(7))
+
+        state.next()
+
+        assertEquals(CruiseWizardStep.Route, state.step)
+        assertTrue(CruiseWizardError.DepartureNotInFuture in state.visibleErrors)
+    }
+
+    @Test
+    fun editingDepartureToFutureClearsTheVisibleError() {
+        val state = wizardAtBasics()
+        state.updateTitle("Adriatic Summer")
+        state.updateDescription("A relaxed week along the coast.")
+        state.next()
+        state.selectPort(CruisePortTarget.Departure, split)
+        state.selectPort(CruisePortTarget.Arrival, dubrovnik)
+        state.selectDepartureDate(today)
+        state.selectArrivalDate(today.plusDays(7))
+        state.next() // stays on Route, surfaces DepartureNotInFuture
+        assertTrue(CruiseWizardError.DepartureNotInFuture in state.visibleErrors)
+
+        // Re-pick a future departure; the date error clears without another Next tap.
+        state.selectDepartureDate(LocalDate.of(2025, 7, 15))
+
+        assertFalse(CruiseWizardError.DepartureNotInFuture in state.visibleErrors)
+    }
+
+    @Test
     fun stopsAreAddedAndRemoved() {
         val state = wizard()
         state.selectPort(CruisePortTarget.Stop, split)
@@ -275,6 +328,21 @@ class CruiseWizardStateTest {
 
         assertFalse(gateway.calls.contains("create"))
         assertTrue(state.visibleErrors.isNotEmpty())
+    }
+
+    @Test
+    fun publishJumpsToFirstStepWithAnError() {
+        // Everything valid except a past departure date, which the Route step owns.
+        val state = wizard()
+        fillValid(state)
+        state.selectDepartureDate(today.minusDays(1))
+        state.selectArrivalDate(today.plusDays(7))
+
+        state.publish()
+
+        assertFalse(gateway.calls.contains("create"))
+        assertEquals(CruiseWizardStep.Route, state.step)
+        assertTrue(CruiseWizardError.DepartureNotInFuture in state.visibleErrors)
     }
 
     @Test
