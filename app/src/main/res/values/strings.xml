@@ -820,6 +820,21 @@
     <string name="profile_error_auth">Your session has expired. Please sign in again.</string>
     <string name="profile_error_generic">Something went wrong. Please try again.</string>
 
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_back">Back</string>
+    <string name="settings_section_notifications">Notifications</string>
+    <string name="settings_notifications_email_title">Email notifications</string>
+    <string name="settings_notifications_email_description">Get notification emails such as reminders and updates.</string>
+    <string name="settings_notifications_push_title">Push notifications</string>
+    <string name="settings_notifications_push_description">Get push notifications on this device.</string>
+    <string name="settings_notifications_hint">In-app notifications and account emails (login codes, invitations) are always delivered.</string>
+    <string name="settings_load_failed">Couldn\'t load your settings.</string>
+    <string name="settings_retry">Retry</string>
+    <string name="settings_error_network">No connection. Check your network and try again.</string>
+    <string name="settings_error_auth">Your session has expired. Please sign in again.</string>
+    <string name="settings_error_generic">Something went wrong. Please try again.</string>
+
     <!-- Edit profile -->
     <string name="edit_profile_title">Edit profile</string>
     <string name="edit_profile_save">Save</string>

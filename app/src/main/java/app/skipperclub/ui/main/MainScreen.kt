@@ -41,6 +41,7 @@ import app.skipperclub.ui.main.messages.MessagesScreen
 import app.skipperclub.ui.main.notifications.NotificationsScreen
 import app.skipperclub.ui.main.posts.PostsScreen
 import app.skipperclub.ui.main.profile.ProfileScreen
+import app.skipperclub.ui.main.settings.SettingsScreen
 import app.skipperclub.ui.main.spots.SpotsScreen
 import app.skipperclub.ui.theme.SkipperClubTheme
 
@@ -83,6 +84,7 @@ private fun MainScreenContent(
     var showInvitations by rememberSaveable { mutableStateOf(value = false) }
     var showSpots by rememberSaveable { mutableStateOf(value = false) }
     var showProfile by rememberSaveable { mutableStateOf(value = false) }
+    var showSettings by rememberSaveable { mutableStateOf(value = false) }
     var reviewsCruiseId by rememberSaveable { mutableStateOf<String?>(value = null) }
 
     // Open the reviews center when a `…/cruises/{id}/reviews` deep link arrives.
@@ -147,6 +149,10 @@ private fun MainScreenContent(
                     menuOpenState.value = false
                     showSpots = true
                 },
+                onOpenSettings = {
+                    menuOpenState.value = false
+                    showSettings = true
+                },
                 onLogout = {
                     menuOpenState.value = false
                     onLogout()
@@ -204,6 +210,15 @@ private fun MainScreenContent(
         }
     }
 
+    if (showSettings) {
+        Dialog(
+            onDismissRequest = { showSettings = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) {
+            SettingsScreen(onClose = { showSettings = false })
+        }
+    }
+
     reviewsCruiseId?.let { cruiseId ->
         Dialog(
             onDismissRequest = { reviewsCruiseId = null },
@@ -227,6 +242,7 @@ private fun MainMenuSheet(
     onOpenFriends: () -> Unit,
     onOpenInvitations: () -> Unit,
     onOpenSpots: () -> Unit,
+    onOpenSettings: () -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -291,7 +307,7 @@ private fun MainMenuSheet(
         MainMenuItem(
             label = stringResource(R.string.menu_settings),
             iconRes = R.drawable.ic_settings,
-            onClick = onClose,
+            onClick = onOpenSettings,
         )
         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
         MainMenuItem(

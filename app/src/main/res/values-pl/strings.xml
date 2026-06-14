@@ -838,6 +838,21 @@
     <string name="profile_error_auth">Twoja sesja wygasła. Zaloguj się ponownie.</string>
     <string name="profile_error_generic">Coś poszło nie tak. Spróbuj ponownie.</string>
 
+    <!-- Ustawienia -->
+    <string name="settings_title">Ustawienia</string>
+    <string name="settings_back">Wstecz</string>
+    <string name="settings_section_notifications">Powiadomienia</string>
+    <string name="settings_notifications_email_title">Powiadomienia e-mail</string>
+    <string name="settings_notifications_email_description">Otrzymuj powiadomienia e-mail, np. przypomnienia i aktualizacje.</string>
+    <string name="settings_notifications_push_title">Powiadomienia push</string>
+    <string name="settings_notifications_push_description">Otrzymuj powiadomienia push na tym urządzeniu.</string>
+    <string name="settings_notifications_hint">Powiadomienia w aplikacji oraz e-maile dotyczące konta (kody logowania, zaproszenia) są zawsze dostarczane.</string>
+    <string name="settings_load_failed">Nie udało się wczytać ustawień.</string>
+    <string name="settings_retry">Spróbuj ponownie</string>
+    <string name="settings_error_network">Brak połączenia. Sprawdź sieć i spróbuj ponownie.</string>
+    <string name="settings_error_auth">Twoja sesja wygasła. Zaloguj się ponownie.</string>
+    <string name="settings_error_generic">Coś poszło nie tak. Spróbuj ponownie.</string>
+
     <!-- Edycja profilu -->
     <string name="edit_profile_title">Edytuj profil</string>
     <string name="edit_profile_save">Zapisz</string>
