@@ -112,7 +112,9 @@ fun SpotsScreen(
         is SpotsError.AuthenticationRequired -> errorAuth
         is SpotsError.Forbidden -> errorForbidden
         is SpotsError.Duplicate -> error.message ?: errorDuplicate
-        is SpotsError.Validation -> error.message ?: errorValidation
+        is SpotsError.Validation ->
+            error.fieldErrors.values.firstOrNull { it.isNotBlank() }
+                ?: error.message ?: errorValidation
         else -> errorGeneric
     }
 

@@ -15,6 +15,12 @@ import app.skipperclub.data.UpdatePhoneContactPayload
 import app.skipperclub.data.UpdateRadioChannelPayload
 import app.skipperclub.data.UpdateSpotAggregateRequest
 
+/** International phone format the API enforces: `+` country code followed by 6–15 digits. */
+private val INTERNATIONAL_PHONE = Regex("""^\+\d{6,15}$""")
+
+/** Strips spaces, dashes, parentheses, dots and slashes, keeping a leading `+`. */
+private fun String.normalizedPhone(): String = trim().replace(Regex("""[\s\-()./]"""), "")
+
 /** Editable phone contact row in the spot form. A null [id] means a brand-new contact. */
 data class EditablePhoneContact(
     val id: String? = null,
@@ -23,6 +29,9 @@ data class EditablePhoneContact(
     val extension: String = "",
 ) {
     val isBlank: Boolean get() = phone.isBlank() && label.isBlank() && extension.isBlank()
+
+    /** The API requires an international number (`+` and country code); reject anything else. */
+    val isPhoneValid: Boolean get() = INTERNATIONAL_PHONE.matches(phone.normalizedPhone())
 }
 
 /** Editable radio channel row in the spot form. A null [id] means a brand-new channel. */
@@ -72,9 +81,9 @@ data class SpotForm(
     /** Clears the picked location so the admin can search for a different place. */
     fun clearLocation(): SpotForm = copy(lat = "", lng = "", locationLabel = null)
 
-    /** Non-blank contacts whose required phone is still empty cannot be submitted. */
+    /** Non-blank contacts must carry a valid international phone number. */
     private val arePhoneContactsValid: Boolean
-        get() = phoneContacts.none { !it.isBlank && it.phone.isBlank() }
+        get() = phoneContacts.none { !it.isBlank && !it.isPhoneValid }
 
     /** A non-blank channel needs a name and a value matching its kind. */
     private val areRadioChannelsValid: Boolean

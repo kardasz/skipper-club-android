@@ -147,7 +147,16 @@ object SpotsApi {
             401 -> SpotsError.AuthenticationRequired(detail)
             403 -> SpotsError.Forbidden(detail)
             404 -> SpotsError.NotFound(detail)
-            400, 422 -> SpotsError.Validation(detail)
+            400, 422 -> {
+                val fieldErrors = problem?.violations.orEmpty()
+                    .mapNotNull { violation ->
+                        val path = violation.propertyPath ?: return@mapNotNull null
+                        val message = violation.message?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                        path to message
+                    }
+                    .toMap()
+                SpotsError.Validation(detail, fieldErrors)
+            }
             else -> SpotsError.Server(code, detail)
         }
     }
@@ -160,6 +169,7 @@ sealed class SpotsError(message: String) : Exception(message) {
     class NotFound(detail: String?) : SpotsError(detail ?: "Spot not found")
     class Duplicate(detail: String?, val nearbySpots: List<NearbySpot>) :
         SpotsError(detail ?: "A nearby spot already exists")
-    class Validation(detail: String?) : SpotsError(detail ?: "Validation failed")
+    class Validation(detail: String?, val fieldErrors: Map<String, String> = emptyMap()) :
+        SpotsError(detail ?: "Validation failed")
     class Server(val statusCode: Int, detail: String?) : SpotsError(detail ?: "Server error ($statusCode)")
 }

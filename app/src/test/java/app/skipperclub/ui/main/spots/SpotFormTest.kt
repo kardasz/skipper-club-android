@@ -101,6 +101,29 @@ class SpotFormTest {
     }
 
     @Test
+    fun nonInternationalPhoneIsInvalid() {
+        val form = SpotForm(
+            name = "Neptun",
+            lat = "54.35",
+            lng = "18.65",
+            phoneContacts = listOf(EditablePhoneContact(label = "Office", phone = "65689")),
+        )
+        assertFalse(form.isValid)
+    }
+
+    @Test
+    fun internationalPhoneWithSeparatorsIsValid() {
+        val form = SpotForm(
+            name = "Neptun",
+            lat = "54.35",
+            lng = "18.65",
+            phoneContacts = listOf(EditablePhoneContact(phone = "+48 581 234 567")),
+        )
+        assertTrue(form.isValid)
+        assertTrue(form.phoneContacts.first().isPhoneValid)
+    }
+
+    @Test
     fun fullyBlankContactIsIgnoredForValidity() {
         val form = SpotForm(
             name = "Neptun",

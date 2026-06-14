@@ -503,13 +503,19 @@ private fun PhoneContactEditor(
                 )
                 RemoveButton(enabled = enabled, onRemove = onRemove)
             }
+            val phoneInvalid = !contact.isBlank && !contact.isPhoneValid
             OutlinedTextField(
                 value = contact.phone,
                 onValueChange = { onChange(contact.copy(phone = it)) },
                 label = { Text(stringResource(R.string.spot_form_contact_phone)) },
                 singleLine = true,
                 enabled = enabled,
-                isError = !contact.isBlank && contact.phone.isBlank(),
+                isError = phoneInvalid,
+                supportingText = if (phoneInvalid) {
+                    { Text(stringResource(R.string.spot_form_contact_phone_hint)) }
+                } else {
+                    null
+                },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             )

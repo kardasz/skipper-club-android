@@ -676,6 +676,7 @@
     <string name="spot_form_add_contact">Dodaj</string>
     <string name="spot_form_contact_label">Etykieta</string>
     <string name="spot_form_contact_phone">Telefon</string>
+    <string name="spot_form_contact_phone_hint">Użyj formatu międzynarodowego, np. +48 581 234 567</string>
     <string name="spot_form_contact_extension">Wewnętrzny</string>
     <string name="spot_form_channels_title">Kanały radiowe</string>
     <string name="spot_form_add_channel">Dodaj</string>

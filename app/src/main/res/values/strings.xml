@@ -658,6 +658,7 @@
     <string name="spot_form_add_contact">Add</string>
     <string name="spot_form_contact_label">Label</string>
     <string name="spot_form_contact_phone">Phone</string>
+    <string name="spot_form_contact_phone_hint">Use international format, e.g. +48 581 234 567</string>
     <string name="spot_form_contact_extension">Extension</string>
     <string name="spot_form_channels_title">Radio channels</string>
     <string name="spot_form_add_channel">Add</string>
