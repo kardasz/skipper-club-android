@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.RateReview
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.Place
@@ -53,6 +54,7 @@ import app.skipperclub.R
 import app.skipperclub.data.Cruise
 import app.skipperclub.data.CruiseParticipantState
 import app.skipperclub.data.SessionStore
+import app.skipperclub.ui.main.cruises.reviews.CruiseReviewsScreen
 import app.skipperclub.ui.main.cruises.wizard.CruiseWizardHost
 import app.skipperclub.ui.notification.InAppNotificationHost
 import app.skipperclub.ui.notification.InAppNotificationType
@@ -102,7 +104,12 @@ fun CruiseDetailScreen(
 
     var showEdit by remember { mutableStateOf(false) }
     var showManage by remember { mutableStateOf(false) }
+    var showReviews by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableStateOf<CruiseConfirmAction?>(null) }
+
+    // Only the organizer and accepted crew can open the (blind) reviews center.
+    val canSeeReviews = state.viewerRole == CruiseViewerRole.Organizer ||
+        state.viewerRole == CruiseViewerRole.Participant
 
     BackHandler(onBack = onClose)
 
@@ -112,7 +119,10 @@ fun CruiseDetailScreen(
             color = MaterialTheme.colorScheme.background,
         ) {
             Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
-                CruiseDetailTopBar(onClose = onClose)
+                CruiseDetailTopBar(
+                    onClose = onClose,
+                    onReviews = if (canSeeReviews) ({ showReviews = true }) else null,
+                )
                 when {
                     state.isLoading && state.cruise == null ->
                         Box(Modifier.fillMaxSize()) { CircularProgressIndicator(Modifier.align(Alignment.Center)) }
@@ -197,12 +207,25 @@ fun CruiseDetailScreen(
             CruiseParticipantManageScreen(controller = controller, onClose = { showManage = false })
         }
     }
+
+    if (showReviews) {
+        Dialog(
+            onDismissRequest = { showReviews = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) {
+            CruiseReviewsScreen(
+                cruiseId = cruiseId,
+                currentUserId = currentUserId,
+                onClose = { showReviews = false },
+            )
+        }
+    }
 }
 
 @Composable
-private fun CruiseDetailTopBar(onClose: () -> Unit) {
+private fun CruiseDetailTopBar(onClose: () -> Unit, onReviews: (() -> Unit)? = null) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 16.dp, top = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, top = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onClose, modifier = Modifier.testTag("cruise_detail_back")) {
@@ -212,7 +235,16 @@ private fun CruiseDetailTopBar(onClose: () -> Unit) {
             text = stringResource(R.string.cruise_detail_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f),
         )
+        if (onReviews != null) {
+            IconButton(onClick = onReviews, modifier = Modifier.testTag("cruise_reviews_open")) {
+                Icon(
+                    imageVector = Icons.Outlined.RateReview,
+                    contentDescription = stringResource(R.string.cruise_action_reviews),
+                )
+            }
+        }
     }
 }
 

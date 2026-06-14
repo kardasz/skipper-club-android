@@ -84,6 +84,9 @@ data class AppNotification(
 
     val actorName: String? get() = metadata["actorName"]
     val cruiseTitle: String? get() = metadata["cruiseTitle"]
+
+    /** Present on review notifications so they can deep-link to the cruise reviews center. */
+    val cruiseId: String? get() = metadata["cruiseId"]
     val commentText: String? get() = metadata["commentText"]
     val reactionType: String? get() = metadata["reactionType"]
 }

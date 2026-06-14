@@ -45,15 +45,52 @@ class NotificationTargetTest {
     }
 
     @Test
-    fun friendReviewAndMessageSourcesHaveNoTargetYet() {
+    fun friendAndMessageSourcesHaveNoTargetYet() {
         listOf(
             NotificationSourceType.Friend,
-            NotificationSourceType.Review,
             NotificationSourceType.Message,
             NotificationSourceType.Media,
         ).forEach { source ->
             assertNull(testNotification("n1", sourceType = source).target())
         }
+    }
+
+    @Test
+    fun cruiseReviewReminderTargetsReviewsBySourceId() {
+        val target = testNotification(
+            "n1",
+            eventType = NotificationEventType.CruiseReviewReminder,
+            sourceType = NotificationSourceType.Cruise,
+            sourceId = "cruise-9",
+        ).target()
+
+        assertEquals(NotificationTarget.CruiseReviews("cruise-9"), target)
+    }
+
+    @Test
+    fun reviewSourceTargetsReviewsViaMetadataCruiseId() {
+        val target = testNotification(
+            "n1",
+            eventType = NotificationEventType.ReviewPendingReceived,
+            sourceType = NotificationSourceType.Review,
+            sourceId = "review-1",
+            metadata = mapOf("cruiseId" to "cruise-7", "cruiseTitle" to "Mazury"),
+        ).target()
+
+        assertEquals(NotificationTarget.CruiseReviews("cruise-7"), target)
+    }
+
+    @Test
+    fun reviewSourceWithoutCruiseIdHasNoTarget() {
+        val target = testNotification(
+            "n1",
+            eventType = NotificationEventType.ReviewPublished,
+            sourceType = NotificationSourceType.Review,
+            sourceId = "review-1",
+            metadata = mapOf("cruiseTitle" to "Mazury"),
+        ).target()
+
+        assertNull(target)
     }
 
     @Test

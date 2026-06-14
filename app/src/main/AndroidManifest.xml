@@ -41,6 +41,7 @@
                 <data android:host="skipperclub.app" />
                 <data android:pathPattern="/.*/register" />
                 <data android:pathPattern="/.*/password-reset" />
+                <data android:pathPattern="/.*/cruises/.*/reviews" />
             </intent-filter>
         </activity>
     </application>

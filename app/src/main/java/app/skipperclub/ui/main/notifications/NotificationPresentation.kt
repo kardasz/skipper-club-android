@@ -27,22 +27,31 @@ import java.time.format.DateTimeParseException
 /** Destination opened when a notification row is tapped. */
 sealed interface NotificationTarget {
     data class Cruise(val cruiseId: String) : NotificationTarget
+    data class CruiseReviews(val cruiseId: String) : NotificationTarget
     data class Post(val postId: String, val focusComments: Boolean) : NotificationTarget
 }
 
 /**
  * Resolves the in-app destination for a notification, or `null` when the linked
- * surface is not yet available on Android (friend/review/message have no screen).
- * Pure function — covered by unit tests.
+ * surface is not yet available on Android (friend/message have no screen).
+ *
+ * Review notifications carry `sourceId = reviewId` (not a cruise), so they rely on
+ * `metadata.cruiseId` to deep-link into the cruise reviews center; the cruise-scoped
+ * review reminder uses its `sourceId` directly. Pure function — covered by unit tests.
  */
 fun AppNotification.target(): NotificationTarget? = when (sourceType) {
-    NotificationSourceType.Cruise -> NotificationTarget.Cruise(sourceId)
+    NotificationSourceType.Cruise ->
+        if (eventType == NotificationEventType.CruiseReviewReminder) {
+            NotificationTarget.CruiseReviews(sourceId)
+        } else {
+            NotificationTarget.Cruise(sourceId)
+        }
     NotificationSourceType.Post -> NotificationTarget.Post(
         postId = sourceId,
         focusComments = eventType == NotificationEventType.PostCommented,
     )
+    NotificationSourceType.Review -> cruiseId?.let { NotificationTarget.CruiseReviews(it) }
     NotificationSourceType.Message,
-    NotificationSourceType.Review,
     NotificationSourceType.Media,
     NotificationSourceType.Friend,
     -> null

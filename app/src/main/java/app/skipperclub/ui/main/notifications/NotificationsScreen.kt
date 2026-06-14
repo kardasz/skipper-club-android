@@ -61,6 +61,7 @@ import app.skipperclub.data.NotificationStatus
 import app.skipperclub.data.NotificationsError
 import app.skipperclub.data.SessionStore
 import app.skipperclub.ui.main.cruises.CruiseDetailScreen
+import app.skipperclub.ui.main.cruises.reviews.CruiseReviewsScreen
 import app.skipperclub.ui.main.posts.PostDetailScreen
 import app.skipperclub.ui.notification.InAppNotificationHost
 import app.skipperclub.ui.notification.InAppNotificationType
@@ -117,6 +118,7 @@ fun NotificationsScreen(
     }
 
     var openCruiseId by remember { mutableStateOf<String?>(null) }
+    var openReviewsCruiseId by remember { mutableStateOf<String?>(null) }
     var openPostId by remember { mutableStateOf<String?>(null) }
     var openPostFocusComments by remember { mutableStateOf(false) }
 
@@ -136,6 +138,7 @@ fun NotificationsScreen(
                     controller.markRead(notification)
                     when (val target = notification.target()) {
                         is NotificationTarget.Cruise -> openCruiseId = target.cruiseId
+                        is NotificationTarget.CruiseReviews -> openReviewsCruiseId = target.cruiseId
                         is NotificationTarget.Post -> {
                             openPostFocusComments = target.focusComments
                             openPostId = target.postId
@@ -167,6 +170,19 @@ fun NotificationsScreen(
                 onClose = { openCruiseId = null },
                 onCruiseChanged = {},
                 onCruiseDeleted = { openCruiseId = null },
+            )
+        }
+    }
+
+    openReviewsCruiseId?.let { cruiseId ->
+        Dialog(
+            onDismissRequest = { openReviewsCruiseId = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) {
+            CruiseReviewsScreen(
+                cruiseId = cruiseId,
+                currentUserId = currentUserId,
+                onClose = { openReviewsCruiseId = null },
             )
         }
     }

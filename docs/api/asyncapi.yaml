@@ -727,8 +727,13 @@ components:
             - object
             - "null"
           additionalProperties: true
-          description: Context data for rendering the notification
+          description: >-
+            Context data for rendering the notification. Review notifications
+            (REVIEW_PENDING_RECEIVED, REVIEW_PUBLISHED) whose sourceId is a
+            review ID also include `cruiseId` so clients can deep-link to
+            `/cruises/{cruiseId}/reviews`.
           example:
+            cruiseId: "018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b98"
             cruiseTitle: "Mediterranean Adventure"
             actorName: "John Smith"
         createdAt:

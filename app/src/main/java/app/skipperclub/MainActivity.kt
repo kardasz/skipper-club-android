@@ -46,15 +46,16 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private val pendingInvitationCode = mutableStateOf<String?>(null)
     private val pendingPasswordResetLink = mutableStateOf<PasswordResetDeepLink?>(null)
+    private val pendingCruiseReviews = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         SessionStore.initialize(applicationContext)
-        consumeAuthLink(intent)
+        consumeDeepLink(intent)
         setContent {
             SkipperClubTheme {
-                SkipperClubApp(pendingInvitationCode, pendingPasswordResetLink)
+                SkipperClubApp(pendingInvitationCode, pendingPasswordResetLink, pendingCruiseReviews)
             }
         }
     }
@@ -62,12 +63,13 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        consumeAuthLink(intent)
+        consumeDeepLink(intent)
     }
 
-    private fun consumeAuthLink(intent: Intent?) {
+    private fun consumeDeepLink(intent: Intent?) {
         intent.extractInvitationCode()?.let { pendingInvitationCode.value = it }
         intent.extractPasswordResetLink()?.let { pendingPasswordResetLink.value = it }
+        intent.extractCruiseReviewsId()?.let { pendingCruiseReviews.value = it }
     }
 }
 
@@ -92,6 +94,28 @@ private fun Intent?.extractPasswordResetLink(): PasswordResetDeepLink? {
     val email = uri.getQueryParameter("email")?.takeIf { it.isNotBlank() } ?: return null
     val code = uri.getQueryParameter("code")?.takeIf { it.isNotBlank() } ?: return null
     return PasswordResetDeepLink(email = email, code = code)
+}
+
+/**
+ * Extracts the cruise id from a `…/cruises/{cruiseId}/reviews` deep link (the link
+ * embedded in post-cruise review emails). Returns null for any other path.
+ */
+internal fun Intent?.extractCruiseReviewsId(): String? {
+    if (this == null) return null
+    if (action != Intent.ACTION_VIEW) return null
+    val uri = data ?: return null
+    return parseCruiseReviewsId(uri.pathSegments.orEmpty())
+}
+
+/**
+ * Pure path matcher for `…/cruises/{cruiseId}/reviews` links. Locale prefixes
+ * (`/en`, `/pl`) are ignored — only the `cruises/{id}/reviews` shape matters.
+ */
+internal fun parseCruiseReviewsId(segments: List<String>): String? {
+    val cruisesIndex = segments.indexOf("cruises")
+    if (cruisesIndex < 0 || cruisesIndex + 2 >= segments.size) return null
+    if (segments[cruisesIndex + 2] != "reviews") return null
+    return segments[cruisesIndex + 1].takeIf { it.isNotBlank() }
 }
 
 private sealed class PendingAuthAction(val turnstileAction: String?) {
@@ -134,6 +158,7 @@ fun SkipperClubApp(
     passwordResetLinkFromDeepLink: MutableState<PasswordResetDeepLink?> = remember {
         mutableStateOf(null)
     },
+    cruiseReviewsLinkFromDeepLink: MutableState<String?> = remember { mutableStateOf(null) },
 ) {
     val session by SessionStore.session.collectAsState()
     val isRestoringSession by SessionStore.isRestoring.collectAsState()
@@ -300,6 +325,8 @@ fun SkipperClubApp(
                     SessionStore.clear()
                 }
             },
+            pendingReviewsCruiseId = cruiseReviewsLinkFromDeepLink.value,
+            onPendingReviewsConsumed = { cruiseReviewsLinkFromDeepLink.value = null },
         )
         return
     }

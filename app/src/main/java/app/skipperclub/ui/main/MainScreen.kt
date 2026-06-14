@@ -34,6 +34,7 @@ import androidx.compose.ui.window.DialogProperties
 import app.skipperclub.R
 import app.skipperclub.data.SessionUser
 import app.skipperclub.ui.main.cruises.CruisesScreen
+import app.skipperclub.ui.main.cruises.reviews.CruiseReviewsScreen
 import app.skipperclub.ui.main.friends.FriendsScreen
 import app.skipperclub.ui.main.invitations.InvitationsScreen
 import app.skipperclub.ui.main.messages.MessagesScreen
@@ -48,6 +49,8 @@ fun MainScreen(
     user: SessionUser,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
+    pendingReviewsCruiseId: String? = null,
+    onPendingReviewsConsumed: () -> Unit = {},
 ) {
     val currentSelection = rememberSaveable { mutableStateOf(value = MainDestination.MAP) }
     var current by currentSelection
@@ -56,6 +59,8 @@ fun MainScreen(
         user = user,
         onSelect = { currentSelection.value = it },
         onLogout = onLogout,
+        pendingReviewsCruiseId = pendingReviewsCruiseId,
+        onPendingReviewsConsumed = onPendingReviewsConsumed,
         modifier = modifier,
     )
 }
@@ -68,6 +73,8 @@ private fun MainScreenContent(
     onSelect: (MainDestination) -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
+    pendingReviewsCruiseId: String? = null,
+    onPendingReviewsConsumed: () -> Unit = {},
 ) {
     val menuOpenState = rememberSaveable { mutableStateOf(value = false) }
     var isMenuOpen by menuOpenState
@@ -76,6 +83,15 @@ private fun MainScreenContent(
     var showInvitations by rememberSaveable { mutableStateOf(value = false) }
     var showSpots by rememberSaveable { mutableStateOf(value = false) }
     var showProfile by rememberSaveable { mutableStateOf(value = false) }
+    var reviewsCruiseId by rememberSaveable { mutableStateOf<String?>(value = null) }
+
+    // Open the reviews center when a `…/cruises/{id}/reviews` deep link arrives.
+    androidx.compose.runtime.LaunchedEffect(pendingReviewsCruiseId) {
+        if (pendingReviewsCruiseId != null) {
+            reviewsCruiseId = pendingReviewsCruiseId
+            onPendingReviewsConsumed()
+        }
+    }
 
     Box(
         modifier = modifier.fillMaxSize(),
@@ -185,6 +201,19 @@ private fun MainScreenContent(
             properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
         ) {
             ProfileScreen(onClose = { showProfile = false })
+        }
+    }
+
+    reviewsCruiseId?.let { cruiseId ->
+        Dialog(
+            onDismissRequest = { reviewsCruiseId = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) {
+            CruiseReviewsScreen(
+                cruiseId = cruiseId,
+                currentUserId = user.id,
+                onClose = { reviewsCruiseId = null },
+            )
         }
     }
 }
