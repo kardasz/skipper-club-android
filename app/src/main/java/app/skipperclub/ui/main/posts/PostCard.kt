@@ -108,7 +108,9 @@ fun PostCard(
                 PostMediaPager(post = post)
             }
             Column(
-                modifier = Modifier.padding(horizontal = 16.dp),
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .padding(top = if (post.media.isNotEmpty()) 10.dp else 0.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 PostTypeContent(post = post, nowMillis = nowMillis, actions = actions)
