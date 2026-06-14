@@ -1,9 +1,10 @@
 package app.skipperclub.ui.main.messages
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,21 +18,23 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -52,6 +55,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -129,6 +134,7 @@ fun MessagesScreen(modifier: Modifier = Modifier) {
 
     var openChatId by rememberSaveable { mutableStateOf<String?>(null) }
     var showNewChat by rememberSaveable { mutableStateOf(false) }
+    var showFilters by rememberSaveable { mutableStateOf(false) }
     var chatPendingDelete by remember { mutableStateOf<Chat?>(null) }
 
     // The socket lives while the Messages tab is visible; the conversation
@@ -163,7 +169,7 @@ fun MessagesScreen(modifier: Modifier = Modifier) {
             nowMillis = nowMillis,
             currentUserId = currentUserId,
             onSearchChange = controller::setSearchQuery,
-            onTypeFilterChange = controller::setTypeFilter,
+            onOpenFilters = { showFilters = true },
             onOpenChat = { chat ->
                 controller.onChatOpened(chat.id)
                 openChatId = chat.id
@@ -202,6 +208,17 @@ fun MessagesScreen(modifier: Modifier = Modifier) {
                     Text(stringResource(R.string.messages_cancel))
                 }
             },
+        )
+    }
+
+    if (showFilters) {
+        MessageFilterSheet(
+            selected = state.typeFilter,
+            onApply = { type ->
+                showFilters = false
+                controller.setTypeFilter(type)
+            },
+            onDismiss = { showFilters = false },
         )
     }
 
@@ -253,7 +270,7 @@ internal fun ChatListScreenContent(
     nowMillis: Long,
     currentUserId: String?,
     onSearchChange: (String) -> Unit,
-    onTypeFilterChange: (ChatType?) -> Unit,
+    onOpenFilters: () -> Unit,
     onOpenChat: (Chat) -> Unit,
     onNewChat: () -> Unit,
     onMarkRead: (Chat) -> Unit,
@@ -263,6 +280,8 @@ internal fun ChatListScreenContent(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var searchActive by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = searchActive) { searchActive = false }
     val listState = rememberLazyListState()
     val shouldLoadMore by remember(state.hasMore) {
         derivedStateOf {
@@ -279,65 +298,94 @@ internal fun ChatListScreenContent(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.nav_messages),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
+        if (searchActive) {
+            MessageSearchBar(
+                query = state.searchQuery,
+                onQueryChange = onSearchChange,
+                onClose = { searchActive = false },
             )
-            IconButton(
-                onClick = onNewChat,
-                modifier = Modifier.testTag("messages_new_chat"),
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    imageVector = Icons.Outlined.Edit,
-                    contentDescription = stringResource(R.string.messages_new_chat),
+                Text(
+                    text = stringResource(R.string.nav_messages),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
                 )
-            }
-        }
-
-        OutlinedTextField(
-            value = state.searchQuery,
-            onValueChange = onSearchChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .testTag("messages_search"),
-            placeholder = { Text(stringResource(R.string.messages_search_placeholder)) },
-            leadingIcon = {
-                Icon(imageVector = Icons.Outlined.Search, contentDescription = null)
-            },
-            trailingIcon = {
-                if (state.searchQuery.isNotEmpty()) {
+                IconButton(
+                    onClick = onNewChat,
+                    modifier = Modifier.testTag("messages_new_chat"),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = stringResource(R.string.messages_new_chat),
+                    )
+                }
+                IconButton(
+                    onClick = { searchActive = true },
+                    modifier = Modifier.testTag("messages_search"),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Search,
+                        contentDescription = stringResource(R.string.messages_search),
+                    )
+                }
+                BadgedBox(
+                    badge = {
+                        if (state.typeFilter != null) {
+                            Badge { Text("1") }
+                        }
+                    },
+                ) {
                     IconButton(
-                        onClick = { onSearchChange("") },
-                        modifier = Modifier.testTag("messages_search_clear"),
+                        onClick = onOpenFilters,
+                        modifier = Modifier.testTag("messages_filters"),
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = stringResource(R.string.messages_search_clear),
+                            imageVector = Icons.Outlined.FilterList,
+                            contentDescription = stringResource(R.string.messages_filter),
                         )
                     }
                 }
-            },
-            singleLine = true,
-            shape = MaterialTheme.shapes.extraLarge,
-        )
+            }
 
-        ChatTypeFilterRow(
-            selected = state.typeFilter,
-            onSelect = onTypeFilterChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp),
-        )
+            if (state.searchQuery.isNotBlank()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 20.dp, end = 16.dp, bottom = 4.dp),
+                ) {
+                    InputChip(
+                        selected = true,
+                        onClick = { searchActive = true },
+                        label = { Text("\"${state.searchQuery}\"") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Outlined.Search,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        },
+                        trailingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.messages_search_clear),
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .clickable { onSearchChange("") },
+                            )
+                        },
+                        modifier = Modifier.testTag("messages_search_chip"),
+                    )
+                }
+            }
+        }
 
         PullToRefreshBox(
             isRefreshing = state.isRefreshing,
@@ -407,32 +455,60 @@ internal fun ChatListScreenContent(
     }
 }
 
+/** Inline search bar shown in place of the header while searching; matches the cruises surface. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChatTypeFilterRow(
-    selected: ChatType?,
-    onSelect: (ChatType?) -> Unit,
-    modifier: Modifier = Modifier,
+private fun MessageSearchBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onClose: () -> Unit,
 ) {
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
     Row(
-        modifier = modifier
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        FilterChip(
-            selected = selected == null,
-            onClick = { onSelect(null) },
-            label = { Text(stringResource(R.string.messages_filter_all)) },
-            modifier = Modifier.testTag("messages_filter_all"),
-        )
-        ChatType.entries.forEach { type ->
-            FilterChip(
-                selected = selected == type,
-                onClick = { onSelect(if (selected == type) null else type) },
-                label = { Text(stringResource(type.labelRes())) },
-                modifier = Modifier.testTag("messages_filter_${type.wireValue.lowercase()}"),
+        IconButton(
+            onClick = onClose,
+            modifier = Modifier.testTag("messages_search_back"),
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                contentDescription = stringResource(R.string.action_back),
             )
         }
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier
+                .weight(1f)
+                .focusRequester(focusRequester)
+                .testTag("messages_search_field"),
+            placeholder = { Text(stringResource(R.string.messages_search_placeholder)) },
+            leadingIcon = {
+                Icon(imageVector = Icons.Outlined.Search, contentDescription = null)
+            },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(
+                        onClick = { onQueryChange("") },
+                        modifier = Modifier.testTag("messages_search_clear"),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.messages_search_clear),
+                        )
+                    }
+                }
+            },
+            singleLine = true,
+            shape = MaterialTheme.shapes.extraLarge,
+        )
     }
 }
 
@@ -665,7 +741,7 @@ private fun ChatListPreview() {
             nowMillis = 1_775_000_000_000,
             currentUserId = "u1",
             onSearchChange = {},
-            onTypeFilterChange = {},
+            onOpenFilters = {},
             onOpenChat = {},
             onNewChat = {},
             onMarkRead = {},
@@ -691,7 +767,7 @@ private fun ChatListPreviewDark() {
             nowMillis = 1_775_000_000_000,
             currentUserId = "u1",
             onSearchChange = {},
-            onTypeFilterChange = {},
+            onOpenFilters = {},
             onOpenChat = {},
             onNewChat = {},
             onMarkRead = {},
@@ -716,7 +792,7 @@ private fun ChatListPreviewPl() {
             nowMillis = 1_775_000_000_000,
             currentUserId = "u1",
             onSearchChange = {},
-            onTypeFilterChange = {},
+            onOpenFilters = {},
             onOpenChat = {},
             onNewChat = {},
             onMarkRead = {},
@@ -737,7 +813,7 @@ private fun ChatListPreviewEmptyPl() {
             nowMillis = 1_775_000_000_000,
             currentUserId = "u1",
             onSearchChange = {},
-            onTypeFilterChange = {},
+            onOpenFilters = {},
             onOpenChat = {},
             onNewChat = {},
             onMarkRead = {},

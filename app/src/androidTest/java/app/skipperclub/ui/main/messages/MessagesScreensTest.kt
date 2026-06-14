@@ -25,10 +25,10 @@ class MessagesScreensTest {
     val compose = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun chatListRendersChatsSearchAndFilters() {
+    fun chatListRendersChatsAndHeaderActions() {
         val opened = mutableListOf<String>()
         val searches = mutableListOf<String>()
-        val typeFilters = mutableListOf<ChatType?>()
+        var filtersClicked = false
 
         compose.setContent {
             SkipperClubTheme {
@@ -40,7 +40,7 @@ class MessagesScreensTest {
                     nowMillis = NOW,
                     currentUserId = "me",
                     onSearchChange = { searches += it },
-                    onTypeFilterChange = { typeFilters += it },
+                    onOpenFilters = { filtersClicked = true },
                     onOpenChat = { opened += it.id },
                     onNewChat = {},
                     onMarkRead = {},
@@ -59,14 +59,99 @@ class MessagesScreensTest {
         // Unread badge for the group chat.
         compose.onNodeWithText("3").assertExists()
 
-        compose.onNodeWithTag("messages_search").performTextInput("jan")
-        assertEquals(listOf("jan"), searches)
-
-        compose.onNodeWithTag("messages_filter_group").performClick()
-        assertEquals(listOf<ChatType?>(ChatType.Group), typeFilters)
+        // The filter icon opens the filter sheet rather than inline chips.
+        compose.onNodeWithTag("messages_filters").assertExists().performClick()
+        assertEquals(true, filtersClicked)
 
         compose.onNodeWithTag("chat_item_c1").performClick()
         assertEquals(listOf("c1"), opened)
+    }
+
+    @Test
+    fun searchIconOpensSearchBarSeparateFromFilters() {
+        val searches = mutableListOf<String>()
+        var filtersClicked = false
+
+        compose.setContent {
+            SkipperClubTheme {
+                ChatListScreenContent(
+                    state = ChatListUiState(
+                        chats = listOf(oneToOneChat),
+                        hasLoadedOnce = true,
+                    ),
+                    nowMillis = NOW,
+                    currentUserId = "me",
+                    onSearchChange = { searches += it },
+                    onOpenFilters = { filtersClicked = true },
+                    onOpenChat = {},
+                    onNewChat = {},
+                    onMarkRead = {},
+                    onDeleteRequest = {},
+                    onRefresh = {},
+                    onLoadMore = {},
+                    onRetry = {},
+                )
+            }
+        }
+
+        // Tapping the search icon reveals a dedicated search field, not the filter sheet.
+        compose.onNodeWithTag("messages_search").performClick()
+        compose.onNodeWithTag("messages_search_field").assertExists()
+        compose.onNodeWithTag("messages_search_field").performTextInput("jan")
+        assertEquals(listOf("jan"), searches)
+        assertEquals(false, filtersClicked)
+
+        // Back closes the search bar and restores the header.
+        compose.onNodeWithTag("messages_search_back").performClick()
+        compose.onNodeWithTag("messages_search_field").assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.nav_messages)).assertExists()
+    }
+
+    @Test
+    fun activeSearchShowsChipThatReopensSearch() {
+        compose.setContent {
+            SkipperClubTheme {
+                ChatListScreenContent(
+                    state = ChatListUiState(
+                        chats = listOf(oneToOneChat),
+                        searchQuery = "jan",
+                        hasLoadedOnce = true,
+                    ),
+                    nowMillis = NOW,
+                    currentUserId = "me",
+                    onSearchChange = {},
+                    onOpenFilters = {},
+                    onOpenChat = {},
+                    onNewChat = {},
+                    onMarkRead = {},
+                    onDeleteRequest = {},
+                    onRefresh = {},
+                    onLoadMore = {},
+                    onRetry = {},
+                )
+            }
+        }
+
+        compose.onNodeWithTag("messages_search_chip").assertExists().performClick()
+        compose.onNodeWithTag("messages_search_field").assertExists()
+    }
+
+    @Test
+    fun filterSheetSelectsTypeAndApplies() {
+        val applied = mutableListOf<ChatType?>()
+
+        compose.setContent {
+            SkipperClubTheme {
+                MessageFilterSheetContent(
+                    selected = null,
+                    onApply = { applied += it },
+                )
+            }
+        }
+
+        compose.onNodeWithTag("message_filter_type_group").performClick()
+        compose.onNodeWithTag("message_filter_apply").performClick()
+        assertEquals(listOf<ChatType?>(ChatType.Group), applied)
     }
 
     @Test
@@ -80,7 +165,7 @@ class MessagesScreensTest {
                     nowMillis = NOW,
                     currentUserId = "me",
                     onSearchChange = {},
-                    onTypeFilterChange = {},
+                    onOpenFilters = {},
                     onOpenChat = {},
                     onNewChat = {},
                     onMarkRead = {},
@@ -107,7 +192,7 @@ class MessagesScreensTest {
                     nowMillis = NOW,
                     currentUserId = "me",
                     onSearchChange = {},
-                    onTypeFilterChange = {},
+                    onOpenFilters = {},
                     onOpenChat = {},
                     onNewChat = {},
                     onMarkRead = {},

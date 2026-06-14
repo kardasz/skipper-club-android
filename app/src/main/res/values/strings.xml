@@ -368,8 +368,11 @@
     </plurals>
     <string name="wizard_publish_failed">Couldn\'t publish the post. Please try again.</string>
 
+    <string name="messages_search">Search conversations</string>
     <string name="messages_search_placeholder">Search conversations</string>
     <string name="messages_search_clear">Clear search</string>
+    <string name="messages_filter">Filter conversations</string>
+    <string name="messages_filter_type">Conversation type</string>
     <string name="messages_filter_all">All</string>
     <string name="chat_type_one_to_one">Private</string>
     <string name="chat_type_group">Groups</string>

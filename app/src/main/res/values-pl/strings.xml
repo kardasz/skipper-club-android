@@ -380,8 +380,11 @@
     </plurals>
     <string name="wizard_publish_failed">Nie udało się opublikować posta. Spróbuj ponownie.</string>
 
+    <string name="messages_search">Szukaj rozmów</string>
     <string name="messages_search_placeholder">Szukaj rozmów</string>
     <string name="messages_search_clear">Wyczyść wyszukiwanie</string>
+    <string name="messages_filter">Filtruj rozmowy</string>
+    <string name="messages_filter_type">Typ rozmowy</string>
     <string name="messages_filter_all">Wszystkie</string>
     <string name="chat_type_one_to_one">Prywatne</string>
     <string name="chat_type_group">Grupy</string>
