@@ -576,6 +576,7 @@
     <string name="cruise_wizard_title_edit">Edytuj rejs</string>
     <string name="cruise_wizard_save">Zapisz</string>
     <string name="cruise_wizard_publish_failed">Nie udało się zapisać rejsu. Spróbuj ponownie.</string>
+    <string name="cruise_wizard_step_ai">Opisz swój rejs</string>
     <string name="cruise_wizard_step_basics">Podstawy</string>
     <string name="cruise_wizard_step_route">Trasa</string>
     <string name="cruise_wizard_step_vessel">Jednostka</string>
@@ -631,6 +632,18 @@
     <string name="cruise_error_vessel_type">Wybierz typ jednostki.</string>
     <string name="cruise_error_cost">Podaj prawidłowy koszt.</string>
     <string name="cruise_error_max_participants">Podaj od 1 do 50 uczestników.</string>
+
+    <!-- Kreator rejsu — szkic AI -->
+    <string name="cruise_ai_headline">Zacznij z AI</string>
+    <string name="cruise_ai_subtitle">Opisz swój rejs w kilku zdaniach — lub podyktuj go — a my wstępnie wypełnimy kreator. Wszystko możesz później sprawdzić i poprawić.</string>
+    <string name="cruise_ai_hint">np. Tygodniowy, spokojny rejs po Chorwacji ze Splitu, wypłynięcie 15 lipca. Bavaria 46 z 4 kabinami, 8 osób załogi, 1500 EUR od osoby.</string>
+    <string name="cruise_ai_generate">Generuj szkic</string>
+    <string name="cruise_ai_skip">Pomiń</string>
+    <string name="cruise_ai_speak">Podyktuj opis</string>
+    <string name="cruise_ai_speak_hint">Dotknij mikrofonu, aby dyktować zamiast pisać.</string>
+    <string name="cruise_ai_speech_prompt">Opisz swój rejs</string>
+    <string name="cruise_ai_generated">Szkic gotowy — sprawdź szczegóły na każdym kroku.</string>
+    <string name="cruise_ai_failed">Nie udało się wygenerować szkicu. Uzupełnij dane ręcznie.</string>
 
     <!-- Powiadomienia -->
     <string name="menu_notifications">Powiadomienia</string>

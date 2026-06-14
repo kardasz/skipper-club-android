@@ -2,6 +2,7 @@ package app.skipperclub.ui.main.cruises
 
 import app.skipperclub.data.ChatUser
 import app.skipperclub.data.Cruise
+import app.skipperclub.data.CruiseAiDraft
 import app.skipperclub.data.CruiseCurrency
 import app.skipperclub.data.CruiseListQuery
 import app.skipperclub.data.CruiseParticipant
@@ -79,6 +80,10 @@ internal class FakeCruisesGateway : CruisesGateway {
 
     var createdCruise: Cruise = testCruise(id = "created")
     val createPayloads = mutableListOf<CruisePayload>()
+
+    var aiDraftResult: CruiseAiDraft = CruiseAiDraft()
+    var aiDraftError: CruisesError? = null
+    val aiDraftDescriptions = mutableListOf<String>()
     var updatedCruise: Cruise = testCruise(id = "c1", title = "Updated")
     val updatePayloads = mutableListOf<CruisePayload>()
 
@@ -112,6 +117,13 @@ internal class FakeCruisesGateway : CruisesGateway {
         createPayloads += payload
         mutationError?.let { throw it }
         return createdCruise
+    }
+
+    override suspend fun aiDraft(accessToken: String, description: String): CruiseAiDraft {
+        calls += "aiDraft"
+        aiDraftDescriptions += description
+        aiDraftError?.let { throw it }
+        return aiDraftResult
     }
 
     override suspend fun update(accessToken: String, cruiseId: String, payload: CruisePayload): Cruise {

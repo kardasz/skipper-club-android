@@ -1,6 +1,10 @@
 package app.skipperclub.ui.main.cruises.wizard
 
+import app.skipperclub.data.CruiseAiDraft
 import app.skipperclub.data.CruiseCurrency
+import app.skipperclub.data.CruisePort
+import app.skipperclub.data.CruiseType
+import app.skipperclub.data.CruisesError
 import app.skipperclub.data.GeocodedLocation
 import app.skipperclub.data.PostCoordinates
 import app.skipperclub.data.VesselType
@@ -52,9 +56,38 @@ class CruiseWizardStateTest {
         state.updateMaxParticipants("6")
     }
 
+    /** Create-mode wizards open on the AI-draft step; skip it to reach Basics. */
+    private fun wizardAtBasics(): CruiseWizardState = wizard().also { it.next() }
+
+    @Test
+    fun createWizardStartsOnAiDraftStep() {
+        val state = wizard()
+
+        assertEquals(CruiseWizardStep.AiDraft, state.step)
+        assertEquals(CruiseWizardStep.AiDraft, state.steps.first())
+    }
+
+    @Test
+    fun editWizardSkipsAiDraftStep() {
+        val state = wizard(existing = testCruise("c1"))
+
+        assertEquals(CruiseWizardStep.Basics, state.step)
+        assertFalse(CruiseWizardStep.AiDraft in state.steps)
+    }
+
+    @Test
+    fun skippingAiDraftAdvancesToBasics() {
+        val state = wizard()
+
+        state.next()
+
+        assertEquals(CruiseWizardStep.Basics, state.step)
+        assertTrue(gateway.calls.isEmpty())
+    }
+
     @Test
     fun basicsStepRequiresTitleAndDescription() {
-        val state = wizard()
+        val state = wizardAtBasics()
 
         state.next()
 
@@ -65,7 +98,7 @@ class CruiseWizardStateTest {
 
     @Test
     fun validBasicsAdvancesToRoute() {
-        val state = wizard()
+        val state = wizardAtBasics()
         state.updateTitle("Adriatic Summer")
         state.updateDescription("A relaxed week along the coast.")
 
@@ -76,7 +109,7 @@ class CruiseWizardStateTest {
 
     @Test
     fun routeStepRequiresPortsAndValidDates() {
-        val state = wizard()
+        val state = wizardAtBasics()
         state.updateTitle("Adriatic Summer")
         state.updateDescription("A relaxed week along the coast.")
         state.next()
@@ -87,6 +120,80 @@ class CruiseWizardStateTest {
         assertTrue(CruiseWizardError.DeparturePortRequired in state.visibleErrors)
         assertTrue(CruiseWizardError.ArrivalPortRequired in state.visibleErrors)
         assertTrue(CruiseWizardError.DatesInvalid in state.visibleErrors)
+    }
+
+    @Test
+    fun generateDraftAppliesFieldsAndAdvances() {
+        gateway.aiDraftResult = CruiseAiDraft(
+            title = "Croatian Adventure",
+            description = "A relaxed week in Croatia.",
+            departureDate = "2025-07-15",
+            departurePort = CruisePort("Split", PostCoordinates(43.5, 16.4)),
+            arrivalDate = "2025-07-22",
+            arrivalPort = CruisePort("Dubrovnik", PostCoordinates(42.6, 18.0)),
+            stops = listOf(CruisePort("Hvar", PostCoordinates(43.17, 16.44))),
+            costPerPerson = 1500.0,
+            currency = CruiseCurrency.Eur,
+            vessel = "Bavaria 46",
+            vesselType = VesselType.SailingYacht,
+            vesselCabins = 4,
+            maxParticipants = 8,
+            type = CruiseType.Relax,
+        )
+        val state = wizard()
+        state.updateAiDescription("Week-long relaxed sailing in Croatia from Split, Bavaria 46.")
+
+        state.generateDraft()
+
+        assertTrue(gateway.calls.contains("aiDraft"))
+        assertEquals(CruiseWizardStep.Basics, state.step)
+        assertEquals("Croatian Adventure", state.title)
+        assertEquals("Split", state.departurePort?.name)
+        assertEquals("Dubrovnik", state.arrivalPort?.name)
+        assertEquals(LocalDate.of(2025, 7, 15), state.departureDate)
+        assertEquals(listOf("Hvar"), state.stops.map { it.name })
+        assertEquals("1500", state.costText)
+        assertEquals("Bavaria 46", state.vessel)
+        assertEquals(VesselType.SailingYacht, state.vesselType)
+        assertEquals("4", state.vesselCabinsText)
+        assertEquals("8", state.maxParticipantsText)
+        assertEquals(CruiseType.Relax, state.type)
+        assertTrue(events.contains(CruiseWizardEvent.DraftGenerated))
+    }
+
+    @Test
+    fun generateDraftIsBlockedUntilDescriptionLongEnough() {
+        val state = wizard()
+        state.updateAiDescription("short")
+
+        assertFalse(state.canGenerateDraft)
+        state.generateDraft()
+
+        assertFalse(gateway.calls.contains("aiDraft"))
+        assertEquals(CruiseWizardStep.AiDraft, state.step)
+    }
+
+    @Test
+    fun generateDraftFailureKeepsStepAndEmitsEvent() {
+        gateway.aiDraftError = CruisesError.Server(500, "boom")
+        val state = wizard()
+        state.updateAiDescription("A relaxed week along the Croatian coast from Split.")
+
+        state.generateDraft()
+
+        assertEquals(CruiseWizardStep.AiDraft, state.step)
+        assertTrue(events.any { it is CruiseWizardEvent.DraftFailed })
+    }
+
+    @Test
+    fun missingTokenOnGenerateEmitsSessionExpired() {
+        val state = wizard(token = null)
+        state.updateAiDescription("A relaxed week along the Croatian coast from Split.")
+
+        state.generateDraft()
+
+        assertFalse(gateway.calls.contains("aiDraft"))
+        assertTrue(events.contains(CruiseWizardEvent.SessionExpired))
     }
 
     @Test

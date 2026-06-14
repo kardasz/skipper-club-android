@@ -558,6 +558,7 @@
     <string name="cruise_wizard_title_edit">Edit cruise</string>
     <string name="cruise_wizard_save">Save</string>
     <string name="cruise_wizard_publish_failed">Couldn\'t save the cruise. Please try again.</string>
+    <string name="cruise_wizard_step_ai">Describe your cruise</string>
     <string name="cruise_wizard_step_basics">Basics</string>
     <string name="cruise_wizard_step_route">Route</string>
     <string name="cruise_wizard_step_vessel">Vessel</string>
@@ -613,6 +614,18 @@
     <string name="cruise_error_vessel_type">Select a vessel type.</string>
     <string name="cruise_error_cost">Enter a valid cost.</string>
     <string name="cruise_error_max_participants">Enter between 1 and 50 participants.</string>
+
+    <!-- Cruise AI draft -->
+    <string name="cruise_ai_headline">Start with AI</string>
+    <string name="cruise_ai_subtitle">Describe your cruise in a few sentences — or dictate it — and we\'ll pre-fill the wizard for you. You can review and tweak everything afterwards.</string>
+    <string name="cruise_ai_hint">e.g. A week-long relaxed sailing trip in Croatia from Split, departing July 15th. Bavaria 46 with 4 cabins, 8 crew, 1500 EUR per person.</string>
+    <string name="cruise_ai_generate">Generate draft</string>
+    <string name="cruise_ai_skip">Skip</string>
+    <string name="cruise_ai_speak">Dictate description</string>
+    <string name="cruise_ai_speak_hint">Tap the microphone to dictate instead of typing.</string>
+    <string name="cruise_ai_speech_prompt">Describe your cruise</string>
+    <string name="cruise_ai_generated">Draft ready — review the details on each step.</string>
+    <string name="cruise_ai_failed">Couldn\'t generate a draft. Fill in the details manually.</string>
 
     <!-- Notifications -->
     <string name="menu_notifications">Notifications</string>

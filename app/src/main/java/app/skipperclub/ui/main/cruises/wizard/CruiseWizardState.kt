@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.skipperclub.data.Cruise
+import app.skipperclub.data.CruiseAiDraft
 import app.skipperclub.data.CruiseCurrency
 import app.skipperclub.data.CruisePayload
 import app.skipperclub.data.CruisePort
@@ -31,8 +32,14 @@ const val CRUISE_VESSEL_MIN_LENGTH = 5
 const val CRUISE_STOPS_MAX_COUNT = 20
 const val CRUISE_MAX_PARTICIPANTS_LIMIT = 50
 const val CRUISE_COST_LIMIT = 100_000.0
+const val CRUISE_AI_DESCRIPTION_MIN_LENGTH = 10
+const val CRUISE_AI_DESCRIPTION_MAX_LENGTH = 5000
 
-enum class CruiseWizardStep { Basics, Route, Vessel, Crew, Summary }
+/**
+ * [AiDraft] is an optional intro step (create-only) where the user describes the
+ * cruise in free text / voice and the AI pre-fills the remaining steps.
+ */
+enum class CruiseWizardStep { AiDraft, Basics, Route, Vessel, Crew, Summary }
 
 /** Validation problems surfaced under the relevant field / step. */
 enum class CruiseWizardError {
@@ -50,6 +57,8 @@ enum class CruiseWizardError {
 sealed interface CruiseWizardEvent {
     data class Published(val cruise: Cruise) : CruiseWizardEvent
     data class PublishFailed(val error: Exception) : CruiseWizardEvent
+    data object DraftGenerated : CruiseWizardEvent
+    data class DraftFailed(val error: Exception) : CruiseWizardEvent
     data object SessionExpired : CruiseWizardEvent
 }
 
@@ -72,7 +81,21 @@ class CruiseWizardState(
     val isEditing: Boolean
         get() = existing != null
 
-    var step by mutableStateOf(CruiseWizardStep.Basics)
+    /** The AI-draft intro step is create-only; editing jumps straight to Basics. */
+    val steps: List<CruiseWizardStep> =
+        if (isEditing) {
+            CruiseWizardStep.entries.filterNot { it == CruiseWizardStep.AiDraft }
+        } else {
+            CruiseWizardStep.entries
+        }
+
+    var step by mutableStateOf(steps.first())
+        private set
+
+    /** Free-form description the user types or dictates for AI draft generation. */
+    var aiDescription by mutableStateOf("")
+        private set
+    var isGeneratingDraft by mutableStateOf(false)
         private set
 
     var title by mutableStateOf(existing?.title.orEmpty())
@@ -147,10 +170,74 @@ class CruiseWizardState(
 
     private var portSearchJob: Job? = null
 
-    val steps: List<CruiseWizardStep> = CruiseWizardStep.entries
-
     val stepIndex: Int
         get() = steps.indexOf(step).coerceAtLeast(0)
+
+    fun updateAiDescription(value: String) {
+        aiDescription = value.take(CRUISE_AI_DESCRIPTION_MAX_LENGTH)
+    }
+
+    val canGenerateDraft: Boolean
+        get() = !isGeneratingDraft && aiDescription.trim().length >= CRUISE_AI_DESCRIPTION_MIN_LENGTH
+
+    /**
+     * Calls the AI-draft endpoint, overlays the extracted fields onto the wizard
+     * and advances to [CruiseWizardStep.Basics] so the user can review. Failures
+     * leave the form untouched and emit [CruiseWizardEvent.DraftFailed].
+     */
+    fun generateDraft() {
+        if (!canGenerateDraft) return
+        isGeneratingDraft = true
+        scope.launch {
+            val token = runCatching { accessToken() }.getOrNull() ?: run {
+                isGeneratingDraft = false
+                _events.tryEmit(CruiseWizardEvent.SessionExpired)
+                return@launch
+            }
+            try {
+                val draft = gateway.aiDraft(token, aiDescription.trim())
+                applyDraft(draft)
+                isGeneratingDraft = false
+                _events.tryEmit(CruiseWizardEvent.DraftGenerated)
+                if (step == CruiseWizardStep.AiDraft) next()
+            } catch (error: Exception) {
+                isGeneratingDraft = false
+                _events.tryEmit(CruiseWizardEvent.DraftFailed(error))
+            }
+        }
+    }
+
+    /** Overlays an AI draft onto the form; null/blank draft fields are left as-is. */
+    internal fun applyDraft(draft: CruiseAiDraft) {
+        draft.title?.let { title = it.take(CRUISE_TITLE_MAX_LENGTH) }
+        draft.description.takeIf { it.isNotBlank() }?.let { description = it.take(CRUISE_DESCRIPTION_MAX_LENGTH) }
+        draft.type?.let { type = it }
+        draft.departurePort?.let { departurePort = it }
+        draft.arrivalPort?.let { arrivalPort = it }
+        draft.departureDate?.toLocalDateOrNull()?.let { departureDate = it }
+        draft.arrivalDate?.toLocalDateOrNull()?.let { arrivalDate = it }
+        if (draft.stops.isNotEmpty()) {
+            stops.clear()
+            stops.addAll(draft.stops.take(CRUISE_STOPS_MAX_COUNT))
+        }
+        draft.requiredSkills?.let { requiredSkills = it.take(1000) }
+        draft.costPerPerson?.let { costText = formatCostInput(it) }
+        draft.currency?.let { currency = it }
+        isPrivate = draft.isPrivate
+        draft.vessel?.let { vessel = it.take(CRUISE_TITLE_MAX_LENGTH) }
+        draft.vesselType?.let { vesselType = it }
+        draft.vesselBrand?.let { vesselBrand = it.take(100) }
+        draft.vesselModel?.let { vesselModel = it.take(100) }
+        draft.vesselYear?.let { vesselYearText = it.toString().take(4) }
+        draft.vesselLength?.let { vesselLengthText = formatLengthInput(it) }
+        draft.vesselCabins?.let { vesselCabinsText = it.toString().take(2) }
+        draft.maxParticipants?.let { maxParticipantsText = it.toString().take(2) }
+        smokingAllowed = draft.smokingAllowed
+        alcoholAllowed = draft.alcoholAllowed
+        petsAllowed = draft.petsAllowed
+        childrenAllowed = draft.childrenAllowed
+        visibleErrors = emptySet()
+    }
 
     fun updateTitle(value: String) {
         title = value.take(CRUISE_TITLE_MAX_LENGTH)
@@ -321,6 +408,8 @@ class CruiseWizardState(
     /** Validation errors blocking the given step's Next action. */
     fun errorsFor(step: CruiseWizardStep): Set<CruiseWizardError> =
         when (step) {
+            CruiseWizardStep.AiDraft -> emptySet()
+
             CruiseWizardStep.Basics -> buildSet {
                 if (title.trim().length < CRUISE_TITLE_MIN_LENGTH) add(CruiseWizardError.TitleTooShort)
                 if (description.trim().length < CRUISE_DESCRIPTION_MIN_LENGTH) {
@@ -382,8 +471,8 @@ class CruiseWizardState(
     val hasUserInput: Boolean
         get() = !isEditing &&
             (
-                title.isNotBlank() || description.isNotBlank() || departurePort != null ||
-                    arrivalPort != null || vessel.isNotBlank()
+                aiDescription.isNotBlank() || title.isNotBlank() || description.isNotBlank() ||
+                    departurePort != null || arrivalPort != null || vessel.isNotBlank()
                 )
 
     internal fun buildPayload(): CruisePayload? {
@@ -453,3 +542,10 @@ class CruiseWizardState(
 /** Backend sends dates as `YYYY-MM-DD` (sometimes with a time suffix). */
 private fun String.toLocalDateOrNull(): LocalDate? =
     runCatching { LocalDate.parse(take(10)) }.getOrNull()
+
+/** Renders a cost/amount as the wizard's text field would: integers without a decimal tail. */
+private fun formatCostInput(value: Double): String =
+    if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()
+
+private fun formatLengthInput(value: Double): String =
+    if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()

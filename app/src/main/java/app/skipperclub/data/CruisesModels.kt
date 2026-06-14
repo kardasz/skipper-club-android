@@ -249,6 +249,106 @@ data class CruisePayload(
     val childrenAllowed: Boolean? = null,
 )
 
+/**
+ * AI-extracted cruise draft (domain), produced from a free-form description via
+ * `POST /v1/cruises/ai-draft`. Every field mirrors a cruise wizard input so the
+ * draft can pre-fill the form; nulls mean "AI did not extract this — leave the
+ * field as-is / let the user fill it" (see `docs/api/cruises/ai-draft.md`).
+ */
+data class CruiseAiDraft(
+    val title: String? = null,
+    val description: String = "",
+    val departureDate: String? = null,
+    val departurePort: CruisePort? = null,
+    val arrivalDate: String? = null,
+    val arrivalPort: CruisePort? = null,
+    val stops: List<CruisePort> = emptyList(),
+    val requiredSkills: String? = null,
+    val costPerPerson: Double? = null,
+    val currency: CruiseCurrency? = null,
+    val isPrivate: Boolean = false,
+    val vessel: String? = null,
+    val vesselBrand: String? = null,
+    val vesselModel: String? = null,
+    val vesselYear: Int? = null,
+    val vesselLength: Double? = null,
+    val vesselCabins: Int? = null,
+    val vesselType: VesselType? = null,
+    val maxParticipants: Int? = null,
+    val type: CruiseType? = null,
+    val smokingAllowed: Boolean? = null,
+    val alcoholAllowed: Boolean? = null,
+    val petsAllowed: Boolean? = null,
+    val childrenAllowed: Boolean? = null,
+)
+
+/** Body of `POST /v1/cruises/ai-draft`. */
+@Serializable
+data class CruiseAiDraftRequest(
+    val description: String,
+)
+
+/**
+ * Response of `POST /v1/cruises/ai-draft`. The endpoint always returns 200 with a
+ * full structure; unknown enum values are dropped to `null` in [toDomain] so the
+ * wizard simply leaves those fields untouched.
+ */
+@Serializable
+internal data class CruiseAiDraftResponseDto(
+    val title: String? = null,
+    val description: String = "",
+    val departureDate: String? = null,
+    val departurePort: CruisePortDto? = null,
+    val arrivalDate: String? = null,
+    val arrivalPort: CruisePortDto? = null,
+    val stops: List<CruisePortDto> = emptyList(),
+    val requiredSkills: String? = null,
+    val costPerPerson: Double? = null,
+    val currency: String? = null,
+    @SerialName("private") val isPrivate: Boolean = false,
+    val vessel: String? = null,
+    val vesselBrand: String? = null,
+    val vesselModel: String? = null,
+    val vesselYear: Int? = null,
+    val vesselLength: Double? = null,
+    val vesselCabins: Int? = null,
+    val vesselType: String? = null,
+    val maxParticipants: Int? = null,
+    val regionCode: String? = null,
+    val type: String? = null,
+    val smokingAllowed: Boolean? = null,
+    val alcoholAllowed: Boolean? = null,
+    val petsAllowed: Boolean? = null,
+    val childrenAllowed: Boolean? = null,
+) {
+    fun toDomain(): CruiseAiDraft = CruiseAiDraft(
+        title = title?.takeIf { it.isNotBlank() },
+        description = description,
+        departureDate = departureDate,
+        departurePort = departurePort?.toDomain(),
+        arrivalDate = arrivalDate,
+        arrivalPort = arrivalPort?.toDomain(),
+        stops = stops.map { it.toDomain() },
+        requiredSkills = requiredSkills?.takeIf { it.isNotBlank() },
+        costPerPerson = costPerPerson,
+        currency = currency?.let { CruiseCurrency.fromWire(it) },
+        isPrivate = isPrivate,
+        vessel = vessel?.takeIf { it.isNotBlank() },
+        vesselBrand = vesselBrand?.takeIf { it.isNotBlank() },
+        vesselModel = vesselModel?.takeIf { it.isNotBlank() },
+        vesselYear = vesselYear,
+        vesselLength = vesselLength,
+        vesselCabins = vesselCabins,
+        vesselType = vesselType?.let { VesselType.fromWire(it) },
+        maxParticipants = maxParticipants,
+        type = type?.let { CruiseType.fromWire(it) },
+        smokingAllowed = smokingAllowed,
+        alcoholAllowed = alcoholAllowed,
+        petsAllowed = petsAllowed,
+        childrenAllowed = childrenAllowed,
+    )
+}
+
 @Serializable
 data class CruisePortDto(
     val name: String,

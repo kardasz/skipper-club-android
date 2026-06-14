@@ -68,6 +68,8 @@ fun CruiseWizardHost(
 
     val publishFailed = stringResource(R.string.cruise_wizard_publish_failed)
     val sessionExpired = stringResource(R.string.cruise_error_auth)
+    val draftGenerated = stringResource(R.string.cruise_ai_generated)
+    val draftFailed = stringResource(R.string.cruise_ai_failed)
 
     LaunchedEffect(state) {
         state.events.collect { event ->
@@ -75,6 +77,12 @@ fun CruiseWizardHost(
                 is CruiseWizardEvent.Published -> onPublished(event.cruise)
                 is CruiseWizardEvent.PublishFailed ->
                     notificationHostState.show(event.error.message ?: publishFailed, InAppNotificationType.Error)
+
+                CruiseWizardEvent.DraftGenerated ->
+                    notificationHostState.show(draftGenerated, InAppNotificationType.Success)
+
+                is CruiseWizardEvent.DraftFailed ->
+                    notificationHostState.show(draftFailed, InAppNotificationType.Error)
 
                 CruiseWizardEvent.SessionExpired ->
                     notificationHostState.show(sessionExpired, InAppNotificationType.Error)
@@ -128,6 +136,7 @@ fun CruiseWizard(
                         .padding(horizontal = 20.dp, vertical = 12.dp),
                 ) {
                     when (state.step) {
+                        CruiseWizardStep.AiDraft -> WizardAiDraftStep(state)
                         CruiseWizardStep.Basics -> WizardBasicsStep(state)
                         CruiseWizardStep.Route -> WizardRouteStep(state)
                         CruiseWizardStep.Vessel -> WizardVesselStep(state)
@@ -210,6 +219,27 @@ private fun WizardBottomBar(state: CruiseWizardState) {
             .padding(horizontal = 20.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        if (state.step == CruiseWizardStep.AiDraft) {
+            OutlinedButton(
+                onClick = { state.next() },
+                enabled = !state.isGeneratingDraft,
+                modifier = Modifier.weight(1f).testTag("cruise_wizard_ai_skip"),
+            ) {
+                Text(stringResource(R.string.cruise_ai_skip))
+            }
+            Button(
+                onClick = { state.generateDraft() },
+                enabled = state.canGenerateDraft,
+                modifier = Modifier.weight(2f).testTag("cruise_wizard_ai_generate"),
+            ) {
+                if (state.isGeneratingDraft) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                } else {
+                    Text(stringResource(R.string.cruise_ai_generate))
+                }
+            }
+            return@Row
+        }
         if (state.stepIndex > 0) {
             OutlinedButton(
                 onClick = { state.back() },
@@ -247,6 +277,7 @@ private fun WizardBottomBar(state: CruiseWizardState) {
 }
 
 internal fun CruiseWizardStep.titleRes(): Int = when (this) {
+    CruiseWizardStep.AiDraft -> R.string.cruise_wizard_step_ai
     CruiseWizardStep.Basics -> R.string.cruise_wizard_step_basics
     CruiseWizardStep.Route -> R.string.cruise_wizard_step_route
     CruiseWizardStep.Vessel -> R.string.cruise_wizard_step_vessel

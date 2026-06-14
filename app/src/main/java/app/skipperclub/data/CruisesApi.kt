@@ -38,6 +38,11 @@ object CruisesApi {
         .let { HttpLoggingProvider.apply(it) }
         .build()
 
+    /** AI draft generation can take up to 30s server-side; give it more headroom. */
+    private val aiDraftClient: OkHttpClient = client.newBuilder()
+        .readTimeout(45, TimeUnit.SECONDS)
+        .build()
+
     private fun cruisesUrl(): HttpUrl = "${BuildConfig.API_BASE_URL}/v1/cruises".toHttpUrl()
 
     internal fun listRequest(accessToken: String, query: CruiseListQuery): Request {
@@ -175,6 +180,27 @@ object CruisesApi {
             updateParticipantStateRequest(accessToken, cruiseId, participantId, state),
         ) { it.toDomain() ?: throw CruisesError.Server(200, "Malformed response") }
 
+    internal fun aiDraftRequest(accessToken: String, description: String): Request =
+        baseRequest(accessToken)
+            .url(cruisesUrl().newBuilder().addPathSegment("ai-draft").build())
+            .post(
+                json.encodeToString(CruiseAiDraftRequest(description))
+                    .toRequestBody(JSON_MEDIA_TYPE),
+            )
+            .header("Content-Type", "application/json")
+            .build()
+
+    /**
+     * Generates a structured cruise draft from a free-form description. The endpoint
+     * always returns 200 with sensible defaults (only request validation yields 422),
+     * so callers can treat any non-validation failure as "AI unavailable, fill manually".
+     */
+    suspend fun aiDraft(accessToken: String, description: String): CruiseAiDraft =
+        executeAndDecode<CruiseAiDraftResponseDto, CruiseAiDraft>(
+            aiDraftRequest(accessToken, description),
+            client = aiDraftClient,
+        ) { it.toDomain() }
+
     private fun baseRequest(accessToken: String): Request.Builder =
         Request.Builder()
             .header("Accept", "application/json")
@@ -183,9 +209,10 @@ object CruisesApi {
 
     private suspend inline fun <reified DtoT, DomainT> executeAndDecode(
         request: Request,
+        client: OkHttpClient = this.client,
         crossinline toDomain: (DtoT) -> DomainT,
     ): DomainT {
-        execute(request).use { response ->
+        execute(request, client).use { response ->
             if (!response.isSuccessful) throw response.toCruisesError()
             val payload = response.body.string()
             val dto = try {
@@ -203,7 +230,7 @@ object CruisesApi {
         }
     }
 
-    private suspend fun execute(request: Request): Response =
+    private suspend fun execute(request: Request, client: OkHttpClient = this.client): Response =
         suspendCancellableCoroutine { continuation ->
             val call = client.newCall(request)
             continuation.invokeOnCancellation { runCatching { call.cancel() } }

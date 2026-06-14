@@ -1,5 +1,10 @@
 package app.skipperclub.ui.main.cruises.wizard
 
+import android.content.Intent
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,7 +22,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.CircularProgressIndicator
@@ -40,9 +47,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.skipperclub.R
 import app.skipperclub.data.CruiseCurrency
@@ -54,6 +64,115 @@ import app.skipperclub.ui.main.cruises.labelRes
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.util.Locale
+
+// ---------------------------------------------------------------------------
+// Step 0 — AI draft (create-only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Free-text / voice description that the AI turns into a pre-filled draft. Speech
+ * input uses the system recognizer ([RecognizerIntent]) so no microphone permission
+ * or extra library is needed; the mic button hides on devices without recognition.
+ */
+@Composable
+internal fun WizardAiDraftStep(state: CruiseWizardState) {
+    val context = LocalContext.current
+    val speechAvailable = remember { SpeechRecognizer.isRecognitionAvailable(context) }
+    val speechPrompt = stringResource(R.string.cruise_ai_speech_prompt)
+
+    val speechLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val spoken = result.data
+            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            ?.firstOrNull()
+            ?.takeIf { it.isNotBlank() }
+        if (spoken != null) {
+            val merged = if (state.aiDescription.isBlank()) {
+                spoken
+            } else {
+                state.aiDescription.trimEnd() + " " + spoken
+            }
+            state.updateAiDescription(merged)
+        }
+    }
+
+    val launchSpeech: () -> Unit = {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_PROMPT, speechPrompt)
+        }
+        runCatching { speechLauncher.launch(intent) }
+    }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            Icons.Filled.AutoAwesome,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(22.dp),
+        )
+        Text(
+            text = stringResource(R.string.cruise_ai_headline),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = 8.dp),
+        )
+    }
+    Spacer(Modifier.size(6.dp))
+    Text(
+        text = stringResource(R.string.cruise_ai_subtitle),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    Spacer(Modifier.size(16.dp))
+    OutlinedTextField(
+        value = state.aiDescription,
+        onValueChange = state::updateAiDescription,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 180.dp)
+            .testTag("cruise_ai_description"),
+        enabled = !state.isGeneratingDraft,
+        placeholder = { Text(stringResource(R.string.cruise_ai_hint)) },
+        trailingIcon = if (speechAvailable) {
+            {
+                IconButton(
+                    onClick = launchSpeech,
+                    enabled = !state.isGeneratingDraft,
+                    modifier = Modifier.testTag("cruise_ai_mic"),
+                ) {
+                    Icon(
+                        Icons.Filled.Mic,
+                        contentDescription = stringResource(R.string.cruise_ai_speak),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        } else {
+            null
+        },
+    )
+    Text(
+        text = "${state.aiDescription.trim().length}/$CRUISE_AI_DESCRIPTION_MAX_LENGTH",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        textAlign = TextAlign.End,
+    )
+
+    if (speechAvailable) {
+        Spacer(Modifier.size(4.dp))
+        Text(
+            text = stringResource(R.string.cruise_ai_speak_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Step 1 — Basics

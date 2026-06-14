@@ -2,6 +2,7 @@ package app.skipperclub.ui.main.cruises
 
 import app.skipperclub.data.ChatsApi
 import app.skipperclub.data.Cruise
+import app.skipperclub.data.CruiseAiDraft
 import app.skipperclub.data.CruiseListQuery
 import app.skipperclub.data.CruiseParticipant
 import app.skipperclub.data.CruiseParticipantState
@@ -22,6 +23,7 @@ interface CruisesGateway {
     suspend fun list(accessToken: String, query: CruiseListQuery): CruisesPage
     suspend fun get(accessToken: String, cruiseId: String): Cruise
     suspend fun create(accessToken: String, payload: CruisePayload): Cruise
+    suspend fun aiDraft(accessToken: String, description: String): CruiseAiDraft
     suspend fun update(accessToken: String, cruiseId: String, payload: CruisePayload): Cruise
     suspend fun delete(accessToken: String, cruiseId: String)
     suspend fun participants(accessToken: String, cruiseId: String): CruiseParticipantsPage
@@ -46,6 +48,9 @@ object RealCruisesGateway : CruisesGateway {
 
     override suspend fun create(accessToken: String, payload: CruisePayload): Cruise =
         CruisesApi.create(accessToken, payload)
+
+    override suspend fun aiDraft(accessToken: String, description: String): CruiseAiDraft =
+        CruisesApi.aiDraft(accessToken, description)
 
     override suspend fun update(accessToken: String, cruiseId: String, payload: CruisePayload): Cruise =
         CruisesApi.update(accessToken, cruiseId, payload)
