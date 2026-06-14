@@ -53,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -65,6 +66,7 @@ import app.skipperclub.data.Coordinates
 import app.skipperclub.data.PhoneContact
 import app.skipperclub.data.RadioChannel
 import app.skipperclub.data.RadioChannelKind
+import app.skipperclub.data.RealPlaceSearch
 import app.skipperclub.data.SessionStore
 import app.skipperclub.data.Spot
 import app.skipperclub.data.SpotsError
@@ -95,6 +97,8 @@ fun SpotsScreen(
     val state by controller.state.collectAsState()
     val notificationHostState = rememberInAppNotificationHostState()
     val resources = LocalResources.current
+    val context = LocalContext.current
+    val placeSearch = remember(context) { RealPlaceSearch(context) }
 
     val errorNetwork = stringResource(R.string.spots_error_network)
     val errorAuth = stringResource(R.string.spots_error_auth)
@@ -199,6 +203,8 @@ fun SpotsScreen(
                             is SpotFormTarget.Edit -> controller.updateSpot(target.spot, form)
                         }
                     },
+                    searchPlaces = placeSearch::autocomplete,
+                    onResolvePlace = { prediction -> placeSearch.resolve(prediction.placeId) },
                 )
             }
             InAppNotificationHost(

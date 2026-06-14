@@ -4,6 +4,7 @@ import app.skipperclub.data.Coordinates
 import app.skipperclub.data.PhoneContact
 import app.skipperclub.data.RadioChannel
 import app.skipperclub.data.RadioChannelKind
+import app.skipperclub.data.ResolvedPlace
 import app.skipperclub.data.Spot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -45,6 +46,47 @@ class SpotFormTest {
     @Test
     fun validNameAndCoordinatesAreValid() {
         assertTrue(SpotForm(name = "Neptun", lat = "54.35", lng = "18.65").isValid)
+    }
+
+    // --- Place picking ---
+
+    @Test
+    fun emptyFormHasNoLocation() {
+        assertFalse(SpotForm().hasLocation)
+        assertFalse(SpotForm(name = "Neptun").hasLocation)
+    }
+
+    @Test
+    fun resolvedPlaceFillsNameCoordinatesAndLabel() {
+        val form = SpotForm().withResolvedPlace(
+            ResolvedPlace("p1", "Neptun Marina", 54.352, 18.653, "Szafarnia 11, Gdańsk"),
+        )
+
+        assertEquals("Neptun Marina", form.name)
+        assertEquals(54.352, form.parsedLat)
+        assertEquals(18.653, form.parsedLng)
+        assertEquals("Szafarnia 11, Gdańsk", form.locationLabel)
+        assertTrue(form.hasLocation)
+        assertTrue(form.isValid)
+    }
+
+    @Test
+    fun resolvedPlaceWithoutNameKeepsTypedName() {
+        val form = SpotForm(name = "My marina").withResolvedPlace(
+            ResolvedPlace("p1", "", 54.0, 18.0, null),
+        )
+
+        assertEquals("My marina", form.name)
+        assertEquals("54.0", form.lat)
+    }
+
+    @Test
+    fun clearLocationDropsCoordinatesButKeepsName() {
+        val form = SpotForm(name = "Neptun", lat = "54.35", lng = "18.65", locationLabel = "Gdańsk").clearLocation()
+
+        assertEquals("Neptun", form.name)
+        assertFalse(form.hasLocation)
+        assertNull(form.locationLabel)
     }
 
     @Test

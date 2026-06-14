@@ -4,8 +4,11 @@ import android.content.Context
 import app.skipperclub.BuildConfig
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.libraries.places.api.Places
+import com.google.android.libraries.places.api.model.AutocompleteSessionToken
 import com.google.android.libraries.places.api.model.CircularBounds
 import com.google.android.libraries.places.api.model.Place
+import com.google.android.libraries.places.api.net.FetchPlaceRequest
+import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
 import com.google.android.libraries.places.api.net.PlacesClient
 import com.google.android.libraries.places.api.net.SearchNearbyRequest
 import com.google.android.libraries.places.api.net.SearchNearbyResponse
@@ -33,7 +36,7 @@ object PlacesApi {
         return null
     }
 
-    private fun placesClient(context: Context): PlacesClient? {
+    internal fun placesClient(context: Context): PlacesClient? {
         if (BuildConfig.GOOGLE_MAPS_API_KEY.isBlank()) return null
         val appContext = context.applicationContext
         if (!initialized) {
@@ -78,6 +81,107 @@ object PlacesApi {
 data class NearbyPlace(
     val name: String,
     val addressLine: String?,
+)
+
+/** A single Places autocomplete suggestion shown in the spot form. */
+data class PlacePrediction(
+    val placeId: String,
+    val primaryText: String,
+    val secondaryText: String?,
+)
+
+/** A place the admin picked, with the coordinates the spot will be created at. */
+data class ResolvedPlace(
+    val placeId: String,
+    val name: String,
+    val lat: Double,
+    val lng: Double,
+    val address: String?,
+)
+
+/**
+ * Place lookup used by the spot form. Abstracted behind an interface so the
+ * Composable form stays previewable / testable without the Places SDK or a live
+ * API key.
+ */
+interface PlaceSearch {
+    suspend fun autocomplete(query: String): List<PlacePrediction>
+    suspend fun resolve(placeId: String): ResolvedPlace?
+}
+
+/**
+ * [PlaceSearch] backed by the Places SDK (New). A single
+ * [AutocompleteSessionToken] groups the keystrokes and the final detail fetch
+ * into one billable session; it is rotated after each successful [resolve].
+ */
+class RealPlaceSearch(context: Context) : PlaceSearch {
+    private val appContext = context.applicationContext
+    private val client: PlacesClient? by lazy { PlacesApi.placesClient(appContext) }
+
+    @Volatile
+    private var sessionToken: AutocompleteSessionToken = AutocompleteSessionToken.newInstance()
+
+    override suspend fun autocomplete(query: String): List<PlacePrediction> {
+        val client = client ?: return emptyList()
+        val request = FindAutocompletePredictionsRequest.builder()
+            .setSessionToken(sessionToken)
+            .setQuery(query)
+            .build()
+
+        return suspendCancellableCoroutine { continuation ->
+            client.findAutocompletePredictions(request)
+                .addOnSuccessListener { response ->
+                    continuation.resume(
+                        response.autocompletePredictions.map { prediction ->
+                            PlacePrediction(
+                                placeId = prediction.placeId,
+                                primaryText = prediction.getPrimaryText(null).toString(),
+                                secondaryText = prediction.getSecondaryText(null).toString().ifBlank { null },
+                            )
+                        },
+                    )
+                }
+                .addOnFailureListener { continuation.resume(emptyList()) }
+        }
+    }
+
+    override suspend fun resolve(placeId: String): ResolvedPlace? {
+        val client = client ?: return null
+        val request = FetchPlaceRequest.builder(placeId, ResolvePlaceFields)
+            .setSessionToken(sessionToken)
+            .build()
+
+        return suspendCancellableCoroutine { continuation ->
+            client.fetchPlace(request)
+                .addOnSuccessListener { response ->
+                    // End of the billing session — a new token starts the next search.
+                    sessionToken = AutocompleteSessionToken.newInstance()
+                    val place = response.place
+                    val location = place.location
+                    if (location == null) {
+                        continuation.resume(null)
+                    } else {
+                        continuation.resume(
+                            ResolvedPlace(
+                                placeId = placeId,
+                                name = place.displayName?.trim().orEmpty(),
+                                lat = location.latitude,
+                                lng = location.longitude,
+                                address = place.formattedAddress?.trim()?.takeIf { it.isNotBlank() },
+                            ),
+                        )
+                    }
+                }
+                .addOnFailureListener { continuation.resume(null) }
+        }
+    }
+}
+
+private val ResolvePlaceFields = listOf(
+    Place.Field.ID,
+    Place.Field.DISPLAY_NAME,
+    Place.Field.FORMATTED_ADDRESS,
+    Place.Field.LOCATION,
 )
 
 private data class NearbyPlaceQuery(

@@ -670,8 +670,8 @@
     <string name="spot_form_save">Zapisz</string>
     <string name="spot_form_remove">Usuń</string>
     <string name="spot_form_name_label">Nazwa</string>
-    <string name="spot_form_lat_label">Szerokość geogr.</string>
-    <string name="spot_form_lng_label">Długość geogr.</string>
+    <string name="spot_form_location_hint">Wpisz nazwę i wybierz miejsce z listy, aby ustawić lokalizację.</string>
+    <string name="spot_form_change_location">Zmień</string>
     <string name="spot_form_contacts_title">Kontakty telefoniczne</string>
     <string name="spot_form_add_contact">Dodaj</string>
     <string name="spot_form_contact_label">Etykieta</string>

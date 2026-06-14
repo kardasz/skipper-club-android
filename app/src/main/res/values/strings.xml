@@ -652,8 +652,8 @@
     <string name="spot_form_save">Save</string>
     <string name="spot_form_remove">Remove</string>
     <string name="spot_form_name_label">Name</string>
-    <string name="spot_form_lat_label">Latitude</string>
-    <string name="spot_form_lng_label">Longitude</string>
+    <string name="spot_form_location_hint">Type a name and pick a place from the list to set its location.</string>
+    <string name="spot_form_change_location">Change</string>
     <string name="spot_form_contacts_title">Phone contacts</string>
     <string name="spot_form_add_contact">Add</string>
     <string name="spot_form_contact_label">Label</string>

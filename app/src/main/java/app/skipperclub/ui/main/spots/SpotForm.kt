@@ -9,6 +9,7 @@ import app.skipperclub.data.PhoneContactsUpdatePayload
 import app.skipperclub.data.RadioChannel
 import app.skipperclub.data.RadioChannelKind
 import app.skipperclub.data.RadioChannelsUpdatePayload
+import app.skipperclub.data.ResolvedPlace
 import app.skipperclub.data.Spot
 import app.skipperclub.data.UpdatePhoneContactPayload
 import app.skipperclub.data.UpdateRadioChannelPayload
@@ -45,6 +46,8 @@ data class SpotForm(
     val name: String = "",
     val lat: String = "",
     val lng: String = "",
+    /** Human-readable label of the picked place (address/name) shown on the confirmation card. */
+    val locationLabel: String? = null,
     val phoneContacts: List<EditablePhoneContact> = emptyList(),
     val radioChannels: List<EditableRadioChannel> = emptyList(),
 ) {
@@ -54,6 +57,20 @@ data class SpotForm(
     val isNameValid: Boolean get() = name.trim().isNotEmpty() && name.trim().length <= 255
     val isLatValid: Boolean get() = parsedLat != null
     val isLngValid: Boolean get() = parsedLng != null
+
+    /** True once a place has been picked and the spot has valid coordinates. */
+    val hasLocation: Boolean get() = isLatValid && isLngValid
+
+    /** Applies a place picked from autocomplete: name + coordinates come from Google. */
+    fun withResolvedPlace(place: ResolvedPlace): SpotForm = copy(
+        name = place.name.ifBlank { name },
+        lat = place.lat.toString(),
+        lng = place.lng.toString(),
+        locationLabel = place.address ?: place.name.ifBlank { null },
+    )
+
+    /** Clears the picked location so the admin can search for a different place. */
+    fun clearLocation(): SpotForm = copy(lat = "", lng = "", locationLabel = null)
 
     /** Non-blank contacts whose required phone is still empty cannot be submitted. */
     private val arePhoneContactsValid: Boolean

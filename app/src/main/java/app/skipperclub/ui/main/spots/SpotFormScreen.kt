@@ -1,6 +1,7 @@
 package app.skipperclub.ui.main.spots
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,10 +21,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -33,9 +36,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,9 +54,13 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.skipperclub.R
 import app.skipperclub.data.PhoneContact
+import app.skipperclub.data.PlacePrediction
 import app.skipperclub.data.RadioChannel
 import app.skipperclub.data.RadioChannelKind
+import app.skipperclub.data.ResolvedPlace
 import app.skipperclub.ui.theme.SkipperClubTheme
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** Debounced-less search field that fires [onSearch] on submit/clear. */
 @Composable
@@ -87,6 +96,11 @@ internal fun SpotsSearchField(
  * Stateless create/edit form for a spot. State is hoisted internally from
  * [initial] so previews and tests can drive it; [onSubmit] hands back the
  * current [SpotForm] for the controller to validate and persist.
+ *
+ * The location is set by typing a name and picking a place from Google Places
+ * autocomplete ([searchPlaces] + [onResolvePlace]) — coordinates are never typed
+ * by hand. Both default to no-ops so previews and unit tests render without the
+ * Places SDK.
  */
 @Composable
 internal fun SpotFormContent(
@@ -98,6 +112,8 @@ internal fun SpotFormContent(
     onCancel: () -> Unit,
     onSubmit: (SpotForm) -> Unit,
     modifier: Modifier = Modifier,
+    searchPlaces: suspend (String) -> List<PlacePrediction> = { emptyList() },
+    onResolvePlace: suspend (PlacePrediction) -> ResolvedPlace? = { null },
 ) {
     var form by remember(initial) { mutableStateOf(initial) }
     fun update(transform: (SpotForm) -> SpotForm) {
@@ -169,46 +185,20 @@ internal fun SpotFormContent(
                 }
             }
 
-            OutlinedTextField(
-                value = form.name,
-                onValueChange = { name -> update { it.copy(name = name) } },
-                label = { Text(stringResource(R.string.spot_form_name_label)) },
-                singleLine = true,
-                isError = form.name.isNotEmpty() && !form.isNameValid,
+            PlaceAutocompleteField(
+                name = form.name,
+                isNameValid = form.isNameValid,
+                hasLocation = form.hasLocation,
+                locationLabel = form.locationLabel,
+                coordinatesText = form.takeIf { it.hasLocation }
+                    ?.let { "%.5f, %.5f".format(it.parsedLat, it.parsedLng) },
                 enabled = !isSaving,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
-                    .testTag("spot_form_name"),
+                searchPlaces = searchPlaces,
+                onResolvePlace = onResolvePlace,
+                onNameChange = { name -> update { it.copy(name = name) } },
+                onPlaceResolved = { resolved -> update { it.withResolvedPlace(resolved) } },
+                onChangeLocation = { update { it.clearLocation() } },
             )
-
-            Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                OutlinedTextField(
-                    value = form.lat,
-                    onValueChange = { lat -> update { it.copy(lat = lat) } },
-                    label = { Text(stringResource(R.string.spot_form_lat_label)) },
-                    singleLine = true,
-                    isError = form.lat.isNotEmpty() && !form.isLatValid,
-                    enabled = !isSaving,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("spot_form_lat"),
-                )
-                OutlinedTextField(
-                    value = form.lng,
-                    onValueChange = { lng -> update { it.copy(lng = lng) } },
-                    label = { Text(stringResource(R.string.spot_form_lng_label)) },
-                    singleLine = true,
-                    isError = form.lng.isNotEmpty() && !form.isLngValid,
-                    enabled = !isSaving,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(start = 12.dp)
-                        .testTag("spot_form_lng"),
-                )
-            }
 
             SectionHeader(
                 title = stringResource(R.string.spot_form_contacts_title),
@@ -250,6 +240,217 @@ internal fun SpotFormContent(
         }
     }
 }
+
+/**
+ * Name field that doubles as a Google Places search. While no location is set,
+ * keystrokes (debounced) fetch autocomplete predictions; picking one resolves
+ * its coordinates and shows a confirmation card. Once a place is chosen the name
+ * stays freely editable (so the admin can tweak the spot's display name) without
+ * re-triggering search until they tap "change location".
+ */
+@Composable
+private fun PlaceAutocompleteField(
+    name: String,
+    isNameValid: Boolean,
+    hasLocation: Boolean,
+    locationLabel: String?,
+    coordinatesText: String?,
+    enabled: Boolean,
+    searchPlaces: suspend (String) -> List<PlacePrediction>,
+    onResolvePlace: suspend (PlacePrediction) -> ResolvedPlace?,
+    onNameChange: (String) -> Unit,
+    onPlaceResolved: (ResolvedPlace) -> Unit,
+    onChangeLocation: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var predictions by remember { mutableStateOf<List<PlacePrediction>>(emptyList()) }
+    var searching by remember { mutableStateOf(false) }
+    var resolving by remember { mutableStateOf(false) }
+
+    // Debounced search — only while a location has not yet been picked.
+    LaunchedEffect(name, hasLocation) {
+        if (hasLocation) {
+            predictions = emptyList()
+            searching = false
+            return@LaunchedEffect
+        }
+        val query = name.trim()
+        if (query.length < MinAutocompleteChars) {
+            predictions = emptyList()
+            searching = false
+            return@LaunchedEffect
+        }
+        searching = true
+        delay(AutocompleteDebounceMillis)
+        predictions = runCatching { searchPlaces(query) }.getOrDefault(emptyList())
+        searching = false
+    }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+        OutlinedTextField(
+            value = name,
+            onValueChange = onNameChange,
+            label = { Text(stringResource(R.string.spot_form_name_label)) },
+            singleLine = true,
+            isError = name.isNotEmpty() && !isNameValid,
+            enabled = enabled,
+            trailingIcon = {
+                when {
+                    searching || resolving -> CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                    )
+                    hasLocation -> Icon(Icons.Filled.Place, contentDescription = null)
+                    else -> Icon(Icons.Filled.Search, contentDescription = null)
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("spot_form_name"),
+        )
+
+        when {
+            hasLocation -> SelectedLocationCard(
+                label = locationLabel,
+                coordinatesText = coordinatesText,
+                enabled = enabled && !resolving,
+                onChange = onChangeLocation,
+            )
+
+            predictions.isNotEmpty() -> Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .testTag("spot_form_predictions"),
+            ) {
+                Column {
+                    predictions.forEachIndexed { index, prediction ->
+                        if (index > 0) HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                        )
+                        PredictionRow(
+                            prediction = prediction,
+                            enabled = enabled && !resolving,
+                            onClick = {
+                                resolving = true
+                                scope.launch {
+                                    val resolved = runCatching { onResolvePlace(prediction) }.getOrNull()
+                                    resolving = false
+                                    if (resolved != null) {
+                                        predictions = emptyList()
+                                        onPlaceResolved(resolved)
+                                    }
+                                }
+                            },
+                            modifier = Modifier.testTag("spot_form_prediction_$index"),
+                        )
+                    }
+                }
+            }
+
+            else -> Text(
+                text = stringResource(R.string.spot_form_location_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp, start = 4.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PredictionRow(
+    prediction: PlacePrediction,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Place,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
+        Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+            Text(
+                text = prediction.primaryText,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+            )
+            if (prediction.secondaryText != null) {
+                Text(
+                    text = prediction.secondaryText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectedLocationCard(
+    label: String?,
+    coordinatesText: String?,
+    enabled: Boolean,
+    onChange: () -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .testTag("spot_form_location"),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Place,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+            Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                if (label != null) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                if (coordinatesText != null) {
+                    Text(
+                        text = coordinatesText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            TextButton(
+                onClick = onChange,
+                enabled = enabled,
+                modifier = Modifier.testTag("spot_form_change_location"),
+            ) {
+                Text(stringResource(R.string.spot_form_change_location))
+            }
+        }
+    }
+}
+
+private const val MinAutocompleteChars = 2
+private const val AutocompleteDebounceMillis = 250L
 
 @Composable
 private fun SectionHeader(
@@ -478,7 +679,7 @@ private fun SpotFormEditPreviewPl() {
         SpotFormContent(
             initial = SpotForm.fromSpot(
                 previewSpot("s1", "Neptun Marina", phoneContacts = previewContacts, radioChannels = previewChannels),
-            ),
+            ).copy(locationLabel = "ul. Szafarnia 11, Gdańsk"),
             isEditing = true,
             isSaving = false,
             errorMessage = "Istnieje już miejsce w pobliżu.",
@@ -501,7 +702,7 @@ private fun SpotFormEditPreviewDark() {
         SpotFormContent(
             initial = SpotForm.fromSpot(
                 previewSpot("s1", "Neptun Marina", phoneContacts = previewContacts, radioChannels = previewChannels),
-            ),
+            ).copy(locationLabel = "ul. Szafarnia 11, Gdańsk"),
             isEditing = true,
             isSaving = false,
             errorMessage = null,

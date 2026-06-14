@@ -4,6 +4,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -11,8 +12,10 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import app.skipperclub.R
 import app.skipperclub.data.PhoneContact
+import app.skipperclub.data.PlacePrediction
 import app.skipperclub.data.RadioChannel
 import app.skipperclub.data.RadioChannelKind
+import app.skipperclub.data.ResolvedPlace
 import app.skipperclub.data.Spot
 import app.skipperclub.ui.theme.SkipperClubTheme
 import org.junit.Assert.assertEquals
@@ -113,8 +116,9 @@ class SpotsScreenTest {
     }
 
     @Test
-    fun formSaveDisabledUntilRequiredFieldsValid() {
+    fun formSaveDisabledUntilPlaceIsPicked() {
         var submitted: SpotForm? = null
+        val prediction = PlacePrediction("p1", "Neptun Marina", "Szafarnia 11, Gdańsk")
         compose.setContent {
             SkipperClubTheme {
                 SpotFormContent(
@@ -125,20 +129,31 @@ class SpotsScreenTest {
                     onErrorConsumed = {},
                     onCancel = {},
                     onSubmit = { submitted = it },
+                    searchPlaces = { listOf(prediction) },
+                    onResolvePlace = {
+                        ResolvedPlace("p1", "Neptun Marina", 54.35, 18.65, "Szafarnia 11, Gdańsk")
+                    },
                 )
             }
         }
 
+        // A name alone (no coordinates) keeps Save disabled.
         compose.onNodeWithTag("spot_form_save").assertIsNotEnabled()
-
         compose.onNodeWithTag("spot_form_name").performTextInput("Neptun")
-        compose.onNodeWithTag("spot_form_lat").performTextInput("54.35")
-        compose.onNodeWithTag("spot_form_lng").performTextInput("18.65")
 
+        // Wait for the debounced autocomplete suggestion, then pick it.
+        compose.waitUntil(timeoutMillis = 3_000) {
+            compose.onAllNodesWithTag("spot_form_prediction_0").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("spot_form_prediction_0").performClick()
+
+        // Picking the place fills coordinates and the confirmation card.
+        compose.onNodeWithTag("spot_form_location").assertExists()
         compose.onNodeWithTag("spot_form_save").assertIsEnabled().performClick()
 
-        assertEquals("Neptun", submitted?.name)
+        assertEquals("Neptun Marina", submitted?.name)
         assertEquals("54.35", submitted?.lat)
+        assertEquals("18.65", submitted?.lng)
     }
 
     @Test
