@@ -123,7 +123,7 @@ A post is "effectively expired" when:
 
 ### Region Association
 
-Every post is associated with a region code from the regions hierarchy. Region codes use ISO 3166-1 alpha-2 format (e.g., `HR` for Croatia, `GR` for Greece).
+Posts are associated with a region code from the regions hierarchy. Region codes use ISO 3166-1 alpha-2 format (e.g., `HR` for Croatia, `GR` for Greece). The region is optional and may be `null` when a post has no resolvable location (see [Region Resolution](#region-resolution) under Create Post).
 
 When filtering by region, the API includes all posts from descendant regions:
 
@@ -338,15 +338,26 @@ Create a new post. The request body structure varies by post type (polymorphic v
 
 ### Common Fields
 
-| Field           | Type   | Description                              |
-| --------------- | ------ | ---------------------------------------- |
-| `type`          | string | **Required.** Post type                  |
-| `regionCode`    | string | **Required.** Region code (max 50 chars) |
-| `description`   | string | Post text (1-2200 characters)            |
-| `locationName`  | string | Location name (max 255 characters)       |
-| `coordinates`   | object | `{ lat, lng }` coordinates               |
-| `mediaIds`      | uuid[] | Media UUIDs (1-10 items)                 |
-| `taggedUserIds` | uuid[] | Tagged user UUIDs (max 20)               |
+| Field           | Type   | Description                                                              |
+| --------------- | ------ | ------------------------------------------------------------------------ |
+| `type`          | string | **Required.** Post type                                                  |
+| `regionCode`    | string | Region code (max 50 chars). Optional — auto-resolved from `coordinates`. |
+| `description`   | string | Post text (1-2200 characters)                                            |
+| `locationName`  | string | Location name (max 255 characters)                                       |
+| `coordinates`   | object | `{ lat, lng }` coordinates                                               |
+| `mediaIds`      | uuid[] | Media UUIDs (1-10 items)                                                 |
+| `taggedUserIds` | uuid[] | Tagged user UUIDs (max 20)                                               |
+
+### Region Resolution
+
+`regionCode` is optional when creating a post:
+
+- **Provided explicitly** — used as-is; must reference an existing region (otherwise `422`).
+- **Omitted with `coordinates`** — the region is resolved automatically from the coordinates via point-in-polygon against the region geometry (`regions.geom`). The most specific region containing the point wins (e.g. `IT-SAR` over `IT`).
+- **Omitted, coordinates match no region** — the post is stored with `regionCode: null`.
+- **Omitted with no `coordinates`** — the post is stored with `regionCode: null`.
+
+This lets clients submit a location (e.g. from GPS or the geocoder) without making the user pick a region from a list.
 
 ### Route-Specific Fields
 

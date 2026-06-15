@@ -1733,19 +1733,60 @@ paths:
       tags: [sailing-brief]
       summary: Get latest sailing brief for region
       description: |
-        Returns the latest pre-generated sailing brief for the specified region.
+        Returns the latest pre-generated sailing brief for a region.
         Language is resolved from Accept-Language header (EN/PL).
         Requires JWT authentication.
+
+        The target region is selected in exactly one of two mutually exclusive
+        ways:
+
+        - **`regionCode`** — explicit region code (e.g. `HR`).
+        - **`lat` + `lng`** — a geographic point. The most specific
+          sailing-brief-enabled region whose geometry contains the point is
+          resolved (point-in-polygon against `regions.geom`, identical to
+          `GET /regions?lat&lng`). Coordinates are signed WGS84 decimal degrees,
+          so the hemisphere (N/S, E/W) is encoded by the sign — there is no
+          separate hemisphere parameter.
+
+        Supply `regionCode` **or** both `lat` and `lng`, never both and never
+        neither. The resolved region is echoed back in the `regionCode` field of
+        the response.
       security:
         - bearerAuth: []
       parameters:
         - name: regionCode
           in: query
-          required: true
+          required: false
           schema:
             type: string
             example: 'HR'
-          description: Region code
+          description: >-
+            Region code. Mutually exclusive with `lat`/`lng`. Provide this or a
+            complete `lat`/`lng` pair.
+        - name: lat
+          in: query
+          required: false
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+            example: 44.87
+          description: >-
+            Latitude (signed WGS84 decimal degrees). Must be provided together
+            with `lng` and is mutually exclusive with `regionCode`.
+        - name: lng
+          in: query
+          required: false
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+            example: 13.85
+          description: >-
+            Longitude (signed WGS84 decimal degrees). Must be provided together
+            with `lat` and is mutually exclusive with `regionCode`.
         - $ref: '#/components/parameters/AcceptLanguage'
       responses:
         '200':
@@ -1759,7 +1800,11 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: No brief available for region
+          description: >-
+            No brief available. Returned when the region (or, for coordinate
+            requests, the most specific enabled region containing the point) has
+            no brief yet, or when no sailing-brief-enabled region contains the
+            point.
           content:
             application/problem+json:
               schema:
@@ -2134,6 +2179,17 @@ paths:
       operationId: createPost
       tags: [posts]
       summary: Create a new post
+      description: |
+        Create a new post. The request body structure varies by post type
+        (polymorphic validation).
+
+        `regionCode` is optional. When it is omitted but coordinates are
+        supplied, the region is resolved automatically from the coordinates
+        (point-in-polygon against the region geometry, most specific region
+        wins). If no region contains the point — or neither `regionCode` nor
+        coordinates are provided — the post is stored with a null `regionCode`.
+        When `regionCode` is provided explicitly it is used as-is and must
+        reference an existing region (otherwise 422).
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
@@ -5452,6 +5508,15 @@ paths:
       operationId: createCruise
       tags: [cruises]
       summary: Create a new cruise
+      description: |
+        Create a new cruise.
+
+        `regionCode` is optional. When it is omitted, the region is resolved
+        automatically from the departure port coordinates (point-in-polygon
+        against the region geometry, most specific region wins). If no region
+        contains the point, the cruise is stored with a null `regionCode`. When
+        `regionCode` is provided explicitly it is used as-is and must reference
+        an existing region (otherwise 422).
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
@@ -8722,8 +8787,10 @@ components:
         status:
           $ref: '#/components/schemas/PostStatus'
         regionCode:
-          type: string
-          description: Sailing region identifier
+          type: ['string', 'null']
+          description: >-
+            Sailing region identifier. Null when no region was provided and none
+            could be resolved from the post coordinates.
           example: 'ADR-HR-CDAL'
         media:
           $ref: '#/components/schemas/MediaList'
@@ -8838,7 +8905,7 @@ components:
     CreatePhotoPost:
       type: object
       description: Create a photo/travel post (evergreen, media required)
-      required: [type, regionCode, mediaIds]
+      required: [type, mediaIds]
       properties:
         type:
           type: string
@@ -8846,7 +8913,10 @@ components:
         regionCode:
           type: string
           maxLength: 50
-          description: Sailing region identifier
+          description: >-
+            Optional. When omitted, the region is auto-resolved from the post
+            coordinates (point-in-polygon against the region geometry) and left
+            unset if the point matches no region.
           example: 'ADR-HR-CDAL'
         description:
           type: string
@@ -8873,7 +8943,7 @@ components:
     CreatePlacePost:
       type: object
       description: Create a places to visit post (evergreen)
-      required: [type, regionCode, description, locationName, coordinates]
+      required: [type, description, locationName, coordinates]
       properties:
         type:
           type: string
@@ -8881,6 +8951,10 @@ components:
         regionCode:
           type: string
           maxLength: 50
+          description: >-
+            Optional. When omitted, the region is auto-resolved from the post
+            coordinates (point-in-polygon against the region geometry) and left
+            unset if the point matches no region.
           example: 'ADR-HR-CDAL'
         description:
           type: string
@@ -8904,7 +8978,7 @@ components:
     CreateFoodPost:
       type: object
       description: Create a recommended food spots post (evergreen)
-      required: [type, regionCode, description, locationName, coordinates]
+      required: [type, description, locationName, coordinates]
       properties:
         type:
           type: string
@@ -8912,6 +8986,10 @@ components:
         regionCode:
           type: string
           maxLength: 50
+          description: >-
+            Optional. When omitted, the region is auto-resolved from the post
+            coordinates (point-in-polygon against the region geometry) and left
+            unset if the point matches no region.
           example: 'ADR-HR-CDAL'
         description:
           type: string
@@ -8935,7 +9013,7 @@ components:
     CreateMarinaPost:
       type: object
       description: Create a recommended marinas post (evergreen)
-      required: [type, regionCode, description, locationName, coordinates]
+      required: [type, description, locationName, coordinates]
       properties:
         type:
           type: string
@@ -8943,6 +9021,10 @@ components:
         regionCode:
           type: string
           maxLength: 50
+          description: >-
+            Optional. When omitted, the region is auto-resolved from the post
+            coordinates (point-in-polygon against the region geometry) and left
+            unset if the point matches no region.
           example: 'ADR-HR-CDAL'
         description:
           type: string
@@ -8966,7 +9048,7 @@ components:
     CreateTipsPost:
       type: object
       description: Create a tips and experience post (evergreen)
-      required: [type, regionCode, description]
+      required: [type, description]
       properties:
         type:
           type: string
@@ -8974,6 +9056,10 @@ components:
         regionCode:
           type: string
           maxLength: 50
+          description: >-
+            Optional. When omitted, the region is auto-resolved from the post
+            coordinates (point-in-polygon against the region geometry) and left
+            unset if the point matches no region.
           example: 'ADR-HR'
         description:
           type: string
@@ -8996,8 +9082,7 @@ components:
     CreateRoutePost:
       type: object
       description: Create a recommended route post (evergreen, requires stops)
-      required:
-        [type, regionCode, description, locationName, coordinates, stops]
+      required: [type, description, locationName, coordinates, stops]
       properties:
         type:
           type: string
@@ -9005,6 +9090,10 @@ components:
         regionCode:
           type: string
           maxLength: 50
+          description: >-
+            Optional. When omitted, the region is auto-resolved from the post
+            coordinates (point-in-polygon against the region geometry) and left
+            unset if the point matches no region.
           example: 'ADR-HR-CDAL'
         description:
           type: string
@@ -9047,7 +9136,7 @@ components:
     CreateBerthPost:
       type: object
       description: Create a berth availability post (expires in 6 hours)
-      required: [type, regionCode, description, locationName, coordinates]
+      required: [type, description, locationName, coordinates]
       properties:
         type:
           type: string
@@ -9055,6 +9144,10 @@ components:
         regionCode:
           type: string
           maxLength: 50
+          description: >-
+            Optional. When omitted, the region is auto-resolved from the post
+            coordinates (point-in-polygon against the region geometry) and left
+            unset if the point matches no region.
           example: 'ADR-HR-CDAL'
         description:
           type: string
@@ -9078,7 +9171,7 @@ components:
     CreateWeatherPost:
       type: object
       description: Create a weather conditions post (expires in 7 days)
-      required: [type, regionCode, description, locationName, coordinates]
+      required: [type, description, locationName, coordinates]
       properties:
         type:
           type: string
@@ -9086,6 +9179,10 @@ components:
         regionCode:
           type: string
           maxLength: 50
+          description: >-
+            Optional. When omitted, the region is auto-resolved from the post
+            coordinates (point-in-polygon against the region geometry) and left
+            unset if the point matches no region.
           example: 'ADR-HR'
         description:
           type: string
@@ -9108,7 +9205,7 @@ components:
     CreateNavigationWarningPost:
       type: object
       description: Create a navigation warning post (expires in 7 days)
-      required: [type, regionCode, description, locationName, coordinates]
+      required: [type, description, locationName, coordinates]
       properties:
         type:
           type: string
@@ -9116,6 +9213,10 @@ components:
         regionCode:
           type: string
           maxLength: 50
+          description: >-
+            Optional. When omitted, the region is auto-resolved from the post
+            coordinates (point-in-polygon against the region geometry) and left
+            unset if the point matches no region.
           example: 'ADR-HR-CDAL'
         description:
           type: string
@@ -9138,7 +9239,7 @@ components:
     CreateHelpPost:
       type: object
       description: Create a help/assistance request post (expires in 3 days)
-      required: [type, regionCode, description, locationName, coordinates]
+      required: [type, description, locationName, coordinates]
       properties:
         type:
           type: string
@@ -9146,6 +9247,10 @@ components:
         regionCode:
           type: string
           maxLength: 50
+          description: >-
+            Optional. When omitted, the region is auto-resolved from the post
+            coordinates (point-in-polygon against the region geometry) and left
+            unset if the point matches no region.
           example: 'ADR-HR-CDAL'
         description:
           type: string
@@ -9526,7 +9631,7 @@ components:
       properties:
         postType: { $ref: '#/components/schemas/PostType' }
         status: { type: string }
-        regionCode: { type: string }
+        regionCode: { type: ['string', 'null'] }
         author: { $ref: '#/components/schemas/MapUserProjection' }
         createdAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
@@ -10861,7 +10966,12 @@ components:
         regionCode:
           type: string
           maxLength: 50
-          description: Region code where the cruise takes place. Must reference an existing region. Returns 422 if the region does not exist.
+          description: >-
+            Optional region code where the cruise takes place. When omitted, the
+            region is auto-resolved from the departure port coordinates
+            (point-in-polygon against the region geometry) and left null if the
+            point matches no region. When provided, it must reference an existing
+            region (otherwise 422).
           example: 'ADR-HR-CDAL'
         type:
           $ref: '#/components/schemas/CruiseType'

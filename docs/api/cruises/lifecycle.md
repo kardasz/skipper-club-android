@@ -24,34 +24,36 @@ Creates a new cruise with the authenticated user as the organizer.
 
 ### Request Body
 
-| Field             | Type     | Required | Description                                                                                                                    |
-| ----------------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `title`           | string   | Yes      | Cruise title (3-255 chars)                                                                                                     |
-| `description`     | string   | Yes      | Detailed description (10-2000 chars). Can contain hashtags (e.g., `#sailing`, `#adventure`) which are automatically extracted. |
-| `departureDate`   | date     | Yes      | Departure date (ISO 8601)                                                                                                      |
-| `departurePort`   | object   | Yes      | Starting port (`{ name, coordinates: { lat, lng } }`)                                                                          |
-| `arrivalDate`     | date     | Yes      | Arrival date (ISO 8601)                                                                                                        |
-| `arrivalPort`     | object   | Yes      | Destination port (`{ name, coordinates: { lat, lng } }`)                                                                       |
-| `costPerPerson`   | number   | Yes      | Cost per participant (0-100000, 2 decimals)                                                                                    |
-| `currency`        | enum     | Yes      | `PLN`, `EUR`, or `USD`                                                                                                         |
-| `maxParticipants` | integer  | Yes      | Maximum participants (1-20)                                                                                                    |
-| `private`         | boolean  | Yes      | Whether cruise is private                                                                                                      |
-| `vessel`          | string   | Yes      | Vessel name/description (5-255 chars)                                                                                          |
-| `vesselType`      | enum     | Yes      | See [Vessel Types](#vessel-types)                                                                                              |
-| `stops`           | object[] | No       | Intermediate stops (max 20, each `{ name, coordinates: { lat, lng } }`)                                                        |
-| `requiredSkills`  | string   | No       | Required sailing skills (5-1000 chars)                                                                                         |
-| `mediaIds`        | uuid[]   | No       | Media attachment IDs (1-10, must exist)                                                                                        |
-| `vesselBrand`     | string   | No       | Vessel manufacturer (2-100 chars)                                                                                              |
-| `vesselModel`     | string   | No       | Vessel model (2-100 chars)                                                                                                     |
-| `vesselYear`      | integer  | No       | Build year (1950-2030)                                                                                                         |
-| `vesselLength`    | number   | No       | Length in feet (15-200)                                                                                                        |
-| `vesselCabins`    | integer  | No       | Number of cabins (1-20)                                                                                                        |
-| `regionCode`      | string   | No       | Sailing region code (max 50 chars). Must reference an existing region.                                                         |
-| `type`            | enum     | No       | See [Cruise Types](#cruise-types)                                                                                              |
-| `smokingAllowed`  | boolean  | No       | Smoking policy                                                                                                                 |
-| `alcoholAllowed`  | boolean  | No       | Alcohol policy                                                                                                                 |
-| `petsAllowed`     | boolean  | No       | Pets policy                                                                                                                    |
-| `childrenAllowed` | boolean  | No       | Children policy                                                                                                                |
+| Field             | Type     | Required | Description                                                                                                                                                                                   |
+| ----------------- | -------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `title`           | string   | Yes      | Cruise title (3-255 chars)                                                                                                                                                                    |
+| `description`     | string   | Yes      | Detailed description (10-2000 chars). Can contain hashtags (e.g., `#sailing`, `#adventure`) which are automatically extracted.                                                                |
+| `departureDate`   | date     | Yes      | Departure date (ISO 8601)                                                                                                                                                                     |
+| `departurePort`   | object   | Yes      | Starting port (`{ name, coordinates: { lat, lng } }`)                                                                                                                                         |
+| `arrivalDate`     | date     | Yes      | Arrival date (ISO 8601)                                                                                                                                                                       |
+| `arrivalPort`     | object   | Yes      | Destination port (`{ name, coordinates: { lat, lng } }`)                                                                                                                                      |
+| `costPerPerson`   | number   | Yes      | Cost per participant (0-100000, 2 decimals)                                                                                                                                                   |
+| `currency`        | enum     | Yes      | `PLN`, `EUR`, or `USD`                                                                                                                                                                        |
+| `maxParticipants` | integer  | Yes      | Maximum participants (1-20)                                                                                                                                                                   |
+| `private`         | boolean  | Yes      | Whether cruise is private                                                                                                                                                                     |
+| `vessel`          | string   | Yes      | Vessel name/description (5-255 chars)                                                                                                                                                         |
+| `vesselType`      | enum     | Yes      | See [Vessel Types](#vessel-types)                                                                                                                                                             |
+| `stops`           | object[] | No       | Intermediate stops (max 20, each `{ name, coordinates: { lat, lng } }`)                                                                                                                       |
+| `requiredSkills`  | string   | No       | Required sailing skills (5-1000 chars)                                                                                                                                                        |
+| `mediaIds`        | uuid[]   | No       | Media attachment IDs (1-10, must exist)                                                                                                                                                       |
+| `vesselBrand`     | string   | No       | Vessel manufacturer (2-100 chars)                                                                                                                                                             |
+| `vesselModel`     | string   | No       | Vessel model (2-100 chars)                                                                                                                                                                    |
+| `vesselYear`      | integer  | No       | Build year (1950-2030)                                                                                                                                                                        |
+| `vesselLength`    | number   | No       | Length in feet (15-200)                                                                                                                                                                       |
+| `vesselCabins`    | integer  | No       | Number of cabins (1-20)                                                                                                                                                                       |
+| `regionCode`      | string   | No       | Sailing region code (max 50 chars). When omitted, it is auto-resolved from the departure port coordinates (left null if no region matches). When provided, must reference an existing region. |
+| `type`            | enum     | No       | See [Cruise Types](#cruise-types)                                                                                                                                                             |
+| `smokingAllowed`  | boolean  | No       | Smoking policy                                                                                                                                                                                |
+| `alcoholAllowed`  | boolean  | No       | Alcohol policy                                                                                                                                                                                |
+| `petsAllowed`     | boolean  | No       | Pets policy                                                                                                                                                                                   |
+| `childrenAllowed` | boolean  | No       | Children policy                                                                                                                                                                               |
+
+> **Automatic region detection:** `regionCode` is optional. When it is omitted, the API resolves the region from the `departurePort` coordinates using a point-in-polygon lookup against the region geometries (the most specific matching region wins). If the coordinates fall outside every region, the cruise is stored with a `null` region. Supplying `regionCode` explicitly skips detection and validates that the region exists.
 
 ### Example Request
 

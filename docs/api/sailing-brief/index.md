@@ -118,10 +118,46 @@ Authorization: Bearer <jwt-token>
 
 **Response**: Latest sailing brief for the region in resolved language
 
+#### Region selection: `regionCode` or coordinates
+
+The target region is selected in **exactly one** of two mutually exclusive ways:
+
+| Mode        | Params       | Behavior                                                                  |
+| ----------- | ------------ | ------------------------------------------------------------------------- |
+| Explicit    | `regionCode` | Use the region code directly (e.g. `HR`).                                 |
+| Coordinates | `lat`, `lng` | Resolve the region from a geographic point — no need to pick from a list. |
+
+```http
+GET /v1/sailing-briefs?lat=44.87&lng=13.85
+Accept-Language: en
+Authorization: Bearer <jwt-token>
+```
+
+When `lat`/`lng` are supplied, the endpoint runs the same point-in-polygon
+lookup as `GET /regions?lat&lng` — `ST_Contains(regions.geom, ST_SetSRID(ST_Point(lng, lat), 4326))`
+— filtered to regions with `sailing_brief_enabled = true`, and selects the
+**most specific** match (`ORDER BY level DESC`). This lets the client resolve a
+brief straight from the map viewport's center instead of presenting a region
+picker. The resolved region is echoed back in the response `regionCode` field.
+
+> **Coordinates are signed WGS84 decimal degrees.** The hemisphere is encoded by
+> the sign — positive `lng` is East / negative is West, positive `lat` is North /
+> negative is South. There is no separate N/S/E/W parameter; e.g. `lng=13.85`
+> (Croatian Adriatic) and `lng=-13.85` (Atlantic) resolve to different places.
+
+**Rules**:
+
+- Provide `regionCode` **or** both `lat` and `lng` — never both, never neither.
+- `lat` range `[-90, 90]`, `lng` range `[-180, 180]`; both must be sent together.
+
 **Errors**:
 
-- `404` `/errors/sailing-brief-not-available` - No brief generated yet for provided `regionCode` (including unknown/disabled regions)
-- `422` `/errors/validation` - Invalid or missing query params (e.g. missing `regionCode`)
+- `404` `/errors/sailing-brief-not-available` - No brief generated yet for the
+  provided `regionCode` (including unknown/disabled regions), or — for coordinate
+  requests — no sailing-brief-enabled region contains the point, or the resolved
+  region has no brief yet
+- `422` `/errors/validation` - Invalid query params, neither mode supplied, both
+  modes supplied, a partial `lat`/`lng` pair, or out-of-range coordinates
 
 ### Admin List Endpoint
 
