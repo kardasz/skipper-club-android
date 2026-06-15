@@ -21,6 +21,25 @@ enum class SailingExperience(val wireValue: String) {
     }
 }
 
+/**
+ * The current user's relationship with the profile being viewed
+ * (`docs/api/users` → `currentUserFriendshipStatus`). Absent on your own profile
+ * and on responses that omit the field, which both map to [None]. [Unknown] is a
+ * forward-compatible fallback for an unexpected server value.
+ */
+enum class FriendshipStatus(val wireValue: String) {
+    None("none"),
+    Pending("pending"),
+    Accepted("accepted"),
+    Unknown(""),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): FriendshipStatus =
+            value?.let { wire -> entries.firstOrNull { it.wireValue == wire } ?: Unknown } ?: None
+    }
+}
+
 /** The current user's own profile as rendered by the "My profile" screen. */
 data class UserProfile(
     val id: String,
@@ -43,6 +62,7 @@ data class UserProfile(
     val cruisesCount: Int = 0,
     val friendsCount: Int = 0,
     val postsCount: Int = 0,
+    val currentUserFriendshipStatus: FriendshipStatus = FriendshipStatus.None,
     val createdAt: String? = null,
 ) {
     val isAdmin: Boolean get() = role.equals(SessionUser.ROLE_ADMIN, ignoreCase = true)
@@ -146,6 +166,7 @@ internal data class ProfileDto(
     val cruisesCount: Int = 0,
     val friendsCount: Int = 0,
     val postsCount: Int = 0,
+    val currentUserFriendshipStatus: String? = null,
     val createdAt: String? = null,
 ) {
     fun toDomain(): UserProfile = UserProfile(
@@ -169,6 +190,7 @@ internal data class ProfileDto(
         cruisesCount = cruisesCount,
         friendsCount = friendsCount,
         postsCount = postsCount,
+        currentUserFriendshipStatus = FriendshipStatus.fromWire(currentUserFriendshipStatus),
         createdAt = createdAt,
     )
 }

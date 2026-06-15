@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -158,6 +159,7 @@ internal fun ProfileScreenContent(
     onRetry: () -> Unit,
     onEdit: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -191,6 +193,7 @@ internal fun ProfileScreenContent(
                     )
                 }
             }
+            trailingContent()
         }
 
         PullToRefreshBox(

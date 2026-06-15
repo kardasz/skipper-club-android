@@ -56,6 +56,24 @@ class ProfileModelsTest {
         assertEquals(listOf("racing", "coastal"), profile.preferredVoyageStyles)
         assertEquals(15, profile.cruisesCount)
         assertEquals("@jan_skipper", profile.instagramUsername)
+        assertEquals(FriendshipStatus.None, profile.currentUserFriendshipStatus)
+    }
+
+    @Test
+    fun decodesFriendshipStatusFromWireAndFallsBack() {
+        fun statusFor(wire: String) = json.decodeFromString<ProfileDto>(
+            """{ "id": "u9", "name": "X", "currentUserFriendshipStatus": "$wire" }""",
+        ).toDomain().currentUserFriendshipStatus
+
+        assertEquals(FriendshipStatus.Pending, statusFor("pending"))
+        assertEquals(FriendshipStatus.Accepted, statusFor("accepted"))
+        assertEquals(FriendshipStatus.Unknown, statusFor("blocked"))
+        // Absent on your own profile / minimal responses → defaults to None.
+        assertEquals(
+            FriendshipStatus.None,
+            json.decodeFromString<ProfileDto>("""{ "id": "u9", "name": "X" }""").toDomain()
+                .currentUserFriendshipStatus,
+        )
     }
 
     @Test

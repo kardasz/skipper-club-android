@@ -1,5 +1,6 @@
 package app.skipperclub.ui.main
 
+import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
@@ -36,7 +37,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,11 +48,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -91,6 +91,9 @@ import app.skipperclub.ui.main.alert.AlertPickActions
 import app.skipperclub.ui.main.alert.AlertUiState
 import app.skipperclub.ui.main.posts.PostDetailScreen
 import app.skipperclub.ui.main.posts.icon
+import app.skipperclub.ui.main.profile.PublicProfileScreen
+import app.skipperclub.ui.main.checkin.CheckInDetailSheet
+import app.skipperclub.ui.main.checkin.CheckInDetailUiState
 import app.skipperclub.ui.main.checkin.CheckInOverlay
 import app.skipperclub.ui.main.checkin.CheckInUiState
 import app.skipperclub.ui.main.checkin.fetchCurrentLocation
@@ -102,10 +105,11 @@ import app.skipperclub.ui.notification.InAppNotificationHost
 import app.skipperclub.ui.notification.InAppNotificationType
 import app.skipperclub.ui.notification.rememberInAppNotificationHostState
 import app.skipperclub.ui.theme.SkipperClubTheme
-import coil3.compose.AsyncImagePainter
-import coil3.compose.rememberAsyncImagePainter
+import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
+import coil3.request.SuccessResult
 import coil3.request.allowHardware
+import coil3.toBitmap
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
@@ -121,8 +125,6 @@ import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.Polygon
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberUpdatedMarkerState
-import java.time.Duration
-import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -193,6 +195,9 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
     var spotDetailState by remember { mutableStateOf<SpotDetailUiState?>(null) }
     var selectedPostId by remember { mutableStateOf<String?>(null) }
     var alertDetail by remember { mutableStateOf<AlertDetailUiState?>(null) }
+    var checkInDetail by remember { mutableStateOf<CheckInDetailUiState?>(null) }
+    var profileUserId by remember { mutableStateOf<String?>(null) }
+    val currentUserId = SessionStore.session.collectAsState().value?.user?.id
 
     // Spot map items only carry counts; the full phone/radio detail is fetched
     // on demand when the user taps the marker. Guard every assignment on the
@@ -354,6 +359,18 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                                     alertDetail = AlertDetailUiState(
                                         title = entry.name,
                                         attributes = entry.alertAttributes!!,
+                                    )
+                                }
+
+                                entry.type == MapEntryType.CheckIn &&
+                                    entry.checkInAttributes != null -> {
+                                    selectedMapEntryKey = null
+                                    val attrs = entry.checkInAttributes!!
+                                    checkInDetail = CheckInDetailUiState(
+                                        user = attrs.user,
+                                        checkedInAt = attrs.checkedInAt,
+                                        locationName = attrs.locationName,
+                                        fallbackName = entry.name,
                                     )
                                 }
 
@@ -601,6 +618,30 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
             }
         }
 
+        checkInDetail?.let { detail ->
+            CheckInDetailSheet(
+                state = detail,
+                onDismiss = { checkInDetail = null },
+                onViewProfile = { userId ->
+                    checkInDetail = null
+                    profileUserId = userId
+                },
+            )
+        }
+
+        profileUserId?.let { userId ->
+            Dialog(
+                onDismissRequest = { profileUserId = null },
+                properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+            ) {
+                PublicProfileScreen(
+                    userId = userId,
+                    currentUserId = currentUserId,
+                    onClose = { profileUserId = null },
+                )
+            }
+        }
+
         InAppNotificationHost(
             hostState = notificationHostState,
             modifier = Modifier.align(Alignment.TopCenter),
@@ -639,22 +680,14 @@ private fun MapEntryMarker(
     val alertAttributes = entry.alertAttributes
     val avatarUrl = checkInAttributes?.user?.avatarUrl?.takeIf { it.isNotBlank() }
     val context = LocalContext.current
-    val avatarPainter = avatarUrl?.let { url ->
-        rememberAsyncImagePainter(
-            model = ImageRequest.Builder(context)
-                .data(url)
-                .allowHardware(false)
-                .build(),
-            contentScale = ContentScale.Crop,
-        )
+    // MarkerComposable captures its content to a bitmap once it is laid out, so an
+    // async painter that resolves *after* the capture renders blank. Pre-decode the
+    // avatar into a ready ImageBitmap and key the marker on it, so the bitmap is
+    // (re)captured only once the image is actually available.
+    var avatarBitmap by remember(avatarUrl) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(avatarUrl) {
+        avatarBitmap = avatarUrl?.let { loadAvatarBitmap(context, it) }
     }
-    val avatarState = if (avatarPainter != null) {
-        val state by avatarPainter.state.collectAsState()
-        state
-    } else {
-        null
-    }
-    val isAvatarLoaded = avatarState is AsyncImagePainter.State.Success
 
     MarkerComposable(
         entry.kind,
@@ -663,7 +696,7 @@ private fun MapEntryMarker(
         entry.count ?: 0,
         selected,
         avatarUrl ?: "",
-        avatarState?.snapshotKey ?: "no-avatar",
+        if (avatarBitmap != null) "avatar-ready" else "avatar-pending",
         state = rememberUpdatedMarkerState(
             position = LatLng(entry.coordinates.lat, entry.coordinates.lng),
         ),
@@ -682,12 +715,10 @@ private fun MapEntryMarker(
         when {
             entry.kind == MapEntryKind.Cluster -> MapEntryMarkerLabel(entry = entry)
 
-            entry.type == MapEntryType.CheckIn && checkInAttributes != null -> CheckInMapMarker(
-                name = entry.name,
-                attributes = checkInAttributes,
-                selected = selected,
-                avatarPainter = avatarPainter,
-                isAvatarLoaded = isAvatarLoaded,
+            entry.type == MapEntryType.CheckIn && checkInAttributes != null -> CheckInAvatarPin(
+                user = checkInAttributes.user,
+                fallbackName = entry.name,
+                avatarBitmap = avatarBitmap,
             )
 
             entry.type == MapEntryType.NavigationAlert && alertAttributes != null -> AlertMarkerPin()
@@ -872,71 +903,10 @@ private fun PostMarkerPin(postType: PostType?, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun CheckInMapMarker(
-    name: String,
-    attributes: MapEntryAttributes.CheckIn,
-    selected: Boolean,
-    avatarPainter: Painter?,
-    isAvatarLoaded: Boolean,
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        if (selected) {
-            CheckInInfoBubble(
-                displayName = attributes.user.displayName.ifBlank { name },
-                checkedInAt = attributes.checkedInAt,
-                modifier = Modifier.widthIn(max = 236.dp),
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-        }
-        CheckInAvatarPin(
-            user = attributes.user,
-            fallbackName = name,
-            avatarPainter = avatarPainter,
-            isAvatarLoaded = isAvatarLoaded,
-        )
-    }
-}
-
-@Composable
-private fun CheckInInfoBubble(
-    displayName: String,
-    checkedInAt: String,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        tonalElevation = 4.dp,
-        shadowElevation = 8.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = modifier,
-    ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
-            Text(
-                text = displayName,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = checkInRelativeStatus(checkedInAt),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-@Composable
 private fun CheckInAvatarPin(
     user: MapUserProjection,
     fallbackName: String,
-    avatarPainter: Painter?,
-    isAvatarLoaded: Boolean,
+    avatarBitmap: ImageBitmap?,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -964,9 +934,9 @@ private fun CheckInAvatarPin(
                 .border(3.dp, colors.primary, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            if (avatarPainter != null && isAvatarLoaded) {
+            if (avatarBitmap != null) {
                 Image(
-                    painter = avatarPainter,
+                    bitmap = avatarBitmap,
                     contentDescription = avatarName,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
@@ -1021,44 +991,6 @@ private fun AlertMarkerPin(modifier: Modifier = Modifier) {
                 tint = colors.onError,
                 modifier = Modifier.size(22.dp),
             )
-        }
-    }
-}
-
-@Composable
-private fun checkInRelativeStatus(checkedInAt: String): String {
-    var nowMillis by remember(checkedInAt) { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(checkedInAt) {
-        while (true) {
-            delay(60_000)
-            nowMillis = System.currentTimeMillis()
-        }
-    }
-
-    val elapsedMinutes = remember(checkedInAt, nowMillis) {
-        runCatching {
-            Duration.between(Instant.parse(checkedInAt), Instant.ofEpochMilli(nowMillis))
-                .toMinutes()
-                .coerceAtLeast(0)
-        }.getOrNull()
-    } ?: return stringResource(R.string.map_check_in_bubble_recent)
-
-    return when {
-        elapsedMinutes < 1 -> stringResource(R.string.map_check_in_bubble_now)
-        elapsedMinutes < 60 -> pluralStringResource(
-            R.plurals.map_check_in_bubble_minutes,
-            elapsedMinutes.toInt(),
-            elapsedMinutes,
-        )
-
-        elapsedMinutes < 1_440 -> {
-            val hours = (elapsedMinutes / 60).coerceAtLeast(1)
-            pluralStringResource(R.plurals.map_check_in_bubble_hours, hours.toInt(), hours)
-        }
-
-        else -> {
-            val days = (elapsedMinutes / 1_440).coerceAtLeast(1)
-            pluralStringResource(R.plurals.map_check_in_bubble_days, days.toInt(), days)
         }
     }
 }
@@ -1288,13 +1220,20 @@ private suspend fun CameraPositionState.zoomIntoCluster(entry: MapEntry) {
     runCatching { animate(update = update, durationMs = 500) }
 }
 
-private val AsyncImagePainter.State.snapshotKey: String
-    get() = when (this) {
-        is AsyncImagePainter.State.Empty -> "empty"
-        is AsyncImagePainter.State.Loading -> "loading"
-        is AsyncImagePainter.State.Success -> "success:${result.memoryCacheKey}"
-        is AsyncImagePainter.State.Error -> "error:${result.throwable::class.qualifiedName}"
-    }
+/**
+ * Decodes an avatar URL into a ready [ImageBitmap] for use inside a
+ * [MarkerComposable], whose one-shot bitmap capture can't wait on an async
+ * painter. `allowHardware(false)` keeps the bitmap software-backed so it can be
+ * drawn into the captured marker canvas. Returns null on any failure.
+ */
+private suspend fun loadAvatarBitmap(context: Context, url: String): ImageBitmap? {
+    val request = ImageRequest.Builder(context)
+        .data(url)
+        .allowHardware(false)
+        .build()
+    val result = SingletonImageLoader.get(context).execute(request)
+    return (result as? SuccessResult)?.image?.toBitmap()?.asImageBitmap()
+}
 
 private fun String.initials(): String {
     val initials = trim()
@@ -1413,20 +1352,14 @@ private fun CheckInMarkerPreviewContent() {
             .background(MaterialTheme.colorScheme.background)
             .padding(32.dp),
     ) {
-        CheckInMapMarker(
-            name = "Krzysztof",
-            attributes = MapEntryAttributes.CheckIn(
-                user = MapUserProjection(
-                    id = "preview-user",
-                    displayName = "Krzysztof",
-                    avatarUrl = null,
-                ),
-                checkedInAt = Instant.now().minusSeconds(65).toString(),
-                locationName = "Marina Kornati",
+        CheckInAvatarPin(
+            user = MapUserProjection(
+                id = "preview-user",
+                displayName = "Krzysztof",
+                avatarUrl = null,
             ),
-            selected = true,
-            avatarPainter = null,
-            isAvatarLoaded = false,
+            fallbackName = "Krzysztof",
+            avatarBitmap = null,
         )
     }
 }

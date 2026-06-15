@@ -111,6 +111,7 @@
     <string name="map_items_error_generic">Couldn\'t load map objects. Please try again.</string>
     <string name="map_check_in_bubble_now">Checked in just now.</string>
     <string name="map_check_in_bubble_recent">Checked in recently.</string>
+    <string name="check_in_detail_view_profile">View profile</string>
     <plurals name="map_check_in_bubble_minutes">
         <item quantity="one">Checked in a minute ago.</item>
         <item quantity="other">Checked in %1$d minutes ago.</item>
@@ -799,6 +800,13 @@
     <string name="friend_invite_sent">Friend request sent to %1$s.</string>
     <string name="friend_invite_error_already">You already have a request with this person.</string>
     <string name="public_profile_title">Profile</string>
+    <string name="public_profile_menu">More options</string>
+    <string name="public_profile_action_add_friend">Add to friends</string>
+    <string name="public_profile_action_request_sent">Friend request sent</string>
+    <string name="public_profile_action_send_message">Send message</string>
+    <string name="public_profile_friend_request_sent">Friend request sent.</string>
+    <string name="public_profile_action_failed">Couldn\'t complete the action. Please try again.</string>
+    <string name="public_profile_chat_failed">Couldn\'t open the conversation. Please try again.</string>
 
     <!-- My profile -->
     <string name="profile_title">My profile</string>

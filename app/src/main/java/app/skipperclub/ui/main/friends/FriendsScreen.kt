@@ -164,6 +164,7 @@ fun FriendsScreen(
         ) {
             PublicProfileScreen(
                 userId = userId,
+                currentUserId = currentUserId,
                 onClose = { openProfileUserId = null },
             )
         }

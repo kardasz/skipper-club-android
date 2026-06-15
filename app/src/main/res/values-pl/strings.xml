@@ -111,6 +111,7 @@
     <string name="map_items_error_generic">Nie udało się wczytać obiektów mapy. Spróbuj ponownie.</string>
     <string name="map_check_in_bubble_now">Zameldował się przed chwilą.</string>
     <string name="map_check_in_bubble_recent">Zameldował się niedawno.</string>
+    <string name="check_in_detail_view_profile">Zobacz profil</string>
     <plurals name="map_check_in_bubble_minutes">
         <item quantity="one">Zameldował się minutę temu.</item>
         <item quantity="few">Zameldował się %1$d minuty temu.</item>
@@ -817,6 +818,13 @@
     <string name="friend_invite_sent">Wysłano zaproszenie do %1$s.</string>
     <string name="friend_invite_error_already">Masz już zaproszenie z tą osobą.</string>
     <string name="public_profile_title">Profil</string>
+    <string name="public_profile_menu">Więcej opcji</string>
+    <string name="public_profile_action_add_friend">Zaproś do znajomych</string>
+    <string name="public_profile_action_request_sent">Zaproszenie wysłane</string>
+    <string name="public_profile_action_send_message">Wyślij wiadomość</string>
+    <string name="public_profile_friend_request_sent">Wysłano zaproszenie do znajomych.</string>
+    <string name="public_profile_action_failed">Nie udało się wykonać akcji. Spróbuj ponownie.</string>
+    <string name="public_profile_chat_failed">Nie udało się otworzyć rozmowy. Spróbuj ponownie.</string>
 
     <!-- Mój profil -->
     <string name="profile_title">Mój profil</string>
