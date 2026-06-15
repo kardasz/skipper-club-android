@@ -107,6 +107,10 @@ sealed interface MapEntryAttributes {
      * [sourceName] / [sourceNumber] / [sourceUrl] are flattened from the
      * optional source-specific attribution (`sourceAttributes`); they are only
      * present for official imports and `null` for user-created alerts.
+     *
+     * [author] is the author projection inlined by the map endpoint for
+     * `source == "user"` alerts (`null` for official imports), so the detail
+     * sheet can show who filed the alert without a `GET /v1/users/{id}` fetch.
      */
     data class NavigationAlert(
         val category: AlertCategory,
@@ -115,6 +119,7 @@ sealed interface MapEntryAttributes {
         val sourceName: String? = null,
         val sourceNumber: String? = null,
         val sourceUrl: String? = null,
+        val author: MapUserProjection? = null,
     ) : MapEntryAttributes
 }
 
@@ -283,6 +288,7 @@ private data class MapAlertAttributesDto(
     val source: String = "user",
     val sourceId: String? = null,
     val sourceAttributes: MapAlertSourceAttributesDto? = null,
+    val user: MapAlertUserDto? = null,
 ) {
     fun toDomain(): MapEntryAttributes.NavigationAlert =
         MapEntryAttributes.NavigationAlert(
@@ -292,6 +298,7 @@ private data class MapAlertAttributesDto(
             sourceName = sourceAttributes?.externalSourceName,
             sourceNumber = sourceAttributes?.externalNumber,
             sourceUrl = sourceAttributes?.externalSourceUrl,
+            author = user?.toDomain(),
         )
 }
 
@@ -302,6 +309,24 @@ private data class MapAlertSourceAttributesDto(
     val externalSourceUrl: String? = null,
     val externalNumber: String? = null,
 )
+
+/**
+ * Author projection inlined on `source='user'` navigation alerts (openapi
+ * `AlertUserAttribute`). Note the wire field is `name`, not `displayName`.
+ */
+@Serializable
+private data class MapAlertUserDto(
+    val id: String,
+    val name: String,
+    val avatarUrl: String? = null,
+) {
+    fun toDomain(): MapUserProjection =
+        MapUserProjection(
+            id = id,
+            displayName = name,
+            avatarUrl = avatarUrl,
+        )
+}
 
 @Serializable
 private data class MapUserProjectionDto(

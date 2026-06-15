@@ -26,12 +26,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.skipperclub.R
 import app.skipperclub.data.AlertCategory
 import app.skipperclub.data.MapEntryAttributes
+import app.skipperclub.data.MapUserProjection
+import app.skipperclub.ui.main.cruises.CruiseAvatar
 import app.skipperclub.ui.theme.SkipperClubTheme
 
 /** Identifies the tapped alert marker; carries the inlined alert body for the sheet. */
@@ -95,6 +99,38 @@ internal fun AlertDetailContent(
                 .verticalScroll(rememberScrollState()),
         )
 
+        // User-filed alerts inline the author projection; show who reported it.
+        val author = attributes.author
+        if (attributes.source == "user" && author != null) {
+            Spacer(modifier = Modifier.height(16.dp))
+            val avatarDescription = stringResource(
+                R.string.alert_detail_author_avatar_content_description,
+                author.displayName,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CruiseAvatar(
+                    name = author.displayName,
+                    avatarUrl = author.avatarUrl,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .semantics { contentDescription = avatarDescription },
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = stringResource(R.string.alert_detail_reported_by),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = author.displayName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
+
         val sourceName = attributes.sourceName
         if (!sourceName.isNullOrBlank()) {
             Spacer(modifier = Modifier.height(16.dp))
@@ -134,6 +170,11 @@ private val userAlert = AlertDetailUiState(
         category = AlertCategory.Weather,
         content = "Gale warning in force. Winds gusting to 35 knots expected from the NW overnight.",
         source = "user",
+        author = MapUserProjection(
+            id = "019dfd19-ddd8-7d23-a1f4-06b96c16a36e",
+            displayName = "Jan Kowalski",
+            avatarUrl = null,
+        ),
     ),
 )
 

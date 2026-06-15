@@ -7,6 +7,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -283,7 +284,12 @@ class MapItemsApiTest {
                         "language": "en",
                         "source": "user",
                         "sourceId": "01985af0-b793-7d54-a10f-a0d18100b4a0",
-                        "sourceAttributes": null
+                        "sourceAttributes": null,
+                        "user": {
+                          "id": "01985af0-b793-7d54-a10f-a0d18100b4a0",
+                          "name": "Jan Kowalski",
+                          "avatarUrl": "https://cdn.example/avatars/abc.jpg"
+                        }
                       }
                     }
                   ],
@@ -301,6 +307,11 @@ class MapItemsApiTest {
         assertEquals("user", attributes.source)
         assertNull(attributes.sourceName)
         assertNull(attributes.sourceNumber)
+        val author = attributes.author
+        assertNotNull(author)
+        assertEquals("01985af0-b793-7d54-a10f-a0d18100b4a0", author!!.id)
+        assertEquals("Jan Kowalski", author.displayName)
+        assertEquals("https://cdn.example/avatars/abc.jpg", author.avatarUrl)
     }
 
     @Test
@@ -342,6 +353,7 @@ class MapItemsApiTest {
         assertEquals("Hydrographic Institute", attributes.sourceName)
         assertEquals("161/2026", attributes.sourceNumber)
         assertEquals("https://www.hhi.hr/en/warnings", attributes.sourceUrl)
+        assertNull(attributes.author)
     }
 
     @Test
