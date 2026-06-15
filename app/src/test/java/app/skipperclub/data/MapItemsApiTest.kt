@@ -94,6 +94,92 @@ class MapItemsApiTest {
     }
 
     @Test
+    fun decodeResponseMapsPostAttributes() {
+        val decoded = MapItemsApi.decodeResponse(
+            """
+                {
+                  "data": [
+                    {
+                      "kind": "item",
+                      "type": "post",
+                      "id": "019dfd19-ddd8-7d23-a1f4-06b96c16a36d",
+                      "name": "Sopot Pier",
+                      "coordinates": { "lat": 54.441, "lng": 18.567 },
+                      "geometry": { "type": "Point", "coordinates": [18.567, 54.441] },
+                      "attributes": {
+                        "postType": "marina",
+                        "status": "published",
+                        "regionCode": "ADR-HR",
+                        "author": { "id": "u1", "displayName": "Jan K.", "avatarUrl": "https://a/1.jpg" },
+                        "createdAt": "2030-01-01T12:00:00Z",
+                        "mediaPreview": { "id": "m1", "kind": "image", "url": "https://m/1.jpg", "thumbnailUrl": null },
+                        "commentsCount": 4,
+                        "bookmarked": true
+                      }
+                    }
+                  ],
+                  "meta": { "hasMoreDetail": false }
+                }
+            """.trimIndent(),
+        )
+
+        val entry = decoded.entries.single()
+        val attributes = entry.attributes as MapEntryAttributes.Post
+        assertEquals(MapEntryType.Post, entry.type)
+        assertEquals(PostType.Marina, attributes.postType)
+        assertEquals("Jan K.", attributes.author.displayName)
+        assertEquals(4, attributes.commentsCount)
+        assertEquals(true, attributes.bookmarked)
+        assertEquals("https://m/1.jpg", attributes.mediaPreview?.url)
+        assertEquals(false, attributes.mediaPreview?.isVideo)
+    }
+
+    @Test
+    fun decodeResponseParsesAlertPolygonGeometryAndClusterBounds() {
+        val decoded = MapItemsApi.decodeResponse(
+            """
+                {
+                  "data": [
+                    {
+                      "kind": "item",
+                      "type": "navigation_alert",
+                      "id": "alert-1",
+                      "name": "Obstruction",
+                      "coordinates": { "lat": 54.45, "lng": 18.6 },
+                      "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[[18.59,54.44],[18.61,54.44],[18.61,54.46],[18.59,54.46],[18.59,54.44]]]
+                      },
+                      "attributes": { "category": "obstruction", "content": "Reef.", "source": "user" }
+                    },
+                    {
+                      "kind": "cluster",
+                      "id": "cluster:u3wge:5",
+                      "name": "24 items",
+                      "coordinates": { "lat": 54.44, "lng": 18.56 },
+                      "geometry": { "type": "Point", "coordinates": [18.56, 54.44] },
+                      "count": 24,
+                      "bounds": { "north": 54.49, "south": 54.39, "east": 18.63, "west": 18.5 }
+                    }
+                  ],
+                  "meta": { "hasMoreDetail": true }
+                }
+            """.trimIndent(),
+        )
+
+        val alert = decoded.entries[0]
+        val polygon = alert.geometry as MapGeometry.Polygon
+        assertEquals(1, polygon.rings.size)
+        assertEquals(5, polygon.rings.first().size)
+        assertEquals(54.44, polygon.rings.first().first().lat, 0.0)
+        assertEquals(18.59, polygon.rings.first().first().lng, 0.0)
+
+        val clusterBounds = decoded.entries[1].bounds!!
+        assertEquals(54.49, clusterBounds.north, 0.0)
+        assertEquals(18.5, clusterBounds.west, 0.0)
+    }
+
+    @Test
     fun decodeResponseMapsSpotAttributes() {
         val decoded = MapItemsApi.decodeResponse(
             """

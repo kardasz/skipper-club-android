@@ -60,6 +60,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import app.skipperclub.R
 import app.skipperclub.data.AlertCategory
 import app.skipperclub.data.AlertError
@@ -67,21 +69,28 @@ import app.skipperclub.data.AlertGeometry
 import app.skipperclub.data.AlertsApi
 import app.skipperclub.data.CheckInError
 import app.skipperclub.data.CheckInsApi
+import app.skipperclub.data.MapCoordinates
 import app.skipperclub.data.MapEntry
 import app.skipperclub.data.MapEntryAttributes
 import app.skipperclub.data.MapEntryKind
 import app.skipperclub.data.MapEntryType
+import app.skipperclub.data.MapGeometry
 import app.skipperclub.data.MapItemsApi
 import app.skipperclub.data.MapItemsError
 import app.skipperclub.data.MapUserProjection
 import app.skipperclub.data.MapViewportBounds
 import app.skipperclub.data.PhoneContact
+import app.skipperclub.data.PostType
 import app.skipperclub.data.SessionStore
 import app.skipperclub.data.SpotsApi
 import app.skipperclub.ui.main.alert.AlertContentError
+import app.skipperclub.ui.main.alert.AlertDetailSheet
+import app.skipperclub.ui.main.alert.AlertDetailUiState
 import app.skipperclub.ui.main.alert.AlertFormDialog
 import app.skipperclub.ui.main.alert.AlertPickActions
 import app.skipperclub.ui.main.alert.AlertUiState
+import app.skipperclub.ui.main.posts.PostDetailScreen
+import app.skipperclub.ui.main.posts.icon
 import app.skipperclub.ui.main.checkin.CheckInOverlay
 import app.skipperclub.ui.main.checkin.CheckInUiState
 import app.skipperclub.ui.main.checkin.fetchCurrentLocation
@@ -107,7 +116,9 @@ import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.MapType
 import com.google.maps.android.compose.MapUiSettings
+import com.google.android.gms.maps.model.LatLngBounds
 import com.google.maps.android.compose.MarkerComposable
+import com.google.maps.android.compose.Polygon
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberUpdatedMarkerState
 import java.time.Duration
@@ -180,6 +191,8 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
     var mapEntries by remember { mutableStateOf(emptyList<MapEntry>()) }
     var selectedMapEntryKey by remember { mutableStateOf<String?>(null) }
     var spotDetailState by remember { mutableStateOf<SpotDetailUiState?>(null) }
+    var selectedPostId by remember { mutableStateOf<String?>(null) }
+    var alertDetail by remember { mutableStateOf<AlertDetailUiState?>(null) }
 
     // Spot map items only carry counts; the full phone/radio detail is fetched
     // on demand when the user taps the marker. Guard every assignment on the
@@ -295,6 +308,23 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
             properties = mapProperties,
             uiSettings = mapUiSettings,
         ) {
+            // Area-based alerts (Polygon / MultiPolygon) are drawn as filled
+            // overlays beneath the markers so the affected zone is visible, not
+            // just its anchor pin.
+            val alertAreaColor = MaterialTheme.colorScheme.error
+            mapEntries.forEach { entry ->
+                entry.alertPolygonRings().forEachIndexed { index, ring ->
+                    key("poly:${entry.id}:$index") {
+                        Polygon(
+                            points = ring,
+                            fillColor = alertAreaColor.copy(alpha = 0.14f),
+                            strokeColor = alertAreaColor.copy(alpha = 0.85f),
+                            strokeWidth = 4f,
+                        )
+                    }
+                }
+            }
+
             mapEntries.forEach { entry ->
                 key("${entry.kind}:${entry.id}") {
                     val markerKey = entry.markerKey
@@ -302,14 +332,37 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                         entry = entry,
                         selected = selectedMapEntryKey == markerKey,
                         onClick = {
-                            if (entry.kind == MapEntryKind.Item && entry.type == MapEntryType.Spot) {
-                                selectedMapEntryKey = null
-                                loadSpotDetail(entry.id, entry.name)
-                            } else {
-                                selectedMapEntryKey = if (selectedMapEntryKey == markerKey) {
-                                    null
-                                } else {
-                                    markerKey
+                            when {
+                                entry.kind == MapEntryKind.Cluster -> {
+                                    selectedMapEntryKey = null
+                                    scope.launch { cameraPositionState.zoomIntoCluster(entry) }
+                                }
+
+                                entry.type == MapEntryType.Spot -> {
+                                    selectedMapEntryKey = null
+                                    loadSpotDetail(entry.id, entry.name)
+                                }
+
+                                entry.type == MapEntryType.Post -> {
+                                    selectedMapEntryKey = null
+                                    selectedPostId = entry.id
+                                }
+
+                                entry.type == MapEntryType.NavigationAlert &&
+                                    entry.alertAttributes != null -> {
+                                    selectedMapEntryKey = null
+                                    alertDetail = AlertDetailUiState(
+                                        title = entry.name,
+                                        attributes = entry.alertAttributes!!,
+                                    )
+                                }
+
+                                else -> {
+                                    selectedMapEntryKey = if (selectedMapEntryKey == markerKey) {
+                                        null
+                                    } else {
+                                        markerKey
+                                    }
                                 }
                             }
                         },
@@ -527,6 +580,27 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
             )
         }
 
+        alertDetail?.let { detail ->
+            AlertDetailSheet(
+                state = detail,
+                onDismiss = { alertDetail = null },
+                onOpenSource = { url -> context.openUrl(url) },
+            )
+        }
+
+        selectedPostId?.let { postId ->
+            Dialog(
+                onDismissRequest = { selectedPostId = null },
+                properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+            ) {
+                PostDetailScreen(
+                    postId = postId,
+                    focusComments = false,
+                    onClose = { selectedPostId = null },
+                )
+            }
+        }
+
         InAppNotificationHost(
             hostState = notificationHostState,
             modifier = Modifier.align(Alignment.TopCenter),
@@ -542,6 +616,14 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
 private fun android.content.Context.dialPhoneContact(contact: PhoneContact) {
     val number = contact.phone.trim().takeIf { it.isNotBlank() } ?: return
     val intent = Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", number, null))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { startActivity(intent) }
+}
+
+/** Opens an external URL (e.g. an official alert source) in the browser. */
+private fun android.content.Context.openUrl(url: String) {
+    val target = url.trim().takeIf { it.isNotBlank() } ?: return
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(target))
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     runCatching { startActivity(intent) }
 }
@@ -598,6 +680,8 @@ private fun MapEntryMarker(
         },
     ) {
         when {
+            entry.kind == MapEntryKind.Cluster -> MapEntryMarkerLabel(entry = entry)
+
             entry.type == MapEntryType.CheckIn && checkInAttributes != null -> CheckInMapMarker(
                 name = entry.name,
                 attributes = checkInAttributes,
@@ -606,14 +690,12 @@ private fun MapEntryMarker(
                 isAvatarLoaded = isAvatarLoaded,
             )
 
-            alertAttributes != null -> AlertMapMarker(
-                title = entry.name,
-                attributes = alertAttributes,
-                selected = selected,
-            )
+            entry.type == MapEntryType.NavigationAlert && alertAttributes != null -> AlertMarkerPin()
 
-            entry.type == MapEntryType.Spot && entry.kind == MapEntryKind.Item ->
-                SpotMapMarker(name = entry.name)
+            entry.type == MapEntryType.Spot -> SpotMapMarker(name = entry.name)
+
+            entry.type == MapEntryType.Post ->
+                PostMapMarker(name = entry.name, postType = entry.postAttributes?.postType)
 
             else -> MapEntryMarkerLabel(entry = entry)
         }
@@ -716,6 +798,73 @@ private fun SpotMarkerPin(modifier: Modifier = Modifier) {
                 imageVector = Icons.Filled.Anchor,
                 contentDescription = null,
                 tint = colors.onTertiary,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Post marker: a per-[PostType] icon in a teardrop pin with the post name as a
+ * label above it. Colour (secondary) distinguishes posts from check-ins,
+ * alerts and spots. Tapping opens the full post detail screen.
+ */
+@Composable
+private fun PostMapMarker(name: String, postType: PostType?) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Surface(
+            shape = MaterialTheme.shapes.small,
+            color = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            tonalElevation = 4.dp,
+            shadowElevation = 4.dp,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            modifier = Modifier.widthIn(max = 164.dp),
+        ) {
+            Text(
+                text = name,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        PostMarkerPin(postType = postType)
+    }
+}
+
+@Composable
+private fun PostMarkerPin(postType: PostType?, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Box(
+        modifier = modifier
+            .width(40.dp)
+            .height(46.dp),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .offset(y = (-4).dp)
+                .size(13.dp)
+                .rotate(45f)
+                .clip(MaterialTheme.shapes.extraSmall)
+                .background(colors.secondary),
+        )
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(colors.secondary)
+                .border(2.dp, colors.surface, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = (postType ?: PostType.Place).icon(),
+                contentDescription = null,
+                tint = colors.onSecondary,
                 modifier = Modifier.size(20.dp),
             )
         }
@@ -835,29 +984,8 @@ private fun CheckInAvatarPin(
     }
 }
 
-@Composable
-private fun AlertMapMarker(
-    title: String,
-    attributes: MapEntryAttributes.NavigationAlert,
-    selected: Boolean,
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        if (selected) {
-            AlertInfoBubble(
-                title = title,
-                content = attributes.content,
-                sourceName = attributes.sourceName,
-                sourceNumber = attributes.sourceNumber,
-                modifier = Modifier.widthIn(max = 264.dp),
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-        }
-        AlertMarkerPin()
-    }
-}
-
 /**
- * Collapsed alert marker: a warning icon in a teardrop pin. Visually distinct
+ * Alert marker: a warning icon in a teardrop pin. Visually distinct
  * from check-in pins (error colour, warning glyph) so every alert reads as an
  * alert at a glance, per the product ask.
  */
@@ -893,67 +1021,6 @@ private fun AlertMarkerPin(modifier: Modifier = Modifier) {
                 tint = colors.onError,
                 modifier = Modifier.size(22.dp),
             )
-        }
-    }
-}
-
-@Composable
-private fun AlertInfoBubble(
-    title: String,
-    content: String,
-    sourceName: String?,
-    sourceNumber: String?,
-    modifier: Modifier = Modifier,
-) {
-    val colors = MaterialTheme.colorScheme
-    Surface(
-        shape = MaterialTheme.shapes.medium,
-        color = colors.surface.copy(alpha = 0.97f),
-        contentColor = colors.onSurface,
-        tonalElevation = 4.dp,
-        shadowElevation = 8.dp,
-        border = BorderStroke(1.dp, colors.outlineVariant),
-        modifier = modifier,
-    ) {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Filled.Warning,
-                    contentDescription = null,
-                    tint = colors.error,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = content,
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.onSurfaceVariant,
-                maxLines = 14,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (!sourceName.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = if (!sourceNumber.isNullOrBlank()) {
-                        stringResource(R.string.alert_detail_source_number, sourceName, sourceNumber)
-                    } else {
-                        stringResource(R.string.alert_detail_source, sourceName)
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
     }
 }
@@ -1179,6 +1246,48 @@ private val MapEntry.checkInAttributes: MapEntryAttributes.CheckIn?
 private val MapEntry.alertAttributes: MapEntryAttributes.NavigationAlert?
     get() = attributes as? MapEntryAttributes.NavigationAlert
 
+private val MapEntry.postAttributes: MapEntryAttributes.Post?
+    get() = attributes as? MapEntryAttributes.Post
+
+/** Outer rings of any `Polygon` / `MultiPolygon` geometry, as map-ready points. */
+private fun MapEntry.alertPolygonRings(): List<List<LatLng>> {
+    if (type != MapEntryType.NavigationAlert) return emptyList()
+    return when (val geom = geometry) {
+        is MapGeometry.Polygon -> geom.rings.map { ring -> ring.toLatLngList() }
+        is MapGeometry.MultiPolygon -> geom.polygons.mapNotNull { polygon ->
+            polygon.firstOrNull()?.toLatLngList()
+        }
+        else -> emptyList()
+    }.filter { it.size >= 3 }
+}
+
+private fun List<MapCoordinates>.toLatLngList(): List<LatLng> =
+    map { LatLng(it.lat, it.lng) }
+
+/**
+ * Animates the camera to a tapped cluster so its members spread out. Prefers the
+ * cluster bounds (the exact extent of its items); falls back to a fixed zoom step
+ * when bounds are unavailable.
+ */
+private suspend fun CameraPositionState.zoomIntoCluster(entry: MapEntry) {
+    val bounds = entry.bounds
+    val update = if (bounds != null && bounds.north > bounds.south) {
+        CameraUpdateFactory.newLatLngBounds(
+            LatLngBounds(
+                LatLng(bounds.south, bounds.west),
+                LatLng(bounds.north, bounds.east),
+            ),
+            CLUSTER_BOUNDS_PADDING_PX,
+        )
+    } else {
+        CameraUpdateFactory.newLatLngZoom(
+            LatLng(entry.coordinates.lat, entry.coordinates.lng),
+            (position.zoom + 2f).coerceAtMost(MAX_CLUSTER_ZOOM),
+        )
+    }
+    runCatching { animate(update = update, durationMs = 500) }
+}
+
 private val AsyncImagePainter.State.snapshotKey: String
     get() = when (this) {
         is AsyncImagePainter.State.Empty -> "empty"
@@ -1366,71 +1475,58 @@ private fun SpotMapMarkerPreviewDark() {
 
 @Preview(showBackground = true, locale = "en")
 @Composable
-private fun AlertMapMarkerPreviewEn() {
+private fun PostMapMarkerPreviewEn() {
     SkipperClubTheme {
-        AlertMarkerPreviewContent(title = "Weather alert", selected = true)
+        MarkerPreviewBox { PostMapMarker(name = "Sopocki bulwar", postType = PostType.Photo) }
     }
 }
 
 @Preview(showBackground = true, locale = "pl")
 @Composable
-private fun AlertMapMarkerPreviewPl() {
+private fun PostMapMarkerPreviewPl() {
     SkipperClubTheme {
-        AlertMarkerPreviewContent(
-            title = "Ostrzeżenie nawigacyjne",
-            selected = true,
-            content = "Wrak w pozycji 54°30'N 18°40'E oznaczony pławą kardynalną. " +
-                "Zachować szczególną ostrożność, omijać w odległości co najmniej 200 m.",
-            sourceName = "Biuro Hydrograficzne MW",
-            sourceNumber = "161/2026",
-        )
+        MarkerPreviewBox { PostMapMarker(name = "Marina Gdynia", postType = PostType.Marina) }
     }
 }
 
 @Preview(showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
-private fun AlertMapMarkerPreviewDark() {
+private fun PostMapMarkerPreviewDark() {
     SkipperClubTheme {
-        AlertMarkerPreviewContent(title = "Weather alert", selected = true)
+        MarkerPreviewBox { PostMapMarker(name = "Trasa Hel", postType = PostType.Route) }
     }
 }
 
 @Preview(showBackground = true, locale = "en")
 @Composable
-private fun AlertMapMarkerCollapsedPreview() {
+private fun AlertMarkerPinPreviewEn() {
     SkipperClubTheme {
-        AlertMarkerPreviewContent(title = "Weather alert", selected = false)
+        MarkerPreviewBox { AlertMarkerPin() }
+    }
+}
+
+@Preview(showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+private fun AlertMarkerPinPreviewDark() {
+    SkipperClubTheme {
+        MarkerPreviewBox { AlertMarkerPin() }
     }
 }
 
 @Composable
-private fun AlertMarkerPreviewContent(
-    title: String,
-    selected: Boolean,
-    content: String = "Gale warning in force. Winds gusting to 35 knots expected from the NW.",
-    sourceName: String? = null,
-    sourceNumber: String? = null,
-) {
+private fun MarkerPreviewBox(content: @Composable () -> Unit) {
     Box(
         modifier = Modifier
             .background(MaterialTheme.colorScheme.background)
             .padding(32.dp),
     ) {
-        AlertMapMarker(
-            title = title,
-            attributes = MapEntryAttributes.NavigationAlert(
-                category = AlertCategory.Weather,
-                content = content,
-                source = if (sourceName != null) "hhi_rnw" else "user",
-                sourceName = sourceName,
-                sourceNumber = sourceNumber,
-            ),
-            selected = selected,
-        )
+        content()
     }
 }
 
 private val GDANSK_BAY = LatLng(54.4877, 18.6654)
 private const val DEFAULT_ZOOM = 10f
 private const val ACTIVE_ZOOM = 16f
+private const val MAX_CLUSTER_ZOOM = 18f
+private const val CLUSTER_BOUNDS_PADDING_PX = 120
 private val BottomBarMapPadding: Dp = 114.dp
