@@ -1,6 +1,7 @@
 package app.skipperclub.ui.main.cruises
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PersonAdd
@@ -115,7 +117,8 @@ fun CruiseParticipantManageScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().testTag("cruise_manage_list"),
-                    contentPadding = PaddingValues(vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     items(items, key = { it.id }) { participant ->
                         ParticipantRow(
@@ -161,36 +164,44 @@ private fun ParticipantRow(
     onCancelInvitation: () -> Unit,
     onRemove: () -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            CruiseAvatar(
-                name = participant.user?.name ?: "?",
-                avatarUrl = participant.user?.avatarUrl,
-                modifier = Modifier.size(44.dp),
-            )
-            Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                Text(
-                    text = participant.user?.name ?: stringResource(R.string.cruise_participant_unknown),
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CruiseAvatar(
+                    name = participant.user?.name ?: "?",
+                    avatarUrl = participant.user?.avatarUrl,
+                    modifier = Modifier.size(44.dp),
                 )
-                CruiseStatusBadge(
-                    text = stringResource(participant.state.labelRes()),
-                    container = MaterialTheme.colorScheme.secondaryContainer,
-                    content = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
+                Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text(
+                        text = participant.user?.name ?: stringResource(R.string.cruise_participant_unknown),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    CruiseStatusBadge(
+                        text = stringResource(participant.state.labelRes()),
+                        container = MaterialTheme.colorScheme.secondaryContainer,
+                        content = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
             }
+            ParticipantActions(
+                state = participant.state,
+                enabled = enabled,
+                onAccept = onAccept,
+                onReject = onReject,
+                onCancelInvitation = onCancelInvitation,
+                onRemove = onRemove,
+            )
         }
-        ParticipantActions(
-            state = participant.state,
-            enabled = enabled,
-            onAccept = onAccept,
-            onReject = onReject,
-            onCancelInvitation = onCancelInvitation,
-            onRemove = onRemove,
-        )
     }
 }
 
@@ -205,8 +216,8 @@ private fun ParticipantActions(
 ) {
     when (state) {
         CruiseParticipantState.Pending -> Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             OutlinedButton(onClick = onReject, enabled = enabled, modifier = Modifier.weight(1f).testTag("participant_reject")) {
                 Text(stringResource(R.string.cruise_action_reject))
@@ -219,7 +230,7 @@ private fun ParticipantActions(
         CruiseParticipantState.Invited -> OutlinedButton(
             onClick = onCancelInvitation,
             enabled = enabled,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("participant_cancel_invite"),
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("participant_cancel_invite"),
         ) {
             Text(stringResource(R.string.cruise_action_cancel_invitation))
         }
@@ -227,7 +238,7 @@ private fun ParticipantActions(
         CruiseParticipantState.Accepted -> OutlinedButton(
             onClick = onRemove,
             enabled = enabled,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("participant_remove"),
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("participant_remove"),
         ) {
             Text(stringResource(R.string.cruise_action_remove), color = MaterialTheme.colorScheme.error)
         }

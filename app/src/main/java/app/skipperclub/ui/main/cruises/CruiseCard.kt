@@ -40,6 +40,7 @@ import app.skipperclub.data.CruiseCurrency
 import app.skipperclub.data.CruisePort
 import app.skipperclub.data.CruiseUser
 import app.skipperclub.data.CruiseUserRole
+import app.skipperclub.data.PostMedia
 import app.skipperclub.data.PostCoordinates
 import app.skipperclub.data.VesselType
 import app.skipperclub.ui.theme.SkipperClubTheme
@@ -61,6 +62,12 @@ fun CruiseCard(
     ) {
         Column(modifier = Modifier.padding(bottom = 14.dp)) {
             CruiseCardHeader(cruise)
+            if (cruise.media.isNotEmpty()) {
+                CruiseMediaCover(
+                    media = cruise.media,
+                    modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 12.dp),
+                )
+            }
 
             Column(
                 modifier = Modifier.padding(horizontal = 16.dp),
@@ -73,6 +80,21 @@ fun CruiseCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                cruise.type?.let { type ->
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        CruiseTagChip(text = stringResource(type.labelRes()))
+                        if (cruise.isPrivate) {
+                            CruiseStatusBadge(
+                                text = stringResource(R.string.cruise_private),
+                                container = MaterialTheme.colorScheme.surfaceVariant,
+                                content = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
 
                 CruiseInfoRow(
                     icon = Icons.Outlined.CalendarMonth,
@@ -155,9 +177,6 @@ private fun CruiseCardHeader(cruise: Cruise) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-        cruise.type?.let { type ->
-            CruiseTagChip(text = stringResource(type.labelRes()))
         }
         if (cruise.isPrivate) {
             Icon(
@@ -333,6 +352,15 @@ internal fun previewCruise(
     vessel = "Bavaria Cruiser 46",
     vesselType = VesselType.SailingYacht,
     type = app.skipperclub.data.CruiseType.Relax,
+    media = listOf(
+        PostMedia(
+            id = "m1",
+            type = "image",
+            url = "https://example.com/cruise.jpg",
+            width = 1600,
+            height = 900,
+        ),
+    ),
     organizer = CruiseUser(id = "org", name = "Jan Kowalski"),
     currentUserRole = role,
     createdAt = "2025-06-01T10:00:00Z",

@@ -1,7 +1,9 @@
 package app.skipperclub.ui.main.cruises
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -51,6 +53,7 @@ class CruisesScreenTest {
         compose.onNodeWithTag("cruises_search").assertExists()
         compose.onNodeWithTag("cruises_filters").assertExists().performClick()
         compose.onNodeWithText("Mediterranean Summer Sailing").assertExists()
+        compose.onAllNodesWithTag("cruise_media_cover", useUnmergedTree = true).assertCountEquals(2)
         assertTrue(createClicked)
         assertTrue(filtersClicked)
     }

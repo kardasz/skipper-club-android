@@ -477,6 +477,11 @@
     <!-- Rejsy: karta / wspólne -->
     <string name="cruise_per_person">os.</string>
     <string name="cruise_private">Rejs prywatny</string>
+    <string name="cruise_media_content_description">Media rejsu</string>
+    <string name="cruise_media_count">%1$d</string>
+    <string name="cruise_metric_cost">Koszt</string>
+    <string name="cruise_metric_crew">Załoga</string>
+    <string name="cruise_metric_duration">Długość</string>
     <string name="participation_organizer">Organizator</string>
     <string name="cruise_availability_full">Pełny</string>
     <string name="cruise_availability_filling_up">Prawie pełny</string>

@@ -463,6 +463,11 @@
     <!-- Cruises: card / shared -->
     <string name="cruise_per_person">person</string>
     <string name="cruise_private">Private cruise</string>
+    <string name="cruise_media_content_description">Cruise media</string>
+    <string name="cruise_media_count">%1$d</string>
+    <string name="cruise_metric_cost">Cost</string>
+    <string name="cruise_metric_crew">Crew</string>
+    <string name="cruise_metric_duration">Length</string>
     <string name="participation_organizer">Organizer</string>
     <string name="cruise_availability_full">Full</string>
     <string name="cruise_availability_filling_up">Filling up</string>

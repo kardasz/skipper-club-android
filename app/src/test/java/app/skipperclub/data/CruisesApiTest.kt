@@ -76,6 +76,34 @@ class CruisesApiTest {
         assertEquals("Bearer access-token", request.header("Authorization"))
     }
 
+    @Test
+    fun cruiseDtoMapsMediaIntoDomain() {
+        val cruise = CruiseDto(
+            id = "cruise-1",
+            title = "Adriatic Summer",
+            departureDate = "2026-07-15",
+            departurePort = CruisePortDto("Split", CoordinatesDto(43.5, 16.4)),
+            arrivalDate = "2026-07-22",
+            arrivalPort = CruisePortDto("Dubrovnik", CoordinatesDto(42.6, 18.0)),
+            vessel = "Bavaria Cruiser 46",
+            vesselType = "SAILING_YACHT",
+            media = listOf(
+                PostMediaDto(
+                    id = "media-1",
+                    type = "image",
+                    url = "https://cdn.skipperclub.app/cruises/media-1.jpg",
+                    width = 1600,
+                    height = 900,
+                ),
+            ),
+            organizer = CruiseUserDto(id = "user-1", name = "Captain Jack"),
+        ).toDomain()
+
+        requireNotNull(cruise)
+        assertEquals(1, cruise.media.size)
+        assertEquals("https://cdn.skipperclub.app/cruises/media-1.jpg", cruise.media.single().url)
+    }
+
     private fun response(code: Int, body: String): Response =
         Response.Builder()
             .request(Request.Builder().url("https://api.skipperclub.app/test").build())

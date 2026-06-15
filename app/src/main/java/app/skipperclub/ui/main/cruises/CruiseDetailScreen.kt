@@ -1,6 +1,7 @@
 package app.skipperclub.ui.main.cruises
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,12 +15,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.RateReview
 import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.Hotel
 import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.Sailing
@@ -251,109 +254,183 @@ private fun CruiseDetailTopBar(onClose: () -> Unit, onReviews: (() -> Unit)? = n
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun CruiseDetailBody(cruise: Cruise) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            CruiseAvatar(name = cruise.organizer.name, avatarUrl = cruise.organizer.avatarUrl, modifier = Modifier.size(44.dp))
-            Column(modifier = Modifier.padding(start = 12.dp)) {
-                Text(cruise.organizer.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Text(
-                    stringResource(R.string.cruise_organizer_label),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
-        Text(
-            text = cruise.title,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(top = 16.dp),
-        )
-        cruise.type?.let {
-            CruiseTagChip(text = stringResource(it.labelRes()), modifier = Modifier.padding(top = 8.dp))
-        }
-
-        if (cruise.description.isNotBlank()) {
-            Text(
-                text = cruise.description,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 12.dp),
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (cruise.media.isNotEmpty()) {
+            CruiseMediaGallery(
+                media = cruise.media,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 16.dp),
             )
         }
 
-        DetailSection(stringResource(R.string.cruise_section_schedule)) {
-            CruiseInfoRow(Icons.Outlined.CalendarMonth, formatDateRange(cruise.departureDate, cruise.arrivalDate))
-            cruiseNights(cruise)?.let { nights ->
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CruiseAvatar(name = cruise.organizer.name, avatarUrl = cruise.organizer.avatarUrl, modifier = Modifier.size(44.dp))
+                Column(modifier = Modifier.padding(start = 12.dp)) {
+                    Text(cruise.organizer.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        stringResource(R.string.cruise_organizer_label),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Text(
+                text = cruise.title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 16.dp),
+            )
+            cruise.type?.let {
+                CruiseTagChip(text = stringResource(it.labelRes()), modifier = Modifier.padding(top = 8.dp))
+            }
+
+            CruiseDetailMetricRow(cruise = cruise, modifier = Modifier.padding(top = 14.dp))
+
+            if (cruise.description.isNotBlank()) {
                 Text(
-                    text = androidx.compose.ui.res.pluralStringResource(R.plurals.cruise_nights, nights, nights),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 26.dp, top = 2.dp),
+                    text = cruise.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 14.dp),
                 )
             }
-            Spacer(Modifier.size(8.dp))
-            CruiseInfoRow(Icons.Outlined.Place, "${cruise.departurePort.name} → ${cruise.arrivalPort.name}")
-            cruise.stops.forEach { stop ->
-                Text(
-                    text = "• ${stop.name}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 26.dp, top = 2.dp),
-                )
-            }
-        }
 
-        DetailSection(stringResource(R.string.cruise_section_vessel)) {
-            CruiseInfoRow(Icons.Outlined.Sailing, "${stringResource(cruise.vesselType.labelRes())} • ${cruise.vessel}")
-            val specs = buildList {
-                listOfNotNull(cruise.vesselBrand, cruise.vesselModel).takeIf { it.isNotEmpty() }?.let { add(it.joinToString(" ")) }
-                cruise.vesselYear?.let { add(it.toString()) }
-                cruise.vesselLength?.let { add(stringResource(R.string.cruise_vessel_length_value, it)) }
-                cruise.vesselCabins?.let { add(androidx.compose.ui.res.pluralStringResource(R.plurals.cruise_vessel_cabins_value, it, it)) }
+            DetailSection(stringResource(R.string.cruise_section_schedule)) {
+                CruiseInfoRow(Icons.Outlined.CalendarMonth, formatDateRange(cruise.departureDate, cruise.arrivalDate))
+                Spacer(Modifier.size(8.dp))
+                CruiseInfoRow(Icons.Outlined.Place, "${cruise.departurePort.name} → ${cruise.arrivalPort.name}")
+                cruise.stops.forEach { stop ->
+                    Text(
+                        text = "• ${stop.name}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 26.dp, top = 2.dp),
+                    )
+                }
             }
-            if (specs.isNotEmpty()) {
-                Text(
-                    text = specs.joinToString(" • "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 26.dp, top = 2.dp),
-                )
+
+            DetailSection(stringResource(R.string.cruise_section_vessel)) {
+                CruiseInfoRow(Icons.Outlined.Sailing, "${stringResource(cruise.vesselType.labelRes())} • ${cruise.vessel}")
+                val specs = buildList {
+                    listOfNotNull(cruise.vesselBrand, cruise.vesselModel).takeIf { it.isNotEmpty() }?.let { add(it.joinToString(" ")) }
+                    cruise.vesselYear?.let { add(it.toString()) }
+                    cruise.vesselLength?.let { add(stringResource(R.string.cruise_vessel_length_value, it)) }
+                    cruise.vesselCabins?.let { add(androidx.compose.ui.res.pluralStringResource(R.plurals.cruise_vessel_cabins_value, it, it)) }
+                }
+                if (specs.isNotEmpty()) {
+                    Text(
+                        text = specs.joinToString(" • "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 26.dp, top = 2.dp),
+                    )
+                }
             }
-        }
 
-        DetailSection(stringResource(R.string.cruise_section_crew)) {
-            CruiseInfoRow(Icons.Outlined.Payments, "${formatPrice(cruise.costPerPerson, cruise.currency)} /${stringResource(R.string.cruise_per_person)}")
-            Spacer(Modifier.size(8.dp))
-            CruiseInfoRow(Icons.Outlined.Group, "${cruise.participantsCount}/${cruise.maxParticipants}")
-        }
-
-        if (!cruise.requiredSkills.isNullOrBlank()) {
-            DetailSection(stringResource(R.string.cruise_section_requirements)) {
-                Text(cruise.requiredSkills, style = MaterialTheme.typography.bodyMedium)
+            DetailSection(stringResource(R.string.cruise_section_crew)) {
+                CruiseInfoRow(Icons.Outlined.Payments, "${formatPrice(cruise.costPerPerson, cruise.currency)} /${stringResource(R.string.cruise_per_person)}")
+                Spacer(Modifier.size(8.dp))
+                CruiseInfoRow(Icons.Outlined.Group, "${cruise.participantsCount}/${cruise.maxParticipants}")
             }
-        }
 
-        val rules = cruiseRuleLabels(cruise)
-        if (rules.isNotEmpty()) {
-            DetailSection(stringResource(R.string.cruise_section_rules)) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    rules.forEach { (labelRes, allowed) ->
-                        CruiseStatusBadge(
-                            text = stringResource(labelRes),
-                            container = if (allowed) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                            content = if (allowed) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+            if (!cruise.requiredSkills.isNullOrBlank()) {
+                DetailSection(stringResource(R.string.cruise_section_requirements)) {
+                    Text(cruise.requiredSkills, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+
+            val rules = cruiseRuleLabels(cruise)
+            if (rules.isNotEmpty()) {
+                DetailSection(stringResource(R.string.cruise_section_rules)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        rules.forEach { (labelRes, allowed) ->
+                            CruiseStatusBadge(
+                                text = stringResource(labelRes),
+                                container = if (allowed) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                content = if (allowed) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
-        }
 
-        val hashtags = cruiseHashtags(cruise)
-        if (hashtags.isNotEmpty()) {
-            CruiseHashtagRow(hashtags = hashtags, modifier = Modifier.padding(top = 16.dp))
+            val hashtags = cruiseHashtags(cruise)
+            if (hashtags.isNotEmpty()) {
+                CruiseHashtagRow(hashtags = hashtags, modifier = Modifier.padding(top = 16.dp))
+            }
+            Spacer(Modifier.size(16.dp))
         }
-        Spacer(Modifier.size(16.dp))
+    }
+}
+
+@Composable
+private fun CruiseDetailMetricRow(
+    cruise: Cruise,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        CruiseMetricTile(
+            icon = Icons.Outlined.Payments,
+            label = stringResource(R.string.cruise_metric_cost),
+            value = "${formatPrice(cruise.costPerPerson, cruise.currency)} /${stringResource(R.string.cruise_per_person)}",
+            modifier = Modifier.weight(1f),
+        )
+        CruiseMetricTile(
+            icon = Icons.Outlined.Group,
+            label = stringResource(R.string.cruise_metric_crew),
+            value = "${cruise.participantsCount}/${cruise.maxParticipants}",
+            modifier = Modifier.weight(1f),
+        )
+        cruiseNights(cruise)?.let { nights ->
+            CruiseMetricTile(
+                icon = Icons.Outlined.Hotel,
+                label = stringResource(R.string.cruise_metric_duration),
+                value = androidx.compose.ui.res.pluralStringResource(R.plurals.cruise_nights, nights, nights),
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CruiseMetricTile(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+            )
+        }
     }
 }
 
@@ -387,23 +464,39 @@ private fun CruiseDetailActions(
     val cruise = state.cruise ?: return
     val enabled = !state.isActing
     Surface(tonalElevation = 3.dp, color = MaterialTheme.colorScheme.surface) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             when (state.viewerRole) {
                 CruiseViewerRole.Organizer -> {
-                    OutlinedButton(onClick = onDelete, enabled = enabled, modifier = Modifier.weight(1f).testTag("cruise_delete")) {
-                        Text(stringResource(R.string.cruise_action_delete), color = MaterialTheme.colorScheme.error)
-                    }
-                    OutlinedButton(onClick = onEdit, enabled = enabled, modifier = Modifier.weight(1f).testTag("cruise_edit")) {
-                        Text(stringResource(R.string.cruise_action_edit))
-                    }
-                    Button(onClick = onManage, enabled = enabled, modifier = Modifier.weight(1.4f).testTag("cruise_manage")) {
+                    Button(
+                        onClick = onManage,
+                        enabled = enabled,
+                        modifier = Modifier.fillMaxWidth().testTag("cruise_manage"),
+                    ) {
                         Text(stringResource(R.string.cruise_action_manage))
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        OutlinedButton(
+                            onClick = onDelete,
+                            enabled = enabled,
+                            modifier = Modifier.weight(1f).testTag("cruise_delete"),
+                        ) {
+                            Text(stringResource(R.string.cruise_action_delete), color = MaterialTheme.colorScheme.error)
+                        }
+                        OutlinedButton(
+                            onClick = onEdit,
+                            enabled = enabled,
+                            modifier = Modifier.weight(1f).testTag("cruise_edit"),
+                        ) {
+                            Text(stringResource(R.string.cruise_action_edit))
+                        }
                     }
                 }
 
@@ -428,14 +521,14 @@ private fun CruiseDetailActions(
                 )
             }
             if (state.isActing) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally).size(20.dp))
             }
         }
     }
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.VisitorActions(
+private fun VisitorActions(
     cruise: Cruise,
     enabled: Boolean,
     onJoin: () -> Unit,
@@ -448,15 +541,28 @@ private fun androidx.compose.foundation.layout.RowScope.VisitorActions(
         CruiseParticipantState.Pending -> OutlinedButton(
             onClick = onCancelRequest,
             enabled = enabled,
-            modifier = Modifier.weight(1f).testTag("cruise_cancel_request"),
+            modifier = Modifier.fillMaxWidth().testTag("cruise_cancel_request"),
         ) { Text(stringResource(R.string.cruise_action_cancel_request)) }
 
         CruiseParticipantState.Invited -> {
-            OutlinedButton(onClick = onRejectInvitation, enabled = enabled, modifier = Modifier.weight(1f).testTag("cruise_decline")) {
-                Text(stringResource(R.string.cruise_action_decline))
-            }
-            Button(onClick = onAcceptInvitation, enabled = enabled, modifier = Modifier.weight(1.4f).testTag("cruise_accept")) {
-                Text(stringResource(R.string.cruise_action_accept))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onRejectInvitation,
+                    enabled = enabled,
+                    modifier = Modifier.weight(1f).testTag("cruise_decline"),
+                ) {
+                    Text(stringResource(R.string.cruise_action_decline))
+                }
+                Button(
+                    onClick = onAcceptInvitation,
+                    enabled = enabled,
+                    modifier = Modifier.weight(1f).testTag("cruise_accept"),
+                ) {
+                    Text(stringResource(R.string.cruise_action_accept))
+                }
             }
         }
 
