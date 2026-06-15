@@ -627,6 +627,8 @@
     <string name="cruise_field_vessel_year">Rok</string>
     <string name="cruise_field_vessel_length">Długość (ft)</string>
     <string name="cruise_field_vessel_cabins">Kabiny</string>
+    <string name="cruise_vessel_details_show">Więcej szczegółów jednostki</string>
+    <string name="cruise_vessel_details_hide">Ukryj szczegóły jednostki</string>
     <string name="cruise_field_required_skills">Wymagane umiejętności</string>
     <string name="cruise_field_required_skills_hint">Certyfikaty lub doświadczenie oczekiwane od załogi.</string>
     <string name="cruise_field_cost">Koszt na osobę</string>
@@ -654,7 +656,9 @@
     <string name="cruise_error_vessel">Nazwa jednostki musi mieć co najmniej 5 znaków.</string>
     <string name="cruise_error_vessel_type">Wybierz typ jednostki.</string>
     <string name="cruise_error_cost">Podaj prawidłowy koszt.</string>
-    <string name="cruise_error_max_participants">Podaj od 1 do 50 uczestników.</string>
+    <string name="cruise_participants_decrease">Zmniejsz liczbę uczestników</string>
+    <string name="cruise_participants_increase">Zwiększ liczbę uczestników</string>
+    <string name="cruise_error_max_participants">Podaj od 1 do 20 uczestników.</string>
     <string name="cruise_media_subtitle">Dodaj zdjęcia lub krótkie wideo, żeby szybciej pokazać jacht, trasę i klimat rejsu.</string>
     <string name="cruise_media_add">Dodaj zdjęcia lub wideo</string>
     <string name="cruise_media_empty">Możesz pominąć ten krok i dodać multimedia później.</string>

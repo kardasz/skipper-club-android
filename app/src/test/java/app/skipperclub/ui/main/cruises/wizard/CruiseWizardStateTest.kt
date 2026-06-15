@@ -273,6 +273,29 @@ class CruiseWizardStateTest {
     }
 
     @Test
+    fun maxParticipantsInputIsLimitedToTwenty() {
+        val state = wizard()
+
+        state.updateMaxParticipants("99")
+
+        assertEquals("20", state.maxParticipantsText)
+        assertEquals(20, state.maxParticipantsValue)
+        assertTrue(state.errorsFor(CruiseWizardStep.Crew).contains(CruiseWizardError.CostInvalid))
+        assertFalse(state.errorsFor(CruiseWizardStep.Crew).contains(CruiseWizardError.MaxParticipantsInvalid))
+    }
+
+    @Test
+    fun maxParticipantsStepperStaysWithinBounds() {
+        val state = wizard()
+
+        repeat(20) { state.incrementMaxParticipants() }
+        assertEquals("20", state.maxParticipantsText)
+
+        repeat(25) { state.decrementMaxParticipants() }
+        assertEquals("1", state.maxParticipantsText)
+    }
+
+    @Test
     fun buildPayloadMapsAllFields() {
         val state = wizard()
         fillValid(state)

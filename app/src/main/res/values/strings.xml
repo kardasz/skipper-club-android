@@ -609,6 +609,8 @@
     <string name="cruise_field_vessel_year">Year</string>
     <string name="cruise_field_vessel_length">Length (ft)</string>
     <string name="cruise_field_vessel_cabins">Cabins</string>
+    <string name="cruise_vessel_details_show">More vessel details</string>
+    <string name="cruise_vessel_details_hide">Hide vessel details</string>
     <string name="cruise_field_required_skills">Required skills</string>
     <string name="cruise_field_required_skills_hint">Certificates or experience expected from the crew.</string>
     <string name="cruise_field_cost">Cost per person</string>
@@ -636,7 +638,9 @@
     <string name="cruise_error_vessel">Vessel name must be at least 5 characters.</string>
     <string name="cruise_error_vessel_type">Select a vessel type.</string>
     <string name="cruise_error_cost">Enter a valid cost.</string>
-    <string name="cruise_error_max_participants">Enter between 1 and 50 participants.</string>
+    <string name="cruise_participants_decrease">Decrease participants</string>
+    <string name="cruise_participants_increase">Increase participants</string>
+    <string name="cruise_error_max_participants">Enter between 1 and 20 participants.</string>
     <string name="cruise_media_subtitle">Add photos or a short video so people can quickly understand the yacht, route and vibe.</string>
     <string name="cruise_media_add">Add photos or video</string>
     <string name="cruise_media_empty">You can skip this for now and add media later.</string>

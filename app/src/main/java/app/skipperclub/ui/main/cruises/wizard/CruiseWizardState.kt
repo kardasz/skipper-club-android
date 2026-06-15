@@ -31,7 +31,7 @@ const val CRUISE_DESCRIPTION_MIN_LENGTH = 10
 const val CRUISE_DESCRIPTION_MAX_LENGTH = 2000
 const val CRUISE_VESSEL_MIN_LENGTH = 5
 const val CRUISE_STOPS_MAX_COUNT = 20
-const val CRUISE_MAX_PARTICIPANTS_LIMIT = 50
+const val CRUISE_MAX_PARTICIPANTS_LIMIT = 20
 const val CRUISE_COST_LIMIT = 100_000.0
 const val CRUISE_AI_DESCRIPTION_MIN_LENGTH = 10
 const val CRUISE_AI_DESCRIPTION_MAX_LENGTH = 5000
@@ -165,7 +165,9 @@ class CruiseWizardState(
         private set
     var currency by mutableStateOf(existing?.currency ?: CruiseCurrency.Eur)
         private set
-    var maxParticipantsText by mutableStateOf(existing?.maxParticipants?.toString() ?: "8")
+    var maxParticipantsText by mutableStateOf(
+        existing?.maxParticipants?.coerceIn(1, CRUISE_MAX_PARTICIPANTS_LIMIT)?.toString() ?: "8",
+    )
         private set
     var isPrivate by mutableStateOf(existing?.isPrivate ?: false)
         private set
@@ -268,7 +270,7 @@ class CruiseWizardState(
         draft.vesselYear?.let { vesselYearText = it.toString().take(4) }
         draft.vesselLength?.let { vesselLengthText = formatLengthInput(it) }
         draft.vesselCabins?.let { vesselCabinsText = it.toString().take(2) }
-        draft.maxParticipants?.let { maxParticipantsText = it.toString().take(2) }
+        draft.maxParticipants?.let { maxParticipantsText = it.coerceIn(1, CRUISE_MAX_PARTICIPANTS_LIMIT).toString() }
         smokingAllowed = draft.smokingAllowed
         alcoholAllowed = draft.alcoholAllowed
         petsAllowed = draft.petsAllowed
@@ -412,11 +414,33 @@ class CruiseWizardState(
     }
 
     fun updateMaxParticipants(value: String) {
-        maxParticipantsText = value.filter { it.isDigit() }.take(2)
+        val digits = value.filter { it.isDigit() }.take(2)
+        maxParticipantsText = digits.toIntOrNull()
+            ?.takeIf { it > 0 }
+            ?.coerceAtMost(CRUISE_MAX_PARTICIPANTS_LIMIT)
+            ?.toString()
+            ?: digits
         if (parsedMaxParticipants() != null) {
             visibleErrors = visibleErrors - CruiseWizardError.MaxParticipantsInvalid
         }
     }
+
+    fun incrementMaxParticipants() {
+        changeMaxParticipantsBy(1)
+    }
+
+    fun decrementMaxParticipants() {
+        changeMaxParticipantsBy(-1)
+    }
+
+    private fun changeMaxParticipantsBy(delta: Int) {
+        val current = parsedMaxParticipants() ?: 1
+        maxParticipantsText = (current + delta).coerceIn(1, CRUISE_MAX_PARTICIPANTS_LIMIT).toString()
+        visibleErrors = visibleErrors - CruiseWizardError.MaxParticipantsInvalid
+    }
+
+    val maxParticipantsValue: Int?
+        get() = parsedMaxParticipants()
 
     fun updatePrivate(value: Boolean) {
         isPrivate = value

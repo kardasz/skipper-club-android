@@ -6,6 +6,7 @@ import android.speech.SpeechRecognizer
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,8 +32,11 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Place
@@ -57,6 +62,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -151,7 +157,7 @@ internal fun WizardAiDraftStep(state: CruiseWizardState) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
-    Spacer(Modifier.size(16.dp))
+    Spacer(Modifier.size(12.dp))
     OutlinedTextField(
         value = state.aiDescription,
         onValueChange = state::updateAiDescription,
@@ -220,13 +226,13 @@ internal fun WizardBasicsStep(state: CruiseWizardState) {
     OutlinedTextField(
         value = state.description,
         onValueChange = state::updateDescription,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 108.dp),
         placeholder = { Text(stringResource(R.string.cruise_field_description_hint)) },
         isError = CruiseWizardError.DescriptionTooShort in state.visibleErrors,
     )
     WizardFieldError(CruiseWizardError.DescriptionTooShort, state, R.string.cruise_error_description)
 
-    Spacer(Modifier.size(16.dp))
+    Spacer(Modifier.size(12.dp))
     WizardSectionLabel(stringResource(R.string.cruise_field_type))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         CruiseType.entries.forEach { type ->
@@ -256,7 +262,7 @@ internal fun WizardRouteStep(state: CruiseWizardState) {
     )
     WizardFieldError(CruiseWizardError.DeparturePortRequired, state, R.string.cruise_error_departure_port)
 
-    Spacer(Modifier.size(12.dp))
+    Spacer(Modifier.size(10.dp))
     WizardSectionLabel(stringResource(R.string.cruise_field_arrival_port))
     PortField(
         portName = state.arrivalPort?.name,
@@ -266,7 +272,7 @@ internal fun WizardRouteStep(state: CruiseWizardState) {
     )
     WizardFieldError(CruiseWizardError.ArrivalPortRequired, state, R.string.cruise_error_arrival_port)
 
-    Spacer(Modifier.size(16.dp))
+    Spacer(Modifier.size(12.dp))
     WizardSectionLabel(stringResource(R.string.cruise_field_dates))
     val departureInvalid = CruiseWizardError.DatesInvalid in state.visibleErrors ||
         CruiseWizardError.DepartureNotInFuture in state.visibleErrors
@@ -289,7 +295,7 @@ internal fun WizardRouteStep(state: CruiseWizardState) {
     WizardFieldError(CruiseWizardError.DatesInvalid, state, R.string.cruise_error_dates)
     WizardFieldError(CruiseWizardError.DepartureNotInFuture, state, R.string.cruise_error_departure_future)
 
-    Spacer(Modifier.size(16.dp))
+    Spacer(Modifier.size(12.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         WizardSectionLabel(stringResource(R.string.cruise_field_stops))
         Spacer(Modifier.weight(1f))
@@ -342,7 +348,7 @@ private fun PortField(
         border = BorderStroke(1.dp, borderColor),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -385,7 +391,7 @@ private fun DateField(
         border = BorderStroke(1.dp, borderColor),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -504,6 +510,15 @@ private fun PortSearchDialog(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun WizardVesselStep(state: CruiseWizardState) {
+    val hasOptionalDetails = listOf(
+        state.vesselBrand,
+        state.vesselModel,
+        state.vesselYearText,
+        state.vesselLengthText,
+        state.vesselCabinsText,
+    ).any { it.isNotBlank() }
+    var showOptionalDetails by rememberSaveable(hasOptionalDetails) { mutableStateOf(hasOptionalDetails) }
+
     WizardSectionLabel(stringResource(R.string.cruise_field_vessel))
     OutlinedTextField(
         value = state.vessel,
@@ -515,9 +530,12 @@ internal fun WizardVesselStep(state: CruiseWizardState) {
     )
     WizardFieldError(CruiseWizardError.VesselNameTooShort, state, R.string.cruise_error_vessel)
 
-    Spacer(Modifier.size(16.dp))
+    Spacer(Modifier.size(12.dp))
     WizardSectionLabel(stringResource(R.string.cruise_field_vessel_type))
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
         VesselType.entries.forEach { type ->
             FilterChip(
                 selected = state.vesselType == type,
@@ -528,57 +546,79 @@ internal fun WizardVesselStep(state: CruiseWizardState) {
     }
     WizardFieldError(CruiseWizardError.VesselTypeRequired, state, R.string.cruise_error_vessel_type)
 
-    Spacer(Modifier.size(16.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        OutlinedTextField(
-            value = state.vesselBrand,
-            onValueChange = state::updateVesselBrand,
-            modifier = Modifier.weight(1f),
-            label = { Text(stringResource(R.string.cruise_field_vessel_brand)) },
-            singleLine = true,
+    Spacer(Modifier.size(8.dp))
+    TextButton(
+        onClick = { showOptionalDetails = !showOptionalDetails },
+    ) {
+        Text(
+            stringResource(
+                if (showOptionalDetails) {
+                    R.string.cruise_vessel_details_hide
+                } else {
+                    R.string.cruise_vessel_details_show
+                },
+            ),
         )
-        OutlinedTextField(
-            value = state.vesselModel,
-            onValueChange = state::updateVesselModel,
-            modifier = Modifier.weight(1f),
-            label = { Text(stringResource(R.string.cruise_field_vessel_model)) },
-            singleLine = true,
-        )
-    }
-    Spacer(Modifier.size(12.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        OutlinedTextField(
-            value = state.vesselYearText,
-            onValueChange = state::updateVesselYear,
-            modifier = Modifier.weight(1f),
-            label = { Text(stringResource(R.string.cruise_field_vessel_year)) },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            singleLine = true,
-        )
-        OutlinedTextField(
-            value = state.vesselLengthText,
-            onValueChange = state::updateVesselLength,
-            modifier = Modifier.weight(1f),
-            label = { Text(stringResource(R.string.cruise_field_vessel_length)) },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            singleLine = true,
-        )
-        OutlinedTextField(
-            value = state.vesselCabinsText,
-            onValueChange = state::updateVesselCabins,
-            modifier = Modifier.weight(1f),
-            label = { Text(stringResource(R.string.cruise_field_vessel_cabins)) },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            singleLine = true,
+        Icon(
+            imageVector = if (showOptionalDetails) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
         )
     }
 
-    Spacer(Modifier.size(16.dp))
+    AnimatedVisibility(visible = showOptionalDetails) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = state.vesselBrand,
+                    onValueChange = state::updateVesselBrand,
+                    modifier = Modifier.weight(1f),
+                    label = { Text(stringResource(R.string.cruise_field_vessel_brand)) },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = state.vesselModel,
+                    onValueChange = state::updateVesselModel,
+                    modifier = Modifier.weight(1f),
+                    label = { Text(stringResource(R.string.cruise_field_vessel_model)) },
+                    singleLine = true,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = state.vesselYearText,
+                    onValueChange = state::updateVesselYear,
+                    modifier = Modifier.weight(1f),
+                    label = { Text(stringResource(R.string.cruise_field_vessel_year)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = state.vesselLengthText,
+                    onValueChange = state::updateVesselLength,
+                    modifier = Modifier.weight(1f),
+                    label = { Text(stringResource(R.string.cruise_field_vessel_length)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = state.vesselCabinsText,
+                    onValueChange = state::updateVesselCabins,
+                    modifier = Modifier.weight(1f),
+                    label = { Text(stringResource(R.string.cruise_field_vessel_cabins)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                )
+            }
+        }
+    }
+
+    Spacer(Modifier.size(12.dp))
     WizardSectionLabel(stringResource(R.string.cruise_field_required_skills))
     OutlinedTextField(
         value = state.requiredSkills,
         onValueChange = state::updateRequiredSkills,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp),
         placeholder = { Text(stringResource(R.string.cruise_field_required_skills_hint)) },
     )
 }
@@ -589,7 +629,7 @@ internal fun WizardVesselStep(state: CruiseWizardState) {
 
 @Composable
 internal fun WizardCrewStep(state: CruiseWizardState) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
         Column(modifier = Modifier.weight(1f)) {
             WizardSectionLabel(stringResource(R.string.cruise_field_cost))
             OutlinedTextField(
@@ -602,9 +642,12 @@ internal fun WizardCrewStep(state: CruiseWizardState) {
                 singleLine = true,
             )
         }
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
             WizardSectionLabel(stringResource(R.string.cruise_field_currency))
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 CruiseCurrency.entries.forEach { currency ->
                     FilterChip(
                         selected = state.currency == currency,
@@ -617,19 +660,18 @@ internal fun WizardCrewStep(state: CruiseWizardState) {
     }
     WizardFieldError(CruiseWizardError.CostInvalid, state, R.string.cruise_error_cost)
 
-    Spacer(Modifier.size(16.dp))
+    Spacer(Modifier.size(12.dp))
     WizardSectionLabel(stringResource(R.string.cruise_field_max_participants))
-    OutlinedTextField(
-        value = state.maxParticipantsText,
-        onValueChange = state::updateMaxParticipants,
-        modifier = Modifier.fillMaxWidth(),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+    ParticipantStepper(
+        valueText = state.maxParticipantsText,
+        value = state.maxParticipantsValue,
         isError = CruiseWizardError.MaxParticipantsInvalid in state.visibleErrors,
-        singleLine = true,
+        onDecrement = state::decrementMaxParticipants,
+        onIncrement = state::incrementMaxParticipants,
     )
     WizardFieldError(CruiseWizardError.MaxParticipantsInvalid, state, R.string.cruise_error_max_participants)
 
-    Spacer(Modifier.size(16.dp))
+    Spacer(Modifier.size(12.dp))
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f)) {
             Text(stringResource(R.string.cruise_field_private), style = MaterialTheme.typography.bodyLarge)
@@ -642,12 +684,57 @@ internal fun WizardCrewStep(state: CruiseWizardState) {
         Switch(checked = state.isPrivate, onCheckedChange = state::updatePrivate)
     }
 
-    Spacer(Modifier.size(16.dp))
+    Spacer(Modifier.size(12.dp))
     WizardSectionLabel(stringResource(R.string.cruise_field_rules))
     RuleRow(R.string.cruise_rule_smoking, state.smokingAllowed, state::updateSmokingAllowed)
     RuleRow(R.string.cruise_rule_alcohol, state.alcoholAllowed, state::updateAlcoholAllowed)
     RuleRow(R.string.cruise_rule_pets, state.petsAllowed, state::updatePetsAllowed)
     RuleRow(R.string.cruise_rule_children, state.childrenAllowed, state::updateChildrenAllowed)
+}
+
+@Composable
+private fun ParticipantStepper(
+    valueText: String,
+    value: Int?,
+    isError: Boolean,
+    onDecrement: () -> Unit,
+    onIncrement: () -> Unit,
+) {
+    val borderColor = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, borderColor),
+        modifier = Modifier.widthIn(min = 168.dp, max = 220.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            IconButton(
+                onClick = onDecrement,
+                enabled = (value ?: 1) > 1,
+                modifier = Modifier.size(40.dp).testTag("cruise_participants_decrease"),
+            ) {
+                Icon(Icons.Filled.Remove, contentDescription = stringResource(R.string.cruise_participants_decrease))
+            }
+            Text(
+                text = valueText.ifBlank { "—" },
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(
+                onClick = onIncrement,
+                enabled = (value ?: 1) < CRUISE_MAX_PARTICIPANTS_LIMIT,
+                modifier = Modifier.size(40.dp).testTag("cruise_participants_increase"),
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.cruise_participants_increase))
+            }
+        }
+    }
 }
 
 @Composable
@@ -708,7 +795,7 @@ internal fun WizardCruiseMediaStep(state: CruiseWizardState) {
         }
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = stringResource(R.string.cruise_media_subtitle),
             style = MaterialTheme.typography.bodyMedium,
@@ -724,12 +811,12 @@ internal fun WizardCruiseMediaStep(state: CruiseWizardState) {
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("cruise_media_add"),
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         ) {
             Row(
-                modifier = Modifier.padding(18.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
@@ -741,7 +828,7 @@ internal fun WizardCruiseMediaStep(state: CruiseWizardState) {
                         imageVector = Icons.Filled.AddPhotoAlternate,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.padding(10.dp).size(24.dp),
+                        modifier = Modifier.padding(9.dp).size(22.dp),
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
@@ -874,6 +961,9 @@ internal fun WizardSummaryStep(state: CruiseWizardState) {
                 label = stringResource(R.string.cruise_field_vessel),
             )
         }
+        if (state.media.isNotEmpty()) {
+            SummaryMediaPreview(media = state.media)
+        }
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -893,6 +983,71 @@ internal fun WizardSummaryStep(state: CruiseWizardState) {
                         state.uploadedMediaCount,
                     ),
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SummaryMediaPreview(media: List<CruiseWizardMedia>) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.cruise_wizard_step_media),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            maxItemsInEachRow = 3,
+        ) {
+            media.take(6).forEach { item ->
+                SummaryMediaTile(item = item)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SummaryMediaTile(item: CruiseWizardMedia) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.size(86.dp),
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            when {
+                item.failed -> Icon(
+                    imageVector = Icons.Outlined.BrokenImage,
+                    contentDescription = stringResource(R.string.wizard_media_failed),
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+
+                else -> {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(item.publicUrl)
+                            .crossfade(enable = true)
+                            .build(),
+                        contentDescription = item.fileName,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    if (item.isVideo) {
+                        Icon(
+                            imageVector = Icons.Filled.PlayCircle,
+                            contentDescription = stringResource(R.string.post_video_badge),
+                            tint = Color.White.copy(alpha = 0.9f),
+                            modifier = Modifier.align(Alignment.Center).size(32.dp),
+                        )
+                    }
+                }
             }
         }
     }
