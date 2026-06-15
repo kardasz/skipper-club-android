@@ -112,6 +112,8 @@
     <string name="map_check_in_bubble_now">Checked in just now.</string>
     <string name="map_check_in_bubble_recent">Checked in recently.</string>
     <string name="check_in_detail_view_profile">View profile</string>
+    <string name="check_in_detail_write_message">Write a message</string>
+    <string name="check_in_detail_message_failed">Couldn\'t open the conversation. Please try again.</string>
     <plurals name="map_check_in_bubble_minutes">
         <item quantity="one">Checked in a minute ago.</item>
         <item quantity="other">Checked in %1$d minutes ago.</item>

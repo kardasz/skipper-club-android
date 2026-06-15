@@ -91,6 +91,7 @@ import app.skipperclub.ui.main.alert.AlertDetailUiState
 import app.skipperclub.ui.main.alert.AlertFormDialog
 import app.skipperclub.ui.main.alert.AlertPickActions
 import app.skipperclub.ui.main.alert.AlertUiState
+import app.skipperclub.ui.main.messages.ChatConversationScreen
 import app.skipperclub.ui.main.posts.PostDetailScreen
 import app.skipperclub.ui.main.posts.icon
 import app.skipperclub.ui.main.profile.PublicProfileScreen
@@ -202,6 +203,7 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
     var alertDetail by remember { mutableStateOf<AlertDetailUiState?>(null) }
     var checkInDetail by remember { mutableStateOf<CheckInDetailUiState?>(null) }
     var profileUserId by remember { mutableStateOf<String?>(null) }
+    var conversationChatId by remember { mutableStateOf<String?>(null) }
     val currentUserId = SessionStore.session.collectAsState().value?.user?.id
 
     // Spot map items only carry counts; the full phone/radio detail is fetched
@@ -646,7 +648,24 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                     checkInDetail = null
                     profileUserId = userId
                 },
+                onOpenChat = { chatId ->
+                    checkInDetail = null
+                    conversationChatId = chatId
+                },
             )
+        }
+
+        conversationChatId?.let { chatId ->
+            Dialog(
+                onDismissRequest = { conversationChatId = null },
+                properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+            ) {
+                ChatConversationScreen(
+                    chatId = chatId,
+                    currentUserId = currentUserId,
+                    onClose = { conversationChatId = null },
+                )
+            }
         }
 
         profileUserId?.let { userId ->

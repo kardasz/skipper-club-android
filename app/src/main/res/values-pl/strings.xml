@@ -112,6 +112,8 @@
     <string name="map_check_in_bubble_now">Zameldował się przed chwilą.</string>
     <string name="map_check_in_bubble_recent">Zameldował się niedawno.</string>
     <string name="check_in_detail_view_profile">Zobacz profil</string>
+    <string name="check_in_detail_write_message">Napisz wiadomość</string>
+    <string name="check_in_detail_message_failed">Nie udało się otworzyć rozmowy. Spróbuj ponownie.</string>
     <plurals name="map_check_in_bubble_minutes">
         <item quantity="one">Zameldował się minutę temu.</item>
         <item quantity="few">Zameldował się %1$d minuty temu.</item>

@@ -16,12 +16,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,6 +32,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -44,7 +49,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.skipperclub.R
+import app.skipperclub.data.ChatsError
 import app.skipperclub.data.MapUserProjection
+import app.skipperclub.data.SessionStore
+import app.skipperclub.ui.notification.InAppNotificationHost
+import app.skipperclub.ui.notification.InAppNotificationType
+import app.skipperclub.ui.notification.rememberInAppNotificationHostState
 import app.skipperclub.ui.theme.SkipperClubTheme
 import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
@@ -68,19 +78,68 @@ fun CheckInDetailSheet(
     state: CheckInDetailUiState,
     onDismiss: () -> Unit,
     onViewProfile: (String) -> Unit,
+    onOpenChat: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val scope = rememberCoroutineScope()
+    val controller = remember(scope, state.user.id) {
+        CheckInMessageController(
+            scope = scope,
+            userId = state.user.id,
+            accessToken = { SessionStore.validSession()?.accessToken },
+        )
+    }
+    val chatState by controller.state.collectAsState()
+    val notificationHostState = rememberInAppNotificationHostState()
+
+    val errorNetwork = stringResource(R.string.messages_error_network)
+    val errorAuth = stringResource(R.string.messages_error_auth)
+    val errorGeneric = stringResource(R.string.check_in_detail_message_failed)
+
+    LaunchedEffect(controller) {
+        controller.events.collect { event ->
+            when (event) {
+                is CheckInMessageEvent.OpenChat -> onOpenChat(event.chatId)
+
+                CheckInMessageEvent.SessionExpired ->
+                    notificationHostState.show(errorAuth, InAppNotificationType.Error)
+
+                is CheckInMessageEvent.Failed -> notificationHostState.show(
+                    when (event.error) {
+                        is ChatsError.Network -> errorNetwork
+                        is ChatsError.AuthenticationRequired -> errorAuth
+                        else -> errorGeneric
+                    },
+                    InAppNotificationType.Error,
+                )
+            }
+        }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         modifier = modifier,
     ) {
-        CheckInDetailContent(state = state, onViewProfile = onViewProfile)
+        Box(modifier = Modifier.fillMaxWidth()) {
+            CheckInDetailContent(
+                state = state,
+                isOpeningChat = chatState.isOpeningChat,
+                onWriteMessage = { controller.openChat() },
+                onViewProfile = onViewProfile,
+            )
+            InAppNotificationHost(
+                hostState = notificationHostState,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
+        }
     }
 }
 
 @Composable
 internal fun CheckInDetailContent(
     state: CheckInDetailUiState,
+    isOpeningChat: Boolean,
+    onWriteMessage: () -> Unit,
     onViewProfile: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -123,8 +182,35 @@ internal fun CheckInDetailContent(
 
         Spacer(modifier = Modifier.height(20.dp))
         Button(
+            onClick = onWriteMessage,
+            enabled = !isOpeningChat,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("check_in_detail_write_message"),
+        ) {
+            if (isOpeningChat) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Message,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(stringResource(R.string.check_in_detail_write_message))
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedButton(
             onClick = { onViewProfile(state.user.id) },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("check_in_detail_view_profile"),
         ) {
             Icon(
                 imageVector = Icons.Filled.Person,
@@ -246,6 +332,8 @@ private fun CheckInDetailPreviewEn() {
                 locationName = "Marina Kornati",
                 fallbackName = "Krzysztof",
             ),
+            isOpeningChat = false,
+            onWriteMessage = {},
             onViewProfile = {},
         )
     }
@@ -262,6 +350,8 @@ private fun CheckInDetailPreviewPl() {
                 locationName = "Górki Zachodnie",
                 fallbackName = "Anna",
             ),
+            isOpeningChat = false,
+            onWriteMessage = {},
             onViewProfile = {},
         )
     }
@@ -278,6 +368,8 @@ private fun CheckInDetailPreviewDark() {
                 locationName = null,
                 fallbackName = "Krzysztof",
             ),
+            isOpeningChat = true,
+            onWriteMessage = {},
             onViewProfile = {},
         )
     }
