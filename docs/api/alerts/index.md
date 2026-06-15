@@ -66,6 +66,8 @@ API. The role guard is enforced inline by the handlers — there are no separate
 
 - The stored `content` and `language` are returned as-is. There are no
   per-alert translations.
+- The `attributes` object is returned as-is and is never localized. See
+  [Author attribute (`attributes.user`)](#author-attribute-attributesuser).
 
 ### Read requests (`GET /v1/map/items`)
 
@@ -111,6 +113,85 @@ Within a single response, two coordinate conventions coexist intentionally:
 Clients **must** read each field according to its own convention — do not
 swap `lat` and `lng` defensively.
 
+## Author Attribute (`attributes.user`)
+
+Every alert response carries an `attributes` object that exposes
+source-derived, ready-to-render metadata. Today it holds a single optional
+key, `user`, so clients can draw the author of a user-filed alert without a
+second request to `/v1/users/{id}`.
+
+- The `attributes` object is **always present** on every alert read
+  (`GET /v1/alerts`, `GET /v1/alerts/{alertId}`), on the create/replace
+  responses (`POST` / `PUT`), and on each `navigation_alert` map item
+  (`GET /v1/map/items`).
+- When `source = 'user'`, `attributes.user` is the author projection:
+
+  | Field       | Type             | Notes                                          |
+  | ----------- | ---------------- | ---------------------------------------------- |
+  | `id`        | `uuid`           | The author's user id (equals `sourceId`).      |
+  | `name`      | `string`         | The author's display name.                     |
+  | `avatarUrl` | `string \| null` | Absolute avatar URL, or `null` when no avatar. |
+
+- When `source` is anything other than `user` (e.g. `hhi_rnw` official
+  imports), the `user` key is **omitted entirely** — `attributes` is simply
+  `{}`. Official-source attribution continues to live under
+  `sourceAttributes`, not `attributes.user`.
+- If a user-owned alert's author can no longer be resolved (e.g. the account
+  was hard-deleted) the `user` key is likewise omitted rather than returned
+  with empty fields.
+
+Example `attributes` for a user-filed alert:
+
+```json
+{
+  "user": {
+    "id": "019dfd19-ddd8-7d23-a1f4-06b96c16a36e",
+    "name": "Jan K.",
+    "avatarUrl": "https://cdn.example/avatars/abc.jpg"
+  }
+}
+```
+
+## Validity Window
+
+Every alert carries an optional validity window expressed by two
+nullable `timestamptz` columns, surfaced as ISO8601 `validFrom` /
+`validTo` on every read:
+
+- Both fields are **optional** on `POST` and `PUT`.
+- When `validFrom` is omitted, the server stamps the **current time**.
+- When `validTo` is omitted, the server derives it from `validFrom`
+  plus a **hard-coded per-category duration** (no environment
+  configuration). The first matching rule wins:
+
+  | Category                                                     | Default duration |
+  | ------------------------------------------------------------ | ---------------- |
+  | `weather`                                                    | 24 hours         |
+  | `navtex`, `regatta`, `diving`, `military_exercise`           | 7 days           |
+  | `navigation_warning`, `notice_to_mariners`, `works`, `other` | 30 days          |
+  | `obstruction`                                                | 90 days          |
+
+  Durations live in
+  `src/modules/alerts/services/alert-validity.service.ts`
+  (`ALERT_VALIDITY_DURATION_MS`).
+
+- `PUT` is a full replacement: the window is **recomputed** from the
+  request (applying the same defaulting), not inherited from the stored
+  row.
+- For official imports the worker seeds the window from the source data
+  when present — the warning's publish date becomes `validFrom` and its
+  expiry date becomes `validTo`. Missing source values fall back to the
+  same defaulting rules above.
+
+The window drives two read paths:
+
+- `GET /v1/alerts` accepts optional `validFrom` / `validTo` **overlap**
+  filters (see [Query Conventions](#query-conventions)).
+- `GET /v1/map/items` shows **only alerts that are valid right now**
+  (`valid_from <= now()` and `valid_to >= now()`); a `null` bound counts
+  as open-ended. Expired or not-yet-started alerts are hidden from the map
+  but remain retrievable through `GET /v1/alerts`.
+
 ## Viewport Filtering
 
 `GET /v1/alerts` accepts an optional viewport filter via the `north`,
@@ -134,6 +215,16 @@ swap `lat` and `lng` defensively.
   form, matching the established `/posts` convention:
   - `?category=weather&category=obstruction`
   - Comma-separated values are **not** supported.
+- **Validity-window overlap filters.** `validFrom` and `validTo` (both
+  optional ISO8601) filter by **overlap**: a row is returned when its
+  stored `[validFrom, validTo]` window overlaps the requested
+  `[validFrom, validTo]` window.
+  - `?validFrom=2026-06-01T00:00:00Z` keeps alerts whose
+    `valid_to >= 2026-06-01` (i.e. not already ended).
+  - `?validTo=2026-06-30T00:00:00Z` keeps alerts whose
+    `valid_from <= 2026-06-30` (i.e. already started).
+  - Supplying both returns alerts active at any point inside that window.
+  - A `null` stored bound is treated as open-ended on that side.
 - **Offset pagination.** Like the rest of the API, `/v1/alerts` is offset-
   paged. Response shape:
 
@@ -185,11 +276,20 @@ Successful response (`201 Created`):
   "source": "user",
   "sourceId": "019dfd19-ddd8-7d23-a1f4-06b96c16a36e",
   "sourceAttributes": null,
+  "attributes": {
+    "user": {
+      "id": "019dfd19-ddd8-7d23-a1f4-06b96c16a36e",
+      "name": "Jan K.",
+      "avatarUrl": "https://cdn.example/avatars/abc.jpg"
+    }
+  },
   "geometry": {
     "type": "Point",
     "coordinates": [15.12, 44.71]
   },
   "anchor": { "lat": 44.71, "lng": 15.12 },
+  "validFrom": "2030-01-01T12:00:00Z",
+  "validTo": "2030-01-02T12:00:00Z",
   "createdAt": "2030-01-01T12:00:00Z",
   "updatedAt": "2030-01-01T12:00:00Z"
 }
@@ -232,7 +332,17 @@ without an explicit `types` parameter — `navigation_alert` is in the default
 set), the response includes alert map items shaped like every other map
 entry: `kind`, `type=navigation_alert`, `id`, `name`, `coordinates`,
 `geometry`, and an `attributes` object containing `category`, `content`,
-`language`, `source`, nullable `sourceId`, and nullable `sourceAttributes`.
+`language`, `source`, nullable `sourceId`, nullable `sourceAttributes`, and —
+for `source='user'` alerts only — the author projection `user`
+(`{ id, name, avatarUrl }`). See
+[Author attribute (`attributes.user`)](#author-attribute-attributesuser).
+
+Only alerts that are **valid at request time** appear on the map
+(`valid_from <= now()` and `valid_to >= now()`, treating a null bound as
+open-ended). Expired or not-yet-started alerts are excluded from
+`/v1/map/items` but stay retrievable through `GET /v1/alerts`. This is in
+addition to the existing `deletedAt IS NULL`, `geometry IS NOT NULL`, and
+`anchor IS NOT NULL` requirements.
 
 See [Map](../map/index.md) for clustering, density, detail levels, and the
 default-types change announcement.
@@ -496,7 +606,9 @@ that hasn't changed never runs the worker twice.
 `(source = 'hhi_rnw', source_id = null)` and store public attribution in
 `alerts.source_attributes` (JSONB). `alerts.severity` no longer exists.
 The geometry constraint on `alerts` accepts `POINT`, `MULTIPOINT`,
-`POLYGON`, and `MULTIPOLYGON`.
+`POLYGON`, and `MULTIPOLYGON`. `alerts.valid_from` and `alerts.valid_to`
+are nullable `timestamptz` columns holding the
+[validity window](#validity-window).
 
 #### `alert_source_runs`
 
@@ -618,11 +730,14 @@ projection is `null`.
     "externalUpdatedAt": "2026-06-07T18:09:21Z",
     "externalExpiresAt": null
   },
+  "attributes": {},
   "geometry": {
     "type": "Point",
     "coordinates": [14.81805, 44.40607]
   },
   "anchor": { "lat": 44.40607, "lng": 14.81805 },
+  "validFrom": "2026-06-07T10:21:49Z",
+  "validTo": "2026-07-07T10:21:49Z",
   "createdAt": "2026-06-07T17:00:00Z",
   "updatedAt": "2026-06-07T17:00:00Z"
 }

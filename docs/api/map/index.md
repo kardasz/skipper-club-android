@@ -75,7 +75,7 @@ The endpoint reuses the visibility predicates already enforced by `GET /posts`, 
 - **Posts** — only `published`, not effectively expired, not deleted, with non-null `coordinates`. The current user's own archived/expired posts are **not** included in the map layer.
 - **Spots** — only spots without a `deletedAt` value.
 - **Check-ins** — only members of the freshness window (`CHECK_IN_FRESHNESS_TTL_HOURS`, default 24 hours). One per user.
-- **Navigation alerts** — only alerts where `deletedAt IS NULL`, `geometry IS NOT NULL`, and `anchor IS NOT NULL`. Bounds-mode requests match alerts whose `geometry` intersects the viewport; radius-mode requests match alerts whose `anchor` lies within `distance` of the request center. Alerts have no validity window — they remain visible until deleted.
+- **Navigation alerts** — only alerts where `deletedAt IS NULL`, `geometry IS NOT NULL`, `anchor IS NOT NULL`, and that are **valid at request time** (`valid_from <= now()` and `valid_to >= now()`, treating a null bound as open-ended). Bounds-mode requests match alerts whose `geometry` intersects the viewport; radius-mode requests match alerts whose `anchor` lies within `distance` of the request center. Expired or not-yet-started alerts are hidden from the map but remain retrievable through `GET /alerts` (which exposes `validFrom` / `validTo` overlap filters).
 
 The freshness window is exposed in `meta.checkInFreshnessHours` so clients can display the correct disclaimer.
 
@@ -208,9 +208,19 @@ For polygon items, `coordinates` (on the parent item) is a representative anchor
   "language": "en",
   "source": "user",
   "sourceId": "019dfd19-ddd8-7d23-a1f4-06b96c16a36e",
-  "sourceAttributes": null
+  "sourceAttributes": null,
+  "user": {
+    "id": "019dfd19-ddd8-7d23-a1f4-06b96c16a36e",
+    "name": "Jan K.",
+    "avatarUrl": "https://cdn.example/avatars/abc.jpg"
+  }
 }
 ```
+
+The `user` author projection (`{ id, name, avatarUrl }`) is present **only**
+for `source='user'` alerts so clients can render the author without a second
+lookup. It is omitted entirely for official imports. See
+[Navigation Alerts → Author attribute](../alerts/index.md#author-attribute-attributesuser).
 
 **Navigation alert (official import, `source = 'hhi_rnw'`)**
 
@@ -365,7 +375,12 @@ An alert map item looks like this:
     "language": "en",
     "source": "user",
     "sourceId": "019dfd19-ddd8-7d23-a1f4-06b96c16a36e",
-    "sourceAttributes": null
+    "sourceAttributes": null,
+    "user": {
+      "id": "019dfd19-ddd8-7d23-a1f4-06b96c16a36e",
+      "name": "Jan K.",
+      "avatarUrl": "https://cdn.example/avatars/abc.jpg"
+    }
   }
 }
 ```

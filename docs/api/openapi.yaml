@@ -4641,6 +4641,11 @@ paths:
         `category` accepts the repeated-parameter form
         (e.g. `?category=weather&category=obstruction`). Comma-separated
         values are not supported.
+
+        `validFrom` / `validTo` filter by validity-window **overlap**: a
+        row is returned when its `[validFrom, validTo]` window overlaps the
+        requested `[validFrom, validTo]` window. Each bound is optional and
+        a `null` stored bound is treated as open-ended.
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
         - in: query
@@ -4663,6 +4668,22 @@ paths:
           style: form
           explode: true
           description: Repeatable. Filter by one or more categories.
+        - in: query
+          name: validFrom
+          schema: { type: string, format: date-time }
+          description: |
+            Lower bound of the validity window of interest. Keeps only
+            alerts whose window has not ended before this instant
+            (`valid_to >= validFrom`, treating a null `valid_to` as
+            open-ended).
+        - in: query
+          name: validTo
+          schema: { type: string, format: date-time }
+          description: |
+            Upper bound of the validity window of interest. Keeps only
+            alerts whose window has already started by this instant
+            (`valid_from <= validTo`, treating a null `valid_from` as
+            open-ended).
         - in: query
           name: limit
           schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
@@ -4869,9 +4890,11 @@ paths:
         - **Check-ins** — only freshness-window members (`CHECK_IN_FRESHNESS_TTL_HOURS`,
           default 24 h); one per user.
         - **Navigation alerts** — only alerts where `deletedAt IS NULL`,
-          `geometry IS NOT NULL`, and `anchor IS NOT NULL`. Bounds mode matches
-          alerts whose `geometry` intersects the viewport; radius mode uses
-          `anchor` with `ST_DWithin`.
+          `geometry IS NOT NULL`, `anchor IS NOT NULL`, and that are valid at
+          request time (`valid_from <= now()` and `valid_to >= now()`, treating
+          a null bound as open-ended). Bounds mode matches alerts whose
+          `geometry` intersects the viewport; radius mode uses `anchor` with
+          `ST_DWithin`.
 
         ### Clustering
 
@@ -5004,7 +5027,13 @@ paths:
                         geometry: { type: Point, coordinates: [18.56, 54.44] }
                         count: 24
                         types: { post: 12, spot: 8, check_in: 4 }
-                        bounds: { north: 54.49, south: 54.39, east: 18.63, west: 18.5 }
+                        bounds:
+                          {
+                            north: 54.49,
+                            south: 54.39,
+                            east: 18.63,
+                            west: 18.5,
+                          }
                     meta:
                       mode: bounds
                       detail: auto
@@ -5026,7 +5055,12 @@ paths:
                         geometry: { type: Point, coordinates: [18.567, 54.441] }
                         distanceMeters: 870
                         attributes:
-                          user: { id: 019dfd19-aaaa-7d23-a1f4-06b96c16a36d, displayName: Jan K., avatarUrl: null }
+                          user:
+                            {
+                              id: 019dfd19-aaaa-7d23-a1f4-06b96c16a36d,
+                              displayName: Jan K.,
+                              avatarUrl: null,
+                            }
                           checkedInAt: '2030-06-06T12:00:00Z'
                           locationName: Sopot Pier
                     meta:
@@ -5049,7 +5083,13 @@ paths:
                         geometry: { type: Point, coordinates: [18.56, 54.44] }
                         count: 12
                         types: { spot: 12 }
-                        bounds: { north: 54.49, south: 54.39, east: 18.63, west: 18.5 }
+                        bounds:
+                          {
+                            north: 54.49,
+                            south: 54.39,
+                            east: 18.63,
+                            west: 18.5,
+                          }
                     meta:
                       mode: bounds
                       detail: summary
@@ -7009,7 +7049,18 @@ components:
 
     RadioChannelResponse:
       type: object
-      required: [id, name, channelKind, vhfChannel, frequencyMhz, channelNormalized, isPrimary, createdAt, updatedAt]
+      required:
+        [
+          id,
+          name,
+          channelKind,
+          vhfChannel,
+          frequencyMhz,
+          channelNormalized,
+          isPrimary,
+          createdAt,
+          updatedAt,
+        ]
       properties:
         id:
           type: string
@@ -7036,7 +7087,16 @@ components:
 
     SpotResponse:
       type: object
-      required: [id, name, coordinates, phoneContacts, radioChannels, createdAt, updatedAt]
+      required:
+        [
+          id,
+          name,
+          coordinates,
+          phoneContacts,
+          radioChannels,
+          createdAt,
+          updatedAt,
+        ]
       properties:
         id:
           type: string
@@ -7383,7 +7443,21 @@ components:
 
     SpotChangeRequestResponse:
       type: object
-      required: [id, type, status, comment, payload, requestedByUserId, reviewedByUserId, reviewedAt, rejectionReason, cancelledAt, createdAt, updatedAt]
+      required:
+        [
+          id,
+          type,
+          status,
+          comment,
+          payload,
+          requestedByUserId,
+          reviewedByUserId,
+          reviewedAt,
+          rejectionReason,
+          cancelledAt,
+          createdAt,
+          updatedAt,
+        ]
       properties:
         id:
           type: string
@@ -9438,7 +9512,17 @@ components:
 
     MapPostAttributes:
       type: object
-      required: [postType, status, regionCode, author, createdAt, mediaPreview, commentsCount, bookmarked]
+      required:
+        [
+          postType,
+          status,
+          regionCode,
+          author,
+          createdAt,
+          mediaPreview,
+          commentsCount,
+          bookmarked,
+        ]
       properties:
         postType: { $ref: '#/components/schemas/PostType' }
         status: { type: string }
@@ -9455,7 +9539,13 @@ components:
 
     MapSpotAttributes:
       type: object
-      required: [hasPhoneContacts, hasRadioChannels, phoneContactsCount, radioChannelsCount]
+      required:
+        [
+          hasPhoneContacts,
+          hasRadioChannels,
+          phoneContactsCount,
+          radioChannelsCount,
+        ]
       properties:
         hasPhoneContacts: { type: boolean }
         hasRadioChannels: { type: boolean }
@@ -9644,6 +9734,27 @@ components:
         lat: { type: number, minimum: -90, maximum: 90 }
         lng: { type: number, minimum: -180, maximum: 180 }
 
+    AlertUserAttribute:
+      type: object
+      required: [id, name, avatarUrl]
+      description: |
+        Author projection for `source='user'` alerts so clients can render
+        the author (avatar + name) without a second lookup.
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        avatarUrl:
+          type: [string, 'null']
+
+    AlertAttributes:
+      type: object
+      description: |
+        Source-derived attributes attached to every alert. The object is
+        always present. The `user` author projection appears only for
+        `source='user'` alerts and is omitted entirely for any other source.
+      properties:
+        user: { $ref: '#/components/schemas/AlertUserAttribute' }
+
     AlertResponse:
       type: object
       required:
@@ -9654,8 +9765,11 @@ components:
         - source
         - sourceId
         - sourceAttributes
+        - attributes
         - geometry
         - anchor
+        - validFrom
+        - validTo
         - createdAt
         - updatedAt
       properties:
@@ -9679,6 +9793,13 @@ components:
           description: |
             Source-specific public attribution for non-user sources.
             `null` for `source='user'`.
+        attributes:
+          allOf:
+            - $ref: '#/components/schemas/AlertAttributes'
+          description: |
+            Source-derived attributes. Always present. Carries the author
+            projection under `user` for `source='user'` alerts; the `user`
+            key is omitted for any other source.
         geometry:
           oneOf:
             - $ref: '#/components/schemas/AlertGeometry'
@@ -9695,6 +9816,25 @@ components:
             `geometry` is present; always `null` when `geometry` is `null`.
             Note the deliberate format duality between `geometry`
             (`[lng, lat]` array) and `anchor` (`{ lat, lng }` object).
+        validFrom:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+          description: |
+            Start of the alert's validity window. Always present on
+            read: when the client omits it on write the server stamps
+            the current time.
+        validTo:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+          description: |
+            End of the alert's validity window. Always present on read:
+            when the client omits it on write the server derives it from
+            `validFrom` plus a hard-coded per-category duration (e.g.
+            `weather` 24h, `navigation_warning` 30d, `obstruction` 90d).
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
@@ -9708,6 +9848,18 @@ components:
           oneOf:
             - $ref: '#/components/schemas/AlertGeometry'
             - type: 'null'
+        validFrom:
+          type: string
+          format: date-time
+          description: |
+            Optional start of the validity window. Defaults to the
+            current time when omitted.
+        validTo:
+          type: string
+          format: date-time
+          description: |
+            Optional end of the validity window. Defaults to `validFrom`
+            plus a per-category duration when omitted.
 
     UpdateAlertRequest:
       type: object
@@ -9719,6 +9871,18 @@ components:
           oneOf:
             - $ref: '#/components/schemas/AlertGeometry'
             - type: 'null'
+        validFrom:
+          type: string
+          format: date-time
+          description: |
+            Optional start of the validity window. Defaults to the
+            current time when omitted (PUT is a full replacement).
+        validTo:
+          type: string
+          format: date-time
+          description: |
+            Optional end of the validity window. Defaults to `validFrom`
+            plus a per-category duration when omitted.
 
     AlertsListResponse:
       type: object
@@ -9754,6 +9918,12 @@ components:
           oneOf:
             - $ref: '#/components/schemas/AlertSourceAttributes'
             - type: 'null'
+        user:
+          allOf:
+            - $ref: '#/components/schemas/AlertUserAttribute'
+          description: |
+            Author projection for `source='user'` alerts. Omitted entirely
+            for any other source.
 
     MapItem:
       type: object
@@ -9827,7 +9997,17 @@ components:
 
     MapItemsMeta:
       type: object
-      required: [mode, detail, totalItems, returnedItems, topLevelEntries, hasMoreDetail, checkInFreshnessHours, appliedLimit]
+      required:
+        [
+          mode,
+          detail,
+          totalItems,
+          returnedItems,
+          topLevelEntries,
+          hasMoreDetail,
+          checkInFreshnessHours,
+          appliedLimit,
+        ]
       properties:
         mode:
           type: string
