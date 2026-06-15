@@ -27,13 +27,23 @@ val localProperties = Properties().apply {
 val googleMapsApiKey = providers.gradleProperty("GOOGLE_MAPS_API_KEY")
     .orElse(providers.environmentVariable("GOOGLE_MAPS_API_KEY"))
     .orElse(localProperties.getProperty("GOOGLE_MAPS_API_KEY") ?: "")
+// Version is sourced from `app/version.properties` (checked into git so bumps are
+// tracked). `-PVERSION_CODE` / `-PVERSION_NAME` (or the matching env vars) override
+// at invocation time; `make bundle-release` auto-bumps versionCode in the file when
+// neither is set.
+val versionPropertiesFile = rootProject.file("app/version.properties")
+val versionProperties = Properties().apply {
+    if (versionPropertiesFile.exists()) {
+        versionPropertiesFile.inputStream().use { load(it) }
+    }
+}
 val appVersionCode = providers.gradleProperty("VERSION_CODE")
     .orElse(providers.environmentVariable("VERSION_CODE"))
+    .orElse(versionProperties.getProperty("versionCode") ?: "2")
     .map(String::toInt)
-    .orElse(2)
 val appVersionName = providers.gradleProperty("VERSION_NAME")
     .orElse(providers.environmentVariable("VERSION_NAME"))
-    .orElse("0.2.0")
+    .orElse(versionProperties.getProperty("versionName") ?: "0.2.0")
 
 android {
     namespace = "app.skipperclub"
