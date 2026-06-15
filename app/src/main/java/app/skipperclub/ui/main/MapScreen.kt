@@ -17,9 +17,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -184,6 +186,9 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
         )
     }
 
+    val weatherController = remember(scope) { MapWeatherController(scope) }
+    val weatherState = weatherController.state.collectAsState().value
+
     var checkInState by remember { mutableStateOf<CheckInUiState>(CheckInUiState.Idle) }
     var alertState by remember { mutableStateOf<AlertUiState>(AlertUiState.Idle) }
     var menuExpanded by remember { mutableStateOf(false) }
@@ -258,6 +263,21 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                 } catch (_: Exception) {
                     notificationHostState.show(mapItemsGenericErrorMessage, InAppNotificationType.Error)
                 }
+            }
+    }
+
+    // Refresh the weather bar with the centre of the visible area each time the
+    // camera settles. Open-Meteo is key-less, so this needs no session token and
+    // runs independently of the map-items fetch above.
+    LaunchedEffect(isMapLoaded) {
+        if (!isMapLoaded) return@LaunchedEffect
+        snapshotFlow { cameraPositionState.isMoving }
+            .distinctUntilChanged()
+            .collectLatest { moving ->
+                if (moving) return@collectLatest
+                delay(300)
+                val target = cameraPositionState.position.target
+                weatherController.onViewportCenter(target.latitude, target.longitude)
             }
     }
 
@@ -641,6 +661,15 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                 )
             }
         }
+
+        MapWeatherBar(
+            state = weatherState,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .fillMaxWidth(),
+        )
 
         InAppNotificationHost(
             hostState = notificationHostState,

@@ -950,4 +950,26 @@
     <string name="review_error_already_reviewed">Już oceniłeś tę osobę dla tego rejsu.</string>
     <string name="review_error_cannot_self">Nie możesz ocenić samego siebie.</string>
     <string name="review_error_generic">Coś poszło nie tak. Spróbuj ponownie.</string>
+
+    <!-- Pasek pogody na mapie (Open-Meteo) -->
+    <string name="weather_bar_title">Pogoda na akwenie</string>
+    <string name="weather_loading">Sprawdzam pogodę&#8230;</string>
+    <string name="weather_wind_value">%1$d kn %2$s</string>
+    <string name="weather_wave_value">Fale %1$s m</string>
+    <string name="weather_today">Dziś %1$d°</string>
+    <string name="weather_tomorrow">Jutro %1$d°</string>
+    <string name="weather_icon_content_description">Aktualna pogoda</string>
+    <string name="weather_wind_content_description">Wiatr</string>
+    <string name="weather_wave_content_description">Wysokość fali</string>
+    <string name="weather_condition_clear">Słonecznie</string>
+    <string name="weather_condition_mainly_clear">Przeważnie słonecznie</string>
+    <string name="weather_condition_partly_cloudy">Częściowe zachmurzenie</string>
+    <string name="weather_condition_overcast">Zachmurzenie całkowite</string>
+    <string name="weather_condition_fog">Mgła</string>
+    <string name="weather_condition_drizzle">Mżawka</string>
+    <string name="weather_condition_rain">Deszcz</string>
+    <string name="weather_condition_snow">Śnieg</string>
+    <string name="weather_condition_showers">Przelotne opady</string>
+    <string name="weather_condition_thunderstorm">Burza</string>
+    <string name="weather_condition_unknown">Pogoda</string>
 </resources>
