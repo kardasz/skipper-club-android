@@ -168,6 +168,15 @@
     <string name="alert_category_weather">Ostrzeżenie pogodowe</string>
     <string name="alert_category_other">Ostrzeżenie</string>
 
+    <!-- Szczegóły miejsca na mapie -->
+    <string name="spot_marker_content_description">Miejsce: %1$s. Dotknij, aby zobaczyć szczegóły.</string>
+    <string name="spot_detail_contacts_title">Kontakty telefoniczne</string>
+    <string name="spot_detail_channels_title">Kanały radiowe</string>
+    <string name="spot_detail_call">Zadzwoń %1$s</string>
+    <string name="spot_detail_empty">Brak danych kontaktowych.</string>
+    <string name="spot_detail_error">Nie udało się wczytać szczegółów miejsca.</string>
+    <string name="spot_detail_retry">Ponów</string>
+
     <string name="menu_my_profile">Mój profil</string>
     <string name="menu_saved">Zapisane</string>
     <string name="menu_settings">Ustawienia</string>

@@ -162,6 +162,15 @@
     <string name="alert_category_weather">Weather alert</string>
     <string name="alert_category_other">Alert</string>
 
+    <!-- Spot map detail -->
+    <string name="spot_marker_content_description">Spot: %1$s. Tap for details.</string>
+    <string name="spot_detail_contacts_title">Phone contacts</string>
+    <string name="spot_detail_channels_title">Radio channels</string>
+    <string name="spot_detail_call">Call %1$s</string>
+    <string name="spot_detail_empty">No contact details yet.</string>
+    <string name="spot_detail_error">Couldn\'t load spot details.</string>
+    <string name="spot_detail_retry">Retry</string>
+
     <string name="menu_my_profile">My profile</string>
     <string name="menu_saved">Saved</string>
     <string name="menu_settings">Settings</string>

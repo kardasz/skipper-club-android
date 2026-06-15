@@ -46,6 +46,19 @@ data class MapCoordinates(
 )
 
 sealed interface MapEntryAttributes {
+    /**
+     * Lightweight metadata for a `spot` map item (see openapi `MapSpotAttributes`).
+     * The map endpoint only reports counts/availability — the full phone contacts
+     * and radio channels are fetched lazily via `GET /v1/spots/{id}` when the user
+     * opens the spot detail sheet.
+     */
+    data class Spot(
+        val hasPhoneContacts: Boolean,
+        val hasRadioChannels: Boolean,
+        val phoneContactsCount: Int,
+        val radioChannelsCount: Int,
+    ) : MapEntryAttributes
+
     data class CheckIn(
         val user: MapUserProjection,
         val checkedInAt: String,
@@ -139,6 +152,22 @@ internal data class MapItemsMetaDto(
 }
 
 @Serializable
+private data class MapSpotAttributesDto(
+    val hasPhoneContacts: Boolean = false,
+    val hasRadioChannels: Boolean = false,
+    val phoneContactsCount: Int = 0,
+    val radioChannelsCount: Int = 0,
+) {
+    fun toDomain(): MapEntryAttributes.Spot =
+        MapEntryAttributes.Spot(
+            hasPhoneContacts = hasPhoneContacts,
+            hasRadioChannels = hasRadioChannels,
+            phoneContactsCount = phoneContactsCount,
+            radioChannelsCount = radioChannelsCount,
+        )
+}
+
+@Serializable
 private data class MapCheckInAttributesDto(
     val user: MapUserProjectionDto,
     val checkedInAt: String,
@@ -212,6 +241,10 @@ private fun MapEntryType.toDomainAttributes(attributes: JsonObject?): MapEntryAt
     if (attributes == null) return null
     return try {
         when (this) {
+            MapEntryType.Spot -> mapAttributesJson
+                .decodeFromJsonElement<MapSpotAttributesDto>(attributes)
+                .toDomain()
+
             MapEntryType.CheckIn -> mapAttributesJson
                 .decodeFromJsonElement<MapCheckInAttributesDto>(attributes)
                 .toDomain()
@@ -220,9 +253,7 @@ private fun MapEntryType.toDomainAttributes(attributes: JsonObject?): MapEntryAt
                 .decodeFromJsonElement<MapAlertAttributesDto>(attributes)
                 .toDomain()
 
-            MapEntryType.Post,
-            MapEntryType.Spot,
-            -> null
+            MapEntryType.Post -> null
         }
     } catch (_: SerializationException) {
         null

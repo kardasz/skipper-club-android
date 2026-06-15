@@ -41,6 +41,17 @@ class SpotsApiTest {
     }
 
     @Test
+    fun getRequestTargetsSpotPathWithHeaders() {
+        val request = SpotsApi.getRequest("access-token", "spot-1")
+
+        assertEquals("GET", request.method)
+        assertEquals("/v1/spots/spot-1", request.url.encodedPath)
+        assertNull(request.body)
+        assertEquals("Bearer access-token", request.header("Authorization"))
+        assertEquals(Locale.getDefault().toLanguageTag(), request.header("Accept-Language"))
+    }
+
+    @Test
     fun createRequestPostsSpotBody() {
         val request = SpotsApi.createRequest(
             "token",

@@ -94,6 +94,42 @@ class MapItemsApiTest {
     }
 
     @Test
+    fun decodeResponseMapsSpotAttributes() {
+        val decoded = MapItemsApi.decodeResponse(
+            """
+                {
+                  "data": [
+                    {
+                      "kind": "item",
+                      "type": "spot",
+                      "id": "019dfd19-ddd8-7d23-a1f4-06b96c16a36d",
+                      "name": "Sopot Marina",
+                      "coordinates": { "lat": 54.441, "lng": 18.567 },
+                      "geometry": { "type": "Point", "coordinates": [18.567, 54.441] },
+                      "attributes": {
+                        "hasPhoneContacts": true,
+                        "hasRadioChannels": false,
+                        "phoneContactsCount": 2,
+                        "radioChannelsCount": 0
+                      }
+                    }
+                  ],
+                  "meta": { "hasMoreDetail": false }
+                }
+            """.trimIndent(),
+        )
+
+        val entry = decoded.entries.single()
+        val attributes = entry.attributes as MapEntryAttributes.Spot
+        assertEquals(MapEntryType.Spot, entry.type)
+        assertEquals("Sopot Marina", entry.name)
+        assertTrue(attributes.hasPhoneContacts)
+        assertEquals(2, attributes.phoneContactsCount)
+        assertEquals(false, attributes.hasRadioChannels)
+        assertEquals(0, attributes.radioChannelsCount)
+    }
+
+    @Test
     fun decodeResponseMapsCheckInAttributes() {
         val decoded = MapItemsApi.decodeResponse(
             """

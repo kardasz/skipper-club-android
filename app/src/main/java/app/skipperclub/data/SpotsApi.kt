@@ -53,6 +53,15 @@ object SpotsApi {
     suspend fun list(accessToken: String, query: SpotListQuery): SpotsPage =
         executeAndDecode<SpotsListDto, SpotsPage>(listRequest(accessToken, query)) { it.toDomain() }
 
+    internal fun getRequest(accessToken: String, spotId: String): Request =
+        baseRequest(accessToken)
+            .url(spotsUrl().newBuilder().addPathSegment(spotId).build())
+            .get()
+            .build()
+
+    suspend fun get(accessToken: String, spotId: String): Spot =
+        executeAndDecode<SpotDto, Spot>(getRequest(accessToken, spotId)) { it.toDomain() }
+
     internal fun createRequest(accessToken: String, body: CreateSpotRequest): Request =
         baseRequest(accessToken)
             .url(spotsUrl())

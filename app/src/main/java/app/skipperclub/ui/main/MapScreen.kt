@@ -1,6 +1,8 @@
 package app.skipperclub.ui.main
 
+import android.content.Intent
 import android.content.res.Configuration
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -22,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Anchor
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.CircularProgressIndicator
@@ -72,7 +75,9 @@ import app.skipperclub.data.MapItemsApi
 import app.skipperclub.data.MapItemsError
 import app.skipperclub.data.MapUserProjection
 import app.skipperclub.data.MapViewportBounds
+import app.skipperclub.data.PhoneContact
 import app.skipperclub.data.SessionStore
+import app.skipperclub.data.SpotsApi
 import app.skipperclub.ui.main.alert.AlertContentError
 import app.skipperclub.ui.main.alert.AlertFormDialog
 import app.skipperclub.ui.main.alert.AlertPickActions
@@ -82,6 +87,8 @@ import app.skipperclub.ui.main.checkin.CheckInUiState
 import app.skipperclub.ui.main.checkin.fetchCurrentLocation
 import app.skipperclub.ui.main.checkin.LocationLabel
 import app.skipperclub.ui.main.checkin.reverseGeocode
+import app.skipperclub.ui.main.spotdetail.SpotDetailSheet
+import app.skipperclub.ui.main.spotdetail.SpotDetailUiState
 import app.skipperclub.ui.notification.InAppNotificationHost
 import app.skipperclub.ui.notification.InAppNotificationType
 import app.skipperclub.ui.notification.rememberInAppNotificationHostState
@@ -172,6 +179,36 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
     var isMapLoaded by remember { mutableStateOf(false) }
     var mapEntries by remember { mutableStateOf(emptyList<MapEntry>()) }
     var selectedMapEntryKey by remember { mutableStateOf<String?>(null) }
+    var spotDetailState by remember { mutableStateOf<SpotDetailUiState?>(null) }
+
+    // Spot map items only carry counts; the full phone/radio detail is fetched
+    // on demand when the user taps the marker. Guard every assignment on the
+    // currently open spot id so a late response can't reopen a dismissed sheet.
+    val loadSpotDetail: (String, String) -> Unit = { spotId, name ->
+        spotDetailState = SpotDetailUiState.Loading(spotId, name)
+        scope.launch {
+            val token = SessionStore.validSession()?.accessToken
+            if (token.isNullOrBlank()) {
+                if (spotDetailState?.spotId == spotId) {
+                    spotDetailState = SpotDetailUiState.Failed(spotId, name)
+                }
+                notificationHostState.show(mapItemsAuthErrorMessage, InAppNotificationType.Error)
+                return@launch
+            }
+            try {
+                val spot = SpotsApi.get(accessToken = token, spotId = spotId)
+                if (spotDetailState?.spotId == spotId) {
+                    spotDetailState = SpotDetailUiState.Ready(spot)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                if (spotDetailState?.spotId == spotId) {
+                    spotDetailState = SpotDetailUiState.Failed(spotId, name)
+                }
+            }
+        }
+    }
 
     LaunchedEffect(isMapLoaded) {
         if (!isMapLoaded) return@LaunchedEffect
@@ -265,10 +302,15 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                         entry = entry,
                         selected = selectedMapEntryKey == markerKey,
                         onClick = {
-                            selectedMapEntryKey = if (selectedMapEntryKey == markerKey) {
-                                null
+                            if (entry.kind == MapEntryKind.Item && entry.type == MapEntryType.Spot) {
+                                selectedMapEntryKey = null
+                                loadSpotDetail(entry.id, entry.name)
                             } else {
-                                markerKey
+                                selectedMapEntryKey = if (selectedMapEntryKey == markerKey) {
+                                    null
+                                } else {
+                                    markerKey
+                                }
                             }
                         },
                     )
@@ -476,11 +518,32 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
             )
         }
 
+        spotDetailState?.let { detail ->
+            SpotDetailSheet(
+                state = detail,
+                onDismiss = { spotDetailState = null },
+                onCall = { contact -> context.dialPhoneContact(contact) },
+                onRetry = { loadSpotDetail(detail.spotId, detail.name) },
+            )
+        }
+
         InAppNotificationHost(
             hostState = notificationHostState,
             modifier = Modifier.align(Alignment.TopCenter),
         )
     }
+}
+
+/**
+ * Opens the system dialer pre-filled with the contact's number. Uses
+ * [Intent.ACTION_DIAL] (no `CALL_PHONE` permission required) so the user
+ * confirms the call. Best-effort: silently no-ops if no dialer is available.
+ */
+private fun android.content.Context.dialPhoneContact(contact: PhoneContact) {
+    val number = contact.phone.trim().takeIf { it.isNotBlank() } ?: return
+    val intent = Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", number, null))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { startActivity(intent) }
 }
 
 @Composable
@@ -549,6 +612,9 @@ private fun MapEntryMarker(
                 selected = selected,
             )
 
+            entry.type == MapEntryType.Spot && entry.kind == MapEntryKind.Item ->
+                SpotMapMarker(name = entry.name)
+
             else -> MapEntryMarkerLabel(entry = entry)
         }
     }
@@ -586,6 +652,73 @@ private fun MapEntryMarkerLabel(entry: MapEntry) {
                 .clip(CircleShape)
                 .background(containerColor),
         )
+    }
+}
+
+/**
+ * Spot marker: an anchor glyph in a teardrop pin with the spot name as a label
+ * above it. Colour (tertiary) keeps it visually distinct from check-in pins
+ * (primary) and alert pins (error). Tapping opens the spot detail sheet.
+ */
+@Composable
+private fun SpotMapMarker(name: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Surface(
+            shape = MaterialTheme.shapes.small,
+            color = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            tonalElevation = 4.dp,
+            shadowElevation = 4.dp,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            modifier = Modifier.widthIn(max = 164.dp),
+        ) {
+            Text(
+                text = name,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        SpotMarkerPin()
+    }
+}
+
+@Composable
+private fun SpotMarkerPin(modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Box(
+        modifier = modifier
+            .width(40.dp)
+            .height(46.dp),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .offset(y = (-4).dp)
+                .size(13.dp)
+                .rotate(45f)
+                .clip(MaterialTheme.shapes.extraSmall)
+                .background(colors.tertiary),
+        )
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(colors.tertiary)
+                .border(2.dp, colors.surface, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Anchor,
+                contentDescription = null,
+                tint = colors.onTertiary,
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }
 
@@ -1186,6 +1319,48 @@ private fun CheckInMarkerPreviewContent() {
             avatarPainter = null,
             isAvatarLoaded = false,
         )
+    }
+}
+
+@Preview(showBackground = true, locale = "en")
+@Composable
+private fun SpotMapMarkerPreviewEn() {
+    SkipperClubTheme {
+        Box(
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.background)
+                .padding(32.dp),
+        ) {
+            SpotMapMarker(name = "Marina Sopot")
+        }
+    }
+}
+
+@Preview(showBackground = true, locale = "pl")
+@Composable
+private fun SpotMapMarkerPreviewPl() {
+    SkipperClubTheme {
+        Box(
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.background)
+                .padding(32.dp),
+        ) {
+            SpotMapMarker(name = "Przystań Górki Zachodnie")
+        }
+    }
+}
+
+@Preview(showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+private fun SpotMapMarkerPreviewDark() {
+    SkipperClubTheme {
+        Box(
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.background)
+                .padding(32.dp),
+        ) {
+            SpotMapMarker(name = "Marina Sopot")
+        }
     }
 }
 
