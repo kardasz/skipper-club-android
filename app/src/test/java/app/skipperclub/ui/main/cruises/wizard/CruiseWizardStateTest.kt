@@ -91,7 +91,7 @@ class CruiseWizardStateTest {
     }
 
     @Test
-    fun basicsStepRequiresTitleAndDescription() {
+    fun basicsStepRequiresTitleDescriptionAndDates() {
         val state = wizardAtBasics()
 
         state.next()
@@ -99,6 +99,7 @@ class CruiseWizardStateTest {
         assertEquals(CruiseWizardStep.Basics, state.step)
         assertTrue(CruiseWizardError.TitleTooShort in state.visibleErrors)
         assertTrue(CruiseWizardError.DescriptionTooShort in state.visibleErrors)
+        assertTrue(CruiseWizardError.DatesInvalid in state.visibleErrors)
     }
 
     @Test
@@ -106,6 +107,8 @@ class CruiseWizardStateTest {
         val state = wizardAtBasics()
         state.updateTitle("Adriatic Summer")
         state.updateDescription("A relaxed week along the coast.")
+        state.selectDepartureDate(LocalDate.of(2025, 7, 15))
+        state.selectArrivalDate(LocalDate.of(2025, 7, 22))
 
         state.next()
 
@@ -113,10 +116,12 @@ class CruiseWizardStateTest {
     }
 
     @Test
-    fun routeStepRequiresPortsAndValidDates() {
+    fun routeStepRequiresPorts() {
         val state = wizardAtBasics()
         state.updateTitle("Adriatic Summer")
         state.updateDescription("A relaxed week along the coast.")
+        state.selectDepartureDate(LocalDate.of(2025, 7, 15))
+        state.selectArrivalDate(LocalDate.of(2025, 7, 22))
         state.next()
 
         state.next()
@@ -124,7 +129,6 @@ class CruiseWizardStateTest {
         assertEquals(CruiseWizardStep.Route, state.step)
         assertTrue(CruiseWizardError.DeparturePortRequired in state.visibleErrors)
         assertTrue(CruiseWizardError.ArrivalPortRequired in state.visibleErrors)
-        assertTrue(CruiseWizardError.DatesInvalid in state.visibleErrors)
     }
 
     @Test
@@ -209,7 +213,7 @@ class CruiseWizardStateTest {
         state.selectDepartureDate(LocalDate.of(2025, 7, 22))
         state.selectArrivalDate(LocalDate.of(2025, 7, 15))
 
-        assertTrue(CruiseWizardError.DatesInvalid in state.errorsFor(CruiseWizardStep.Route))
+        assertTrue(CruiseWizardError.DatesInvalid in state.errorsFor(CruiseWizardStep.Basics))
     }
 
     @Test
@@ -220,17 +224,16 @@ class CruiseWizardStateTest {
         state.selectDepartureDate(today)
         state.selectArrivalDate(today.plusDays(7))
 
-        val errors = state.errorsFor(CruiseWizardStep.Route)
+        val errors = state.errorsFor(CruiseWizardStep.Basics)
         assertTrue(CruiseWizardError.DepartureNotInFuture in errors)
         assertFalse(CruiseWizardError.DatesInvalid in errors)
     }
 
     @Test
-    fun routeStepDoesNotAdvanceWhenDepartureNotInFuture() {
+    fun basicsStepDoesNotAdvanceWhenDepartureNotInFuture() {
         val state = wizardAtBasics()
         state.updateTitle("Adriatic Summer")
         state.updateDescription("A relaxed week along the coast.")
-        state.next()
         state.selectPort(CruisePortTarget.Departure, split)
         state.selectPort(CruisePortTarget.Arrival, dubrovnik)
         state.selectDepartureDate(today)
@@ -238,7 +241,7 @@ class CruiseWizardStateTest {
 
         state.next()
 
-        assertEquals(CruiseWizardStep.Route, state.step)
+        assertEquals(CruiseWizardStep.Basics, state.step)
         assertTrue(CruiseWizardError.DepartureNotInFuture in state.visibleErrors)
     }
 
@@ -247,12 +250,11 @@ class CruiseWizardStateTest {
         val state = wizardAtBasics()
         state.updateTitle("Adriatic Summer")
         state.updateDescription("A relaxed week along the coast.")
-        state.next()
         state.selectPort(CruisePortTarget.Departure, split)
         state.selectPort(CruisePortTarget.Arrival, dubrovnik)
         state.selectDepartureDate(today)
         state.selectArrivalDate(today.plusDays(7))
-        state.next() // stays on Route, surfaces DepartureNotInFuture
+        state.next() // stays on Basics, surfaces DepartureNotInFuture
         assertTrue(CruiseWizardError.DepartureNotInFuture in state.visibleErrors)
 
         // Re-pick a future departure; the date error clears without another Next tap.
@@ -270,6 +272,26 @@ class CruiseWizardStateTest {
 
         state.removeStop(0)
         assertEquals(listOf("Dubrovnik"), state.stops.map { it.name })
+    }
+
+    @Test
+    fun inlinePortSearchKeepsIndependentQueriesAndSelectsPort() {
+        gateway.locations = listOf(split)
+        val state = wizard()
+
+        state.updatePortQuery(CruisePortSearchTarget.Departure, "Spl")
+
+        assertEquals("Spl", state.departurePortQuery)
+        assertEquals(CruisePortSearchTarget.Departure, state.activePortSearchTarget)
+        assertTrue(gateway.calls.contains("searchLocations:Spl"))
+        assertEquals(listOf(split), state.portResults)
+
+        state.selectPort(CruisePortSearchTarget.Departure, split)
+
+        assertEquals("Split", state.departurePortQuery)
+        assertEquals("Split", state.departurePort?.name)
+        assertTrue(state.portResults.isEmpty())
+        assertNull(state.activePortSearchTarget)
     }
 
     @Test
@@ -387,7 +409,7 @@ class CruiseWizardStateTest {
 
     @Test
     fun publishJumpsToFirstStepWithAnError() {
-        // Everything valid except a past departure date, which the Route step owns.
+        // Everything valid except a past departure date, which the Basics step owns.
         val state = wizard()
         fillValid(state)
         state.selectDepartureDate(today.minusDays(1))
@@ -396,7 +418,7 @@ class CruiseWizardStateTest {
         state.publish()
 
         assertFalse(gateway.calls.contains("create"))
-        assertEquals(CruiseWizardStep.Route, state.step)
+        assertEquals(CruiseWizardStep.Basics, state.step)
         assertTrue(CruiseWizardError.DepartureNotInFuture in state.visibleErrors)
     }
 

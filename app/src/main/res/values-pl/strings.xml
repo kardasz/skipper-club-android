@@ -503,7 +503,7 @@
     <!-- Typy rejsów -->
     <string name="cruise_type_beginner_intro">Dla początkujących</string>
     <string name="cruise_type_training">Szkoleniowy</string>
-    <string name="cruise_type_milebuilding">Zbieranie mil</string>
+    <string name="cruise_type_milebuilding">Stażowy</string>
     <string name="cruise_type_advanced">Zaawansowany</string>
     <string name="cruise_type_sport_regatta">Sport / regaty</string>
     <string name="cruise_type_family">Rodzinny</string>
@@ -629,14 +629,20 @@
     <string name="cruise_field_vessel_cabins">Kabiny</string>
     <string name="cruise_vessel_details_show">Więcej szczegółów jednostki</string>
     <string name="cruise_vessel_details_hide">Ukryj szczegóły jednostki</string>
+    <string name="cruise_vessel_types_more">Inne</string>
+    <string name="cruise_vessel_types_less">Mniej typów</string>
     <string name="cruise_field_required_skills">Wymagane umiejętności</string>
     <string name="cruise_field_required_skills_hint">Certyfikaty lub doświadczenie oczekiwane od załogi.</string>
+    <string name="cruise_required_skills_show">Wymagane umiejętności</string>
+    <string name="cruise_required_skills_hide">Ukryj wymagane umiejętności</string>
     <string name="cruise_field_cost">Koszt na osobę</string>
     <string name="cruise_field_currency">Waluta</string>
     <string name="cruise_field_max_participants">Maks. uczestników</string>
     <string name="cruise_field_private">Rejs prywatny</string>
     <string name="cruise_field_private_subtitle">Ukryty w wyszukiwaniu; widoczny tylko dla zaproszonych.</string>
     <string name="cruise_field_rules">Zasady na pokładzie</string>
+    <string name="cruise_types_more">Więcej typów</string>
+    <string name="cruise_types_less">Mniej typów</string>
     <string name="cruise_rule_smoking">Palenie</string>
     <string name="cruise_rule_alcohol">Alkohol</string>
     <string name="cruise_rule_pets">Zwierzęta</string>

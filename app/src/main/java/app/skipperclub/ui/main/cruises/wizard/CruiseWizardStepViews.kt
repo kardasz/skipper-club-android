@@ -23,8 +23,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -50,7 +48,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -66,7 +63,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -81,7 +77,6 @@ import androidx.compose.ui.unit.dp
 import app.skipperclub.R
 import app.skipperclub.data.CruiseCurrency
 import app.skipperclub.data.CruiseType
-import app.skipperclub.data.GeocodedLocation
 import app.skipperclub.data.VesselType
 import app.skipperclub.ui.main.cruises.formatLocalDate
 import app.skipperclub.ui.main.cruises.labelRes
@@ -210,6 +205,16 @@ internal fun WizardAiDraftStep(state: CruiseWizardState) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun WizardBasicsStep(state: CruiseWizardState) {
+    val primaryTypes = remember {
+        listOf(CruiseType.Milebuilding, CruiseType.Training, CruiseType.BeginnerIntro)
+    }
+    var showAllTypes by rememberSaveable {
+        mutableStateOf(state.type != null && state.type !in primaryTypes)
+    }
+    var showRequiredSkills by rememberSaveable {
+        mutableStateOf(state.requiredSkills.isNotBlank())
+    }
+
     WizardSectionLabel(stringResource(R.string.cruise_field_title))
     OutlinedTextField(
         value = state.title,
@@ -221,7 +226,7 @@ internal fun WizardBasicsStep(state: CruiseWizardState) {
     )
     WizardFieldError(CruiseWizardError.TitleTooShort, state, R.string.cruise_error_title)
 
-    Spacer(Modifier.size(16.dp))
+    Spacer(Modifier.size(12.dp))
     WizardSectionLabel(stringResource(R.string.cruise_field_description))
     OutlinedTextField(
         value = state.description,
@@ -231,46 +236,6 @@ internal fun WizardBasicsStep(state: CruiseWizardState) {
         isError = CruiseWizardError.DescriptionTooShort in state.visibleErrors,
     )
     WizardFieldError(CruiseWizardError.DescriptionTooShort, state, R.string.cruise_error_description)
-
-    Spacer(Modifier.size(12.dp))
-    WizardSectionLabel(stringResource(R.string.cruise_field_type))
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        CruiseType.entries.forEach { type ->
-            FilterChip(
-                selected = state.type == type,
-                onClick = { state.selectType(if (state.type == type) null else type) },
-                label = { Text(stringResource(type.labelRes())) },
-            )
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Step 2 — Route
-// ---------------------------------------------------------------------------
-
-@Composable
-internal fun WizardRouteStep(state: CruiseWizardState) {
-    var activeTarget by remember { mutableStateOf<CruisePortTarget?>(null) }
-
-    WizardSectionLabel(stringResource(R.string.cruise_field_departure_port))
-    PortField(
-        portName = state.departurePort?.name,
-        placeholderRes = R.string.cruise_field_departure_port_hint,
-        isError = CruiseWizardError.DeparturePortRequired in state.visibleErrors,
-        onClick = { activeTarget = CruisePortTarget.Departure },
-    )
-    WizardFieldError(CruiseWizardError.DeparturePortRequired, state, R.string.cruise_error_departure_port)
-
-    Spacer(Modifier.size(10.dp))
-    WizardSectionLabel(stringResource(R.string.cruise_field_arrival_port))
-    PortField(
-        portName = state.arrivalPort?.name,
-        placeholderRes = R.string.cruise_field_arrival_port_hint,
-        isError = CruiseWizardError.ArrivalPortRequired in state.visibleErrors,
-        onClick = { activeTarget = CruisePortTarget.Arrival },
-    )
-    WizardFieldError(CruiseWizardError.ArrivalPortRequired, state, R.string.cruise_error_arrival_port)
 
     Spacer(Modifier.size(12.dp))
     WizardSectionLabel(stringResource(R.string.cruise_field_dates))
@@ -296,13 +261,110 @@ internal fun WizardRouteStep(state: CruiseWizardState) {
     WizardFieldError(CruiseWizardError.DepartureNotInFuture, state, R.string.cruise_error_departure_future)
 
     Spacer(Modifier.size(12.dp))
+    WizardSectionLabel(stringResource(R.string.cruise_field_type))
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        val visibleTypes = if (showAllTypes) CruiseType.entries else primaryTypes
+        visibleTypes.forEach { type ->
+            FilterChip(
+                selected = state.type == type,
+                onClick = { state.selectType(if (state.type == type) null else type) },
+                label = { Text(stringResource(type.labelRes())) },
+            )
+        }
+        FilterChip(
+            selected = showAllTypes,
+            onClick = { showAllTypes = !showAllTypes },
+            label = {
+                Text(
+                    stringResource(
+                        if (showAllTypes) R.string.cruise_types_less else R.string.cruise_types_more,
+                    ),
+                )
+            },
+            trailingIcon = {
+                Icon(
+                    imageVector = if (showAllTypes) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            },
+        )
+    }
+
+    Spacer(Modifier.size(8.dp))
+    TextButton(onClick = { showRequiredSkills = !showRequiredSkills }) {
+        Icon(
+            imageVector = if (showRequiredSkills) Icons.Filled.ExpandLess else Icons.Filled.Add,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            stringResource(
+                if (showRequiredSkills) {
+                    R.string.cruise_required_skills_hide
+                } else {
+                    R.string.cruise_required_skills_show
+                },
+            ),
+        )
+    }
+    AnimatedVisibility(visible = showRequiredSkills) {
+        OutlinedTextField(
+            value = state.requiredSkills,
+            onValueChange = state::updateRequiredSkills,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp),
+            placeholder = { Text(stringResource(R.string.cruise_field_required_skills_hint)) },
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Step 2 — Route
+// ---------------------------------------------------------------------------
+
+@Composable
+internal fun WizardRouteStep(state: CruiseWizardState) {
+    var showStopInput by rememberSaveable { mutableStateOf(false) }
+
+    PortAutocompleteField(
+        state = state,
+        target = CruisePortSearchTarget.Departure,
+        labelRes = R.string.cruise_field_departure_port,
+        placeholderRes = R.string.cruise_field_departure_port_hint,
+        isError = CruiseWizardError.DeparturePortRequired in state.visibleErrors,
+    )
+    WizardFieldError(CruiseWizardError.DeparturePortRequired, state, R.string.cruise_error_departure_port)
+
+    Spacer(Modifier.size(10.dp))
+    PortAutocompleteField(
+        state = state,
+        target = CruisePortSearchTarget.Arrival,
+        labelRes = R.string.cruise_field_arrival_port,
+        placeholderRes = R.string.cruise_field_arrival_port_hint,
+        isError = CruiseWizardError.ArrivalPortRequired in state.visibleErrors,
+    )
+    WizardFieldError(CruiseWizardError.ArrivalPortRequired, state, R.string.cruise_error_arrival_port)
+
+    Spacer(Modifier.size(12.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         WizardSectionLabel(stringResource(R.string.cruise_field_stops))
         Spacer(Modifier.weight(1f))
-        TextButton(onClick = { activeTarget = CruisePortTarget.Stop }) {
+        TextButton(onClick = { showStopInput = !showStopInput }) {
             Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
             Text(stringResource(R.string.cruise_stops_add))
         }
+    }
+    AnimatedVisibility(visible = showStopInput) {
+        PortAutocompleteField(
+            state = state,
+            target = CruisePortSearchTarget.Stop,
+            labelRes = R.string.cruise_field_stops,
+            placeholderRes = R.string.cruise_port_search_hint,
+            isError = false,
+        )
     }
     state.stops.forEachIndexed { index, stop ->
         Row(
@@ -316,58 +378,89 @@ internal fun WizardRouteStep(state: CruiseWizardState) {
             }
         }
     }
-
-    activeTarget?.let { target ->
-        PortSearchDialog(
-            state = state,
-            onDismiss = {
-                activeTarget = null
-                state.clearPortSearch()
-            },
-            onSelect = { location ->
-                state.selectPort(target, location)
-                if (target != CruisePortTarget.Stop) activeTarget = null
-            },
-        )
-    }
 }
 
 @Composable
-private fun PortField(
-    portName: String?,
+private fun PortAutocompleteField(
+    state: CruiseWizardState,
+    target: CruisePortSearchTarget,
+    labelRes: Int,
     placeholderRes: Int,
     isError: Boolean,
-    onClick: () -> Unit,
 ) {
-    val borderColor = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, borderColor),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(
-                Icons.Outlined.Place,
-                contentDescription = null,
-                tint = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                text = portName ?: stringResource(placeholderRes),
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (portName == null) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+    val query = state.portQueryFor(target)
+    val active = state.activePortSearchTarget == target
+    Column {
+        OutlinedTextField(
+            value = query,
+            onValueChange = { state.updatePortQuery(target, it) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(stringResource(labelRes)) },
+            placeholder = { Text(stringResource(placeholderRes)) },
+            leadingIcon = { Icon(Icons.Outlined.Place, contentDescription = null) },
+            trailingIcon = {
+                when {
+                    active && state.isSearchingPorts -> CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                    )
+
+                    query.isNotEmpty() -> IconButton(onClick = { state.updatePortQuery(target, "") }) {
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.wizard_location_clear),
+                        )
+                    }
+                }
+            },
+            isError = isError,
+            singleLine = true,
+        )
+        if (active && (state.portResults.isNotEmpty() || query.trim().length >= 3 || state.isSearchingPorts)) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            ) {
+                Column {
+                    if (!state.isSearchingPorts && state.portResults.isEmpty() && query.trim().length >= 3) {
+                        Text(
+                            text = stringResource(R.string.cruise_port_search_empty),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(14.dp),
+                        )
+                    }
+                    state.portResults.forEach { location ->
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    text = location.displayName,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            supportingContent = {
+                                Text(
+                                    text = location.formattedAddress,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            leadingContent = {
+                                Icon(
+                                    Icons.Outlined.Place,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            modifier = Modifier.clickable { state.selectPort(target, location) },
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -434,75 +527,6 @@ private fun DateField(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PortSearchDialog(
-    state: CruiseWizardState,
-    onDismiss: () -> Unit,
-    onSelect: (GeocodedLocation) -> Unit,
-) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.cruise_port_search_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            OutlinedTextField(
-                value = state.portQuery,
-                onValueChange = state::updatePortQuery,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text(stringResource(R.string.cruise_port_search_hint)) },
-                leadingIcon = { Icon(Icons.Outlined.Place, contentDescription = null) },
-                singleLine = true,
-            )
-            Box(modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp, max = 420.dp)) {
-                when {
-                    state.isSearchingPorts -> CircularProgressIndicator(Modifier.align(Alignment.Center).padding(16.dp))
-                    state.portResults.isEmpty() && state.portQuery.length >= 3 -> Text(
-                        text = stringResource(R.string.cruise_port_search_empty),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.align(Alignment.Center).padding(16.dp),
-                    )
-
-                    else -> LazyColumn {
-                        items(state.portResults, key = { it.displayName + it.coordinates.lat }) { loc ->
-                            ListItem(
-                                headlineContent = {
-                                    Text(
-                                        text = loc.displayName,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                },
-                                leadingContent = {
-                                    Icon(
-                                        Icons.Outlined.Place,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                },
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable { onSelect(loc) },
-                            )
-                        }
-                    }
-                }
-            }
-            TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
-                Text(stringResource(R.string.cruise_done))
-            }
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Step 3 — Vessel
 // ---------------------------------------------------------------------------
@@ -510,6 +534,7 @@ private fun PortSearchDialog(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun WizardVesselStep(state: CruiseWizardState) {
+    val primaryVesselTypes = remember { listOf(VesselType.SailingYacht, VesselType.Catamaran) }
     val hasOptionalDetails = listOf(
         state.vesselBrand,
         state.vesselModel,
@@ -517,7 +542,10 @@ internal fun WizardVesselStep(state: CruiseWizardState) {
         state.vesselLengthText,
         state.vesselCabinsText,
     ).any { it.isNotBlank() }
-    var showOptionalDetails by rememberSaveable(hasOptionalDetails) { mutableStateOf(hasOptionalDetails) }
+    var showOptionalDetails by rememberSaveable { mutableStateOf(hasOptionalDetails) }
+    var showOtherTypes by rememberSaveable {
+        mutableStateOf(state.vesselType != null && state.vesselType !in primaryVesselTypes)
+    }
 
     WizardSectionLabel(stringResource(R.string.cruise_field_vessel))
     OutlinedTextField(
@@ -529,22 +557,6 @@ internal fun WizardVesselStep(state: CruiseWizardState) {
         singleLine = true,
     )
     WizardFieldError(CruiseWizardError.VesselNameTooShort, state, R.string.cruise_error_vessel)
-
-    Spacer(Modifier.size(12.dp))
-    WizardSectionLabel(stringResource(R.string.cruise_field_vessel_type))
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        VesselType.entries.forEach { type ->
-            FilterChip(
-                selected = state.vesselType == type,
-                onClick = { state.selectVesselType(type) },
-                label = { Text(stringResource(type.labelRes())) },
-            )
-        }
-    }
-    WizardFieldError(CruiseWizardError.VesselTypeRequired, state, R.string.cruise_error_vessel_type)
 
     Spacer(Modifier.size(8.dp))
     TextButton(
@@ -614,13 +626,39 @@ internal fun WizardVesselStep(state: CruiseWizardState) {
     }
 
     Spacer(Modifier.size(12.dp))
-    WizardSectionLabel(stringResource(R.string.cruise_field_required_skills))
-    OutlinedTextField(
-        value = state.requiredSkills,
-        onValueChange = state::updateRequiredSkills,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp),
-        placeholder = { Text(stringResource(R.string.cruise_field_required_skills_hint)) },
-    )
+    WizardSectionLabel(stringResource(R.string.cruise_field_vessel_type))
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        val visibleTypes = if (showOtherTypes) VesselType.entries else primaryVesselTypes
+        visibleTypes.forEach { type ->
+            FilterChip(
+                selected = state.vesselType == type,
+                onClick = { state.selectVesselType(type) },
+                label = { Text(stringResource(type.labelRes())) },
+            )
+        }
+        FilterChip(
+            selected = showOtherTypes,
+            onClick = { showOtherTypes = !showOtherTypes },
+            label = {
+                Text(
+                    stringResource(
+                        if (showOtherTypes) R.string.cruise_vessel_types_less else R.string.cruise_vessel_types_more,
+                    ),
+                )
+            },
+            trailingIcon = {
+                Icon(
+                    imageVector = if (showOtherTypes) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            },
+        )
+    }
+    WizardFieldError(CruiseWizardError.VesselTypeRequired, state, R.string.cruise_error_vessel_type)
 }
 
 // ---------------------------------------------------------------------------

@@ -83,6 +83,8 @@ data class CruiseWizardMedia(
 /** Which field a geocoder search result should land in. */
 enum class CruisePortTarget { Departure, Arrival, Stop }
 
+enum class CruisePortSearchTarget { Departure, Arrival, Stop }
+
 /**
  * State machine for the cruise create/edit wizard. Pure Kotlin + Compose snapshot
  * state (no Android types) so step flow, validation and request building are
@@ -135,6 +137,14 @@ class CruiseWizardState(
         private set
     val stops = mutableStateListOf<CruisePort>().apply { existing?.stops?.let { addAll(it) } }
 
+    var activePortSearchTarget by mutableStateOf<CruisePortSearchTarget?>(null)
+        private set
+    var departurePortQuery by mutableStateOf(existing?.departurePort?.name.orEmpty())
+        private set
+    var arrivalPortQuery by mutableStateOf(existing?.arrivalPort?.name.orEmpty())
+        private set
+    var stopPortQuery by mutableStateOf("")
+        private set
     var portQuery by mutableStateOf("")
         private set
     var portResults by mutableStateOf<List<GeocodedLocation>>(emptyList())
@@ -296,8 +306,15 @@ class CruiseWizardState(
         type = value
     }
 
-    fun updatePortQuery(value: String) {
+    fun updatePortQuery(target: CruisePortSearchTarget, value: String) {
+        activePortSearchTarget = target
+        setPortQuery(target, value)
         portQuery = value
+        when (target) {
+            CruisePortSearchTarget.Departure -> if (departurePort?.name != value) departurePort = null
+            CruisePortSearchTarget.Arrival -> if (arrivalPort?.name != value) arrivalPort = null
+            CruisePortSearchTarget.Stop -> Unit
+        }
         portSearchJob?.cancel()
         if (value.trim().length < 3) {
             portResults = emptyList()
@@ -321,11 +338,49 @@ class CruiseWizardState(
         }
     }
 
-    fun clearPortSearch() {
+    fun clearPortSearch(
+        target: CruisePortSearchTarget? = activePortSearchTarget,
+        clearQuery: Boolean = true,
+    ) {
         portSearchJob?.cancel()
+        if (clearQuery) target?.let { setPortQuery(it, "") }
         portQuery = ""
         portResults = emptyList()
         isSearchingPorts = false
+        activePortSearchTarget = null
+    }
+
+    fun portQueryFor(target: CruisePortSearchTarget): String =
+        when (target) {
+            CruisePortSearchTarget.Departure -> departurePortQuery
+            CruisePortSearchTarget.Arrival -> arrivalPortQuery
+            CruisePortSearchTarget.Stop -> stopPortQuery
+        }
+
+    private fun setPortQuery(target: CruisePortSearchTarget, value: String) {
+        when (target) {
+            CruisePortSearchTarget.Departure -> departurePortQuery = value
+            CruisePortSearchTarget.Arrival -> arrivalPortQuery = value
+            CruisePortSearchTarget.Stop -> stopPortQuery = value
+        }
+    }
+
+    private fun searchTargetFor(target: CruisePortTarget): CruisePortSearchTarget =
+        when (target) {
+            CruisePortTarget.Departure -> CruisePortSearchTarget.Departure
+            CruisePortTarget.Arrival -> CruisePortSearchTarget.Arrival
+            CruisePortTarget.Stop -> CruisePortSearchTarget.Stop
+        }
+
+    private fun portTargetFor(target: CruisePortSearchTarget): CruisePortTarget =
+        when (target) {
+            CruisePortSearchTarget.Departure -> CruisePortTarget.Departure
+            CruisePortSearchTarget.Arrival -> CruisePortTarget.Arrival
+            CruisePortSearchTarget.Stop -> CruisePortTarget.Stop
+        }
+
+    fun selectPort(target: CruisePortSearchTarget, location: GeocodedLocation) {
+        selectPort(portTargetFor(target), location)
     }
 
     fun selectPort(target: CruisePortTarget, location: GeocodedLocation) {
@@ -333,19 +388,22 @@ class CruiseWizardState(
         when (target) {
             CruisePortTarget.Departure -> {
                 departurePort = port
+                departurePortQuery = port.name
                 visibleErrors = visibleErrors - CruiseWizardError.DeparturePortRequired
             }
 
             CruisePortTarget.Arrival -> {
                 arrivalPort = port
+                arrivalPortQuery = port.name
                 visibleErrors = visibleErrors - CruiseWizardError.ArrivalPortRequired
             }
 
             CruisePortTarget.Stop -> {
                 if (stops.size < CRUISE_STOPS_MAX_COUNT) stops.add(port)
+                stopPortQuery = ""
             }
         }
-        clearPortSearch()
+        clearPortSearch(searchTargetFor(target), clearQuery = target == CruisePortTarget.Stop)
     }
 
     fun removeStop(index: Int) {
@@ -364,7 +422,7 @@ class CruiseWizardState(
 
     /** Drops any date error the latest edit fixed, without surfacing new ones. */
     private fun clearResolvedDateErrors() {
-        val stillInvalid = errorsFor(CruiseWizardStep.Route)
+        val stillInvalid = errorsFor(CruiseWizardStep.Basics)
         visibleErrors = visibleErrors.filterNot { it in DATE_RELATED_ERRORS && it !in stillInvalid }.toSet()
     }
 
@@ -523,11 +581,6 @@ class CruiseWizardState(
                 if (description.trim().length < CRUISE_DESCRIPTION_MIN_LENGTH) {
                     add(CruiseWizardError.DescriptionTooShort)
                 }
-            }
-
-            CruiseWizardStep.Route -> buildSet {
-                if (departurePort == null) add(CruiseWizardError.DeparturePortRequired)
-                if (arrivalPort == null) add(CruiseWizardError.ArrivalPortRequired)
                 val departure = departureDate
                 val arrival = arrivalDate
                 if (departure == null || arrival == null || arrival.isBefore(departure)) {
@@ -536,6 +589,11 @@ class CruiseWizardState(
                     // Backend rejects a departure on/before today ("must be in the future").
                     add(CruiseWizardError.DepartureNotInFuture)
                 }
+            }
+
+            CruiseWizardStep.Route -> buildSet {
+                if (departurePort == null) add(CruiseWizardError.DeparturePortRequired)
+                if (arrivalPort == null) add(CruiseWizardError.ArrivalPortRequired)
             }
 
             CruiseWizardStep.Vessel -> buildSet {
