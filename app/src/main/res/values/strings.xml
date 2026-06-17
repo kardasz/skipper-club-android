@@ -354,11 +354,8 @@
     <string name="wizard_field_location_optional">Location (optional)</string>
     <string name="wizard_location_hint">Search for a place…</string>
     <string name="wizard_location_clear">Clear location</string>
-    <string name="wizard_field_region">Region</string>
-    <string name="wizard_region_placeholder">Select a region</string>
     <string name="wizard_error_description_required">Description is required.</string>
     <string name="wizard_error_location_required">Choose a location from the search results.</string>
-    <string name="wizard_error_region_required">Select a region.</string>
     <string name="wizard_error_media_required">Add at least one photo.</string>
     <string name="wizard_error_stops_required">Add at least one stop.</string>
     <string name="wizard_stops_subtitle">Add the stops of your route in sailing order.</string>

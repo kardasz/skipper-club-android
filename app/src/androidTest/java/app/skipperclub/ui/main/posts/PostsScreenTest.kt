@@ -242,10 +242,9 @@ class PostsScreenTest {
         compose.onNodeWithTag("wizard_type_tips").performClick()
         compose.onNodeWithTag("wizard_next").assertIsEnabled().performClick()
 
-        // details step: tips requires description + region
+        // details step: tips requires a description
         compose.onNodeWithTag("wizard_next").performClick()
         compose.onNodeWithText(text(R.string.wizard_error_description_required)).assertExists()
-        compose.onNodeWithText(text(R.string.wizard_error_region_required)).assertExists()
         assertTrue(wizardState.visibleErrors.isNotEmpty())
     }
 

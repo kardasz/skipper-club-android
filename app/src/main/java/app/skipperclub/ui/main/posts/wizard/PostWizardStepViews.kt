@@ -28,17 +28,12 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -155,11 +150,9 @@ private fun TypeSection(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun WizardDetailsStep(state: PostWizardState) {
     val type = state.selectedType ?: return
-    state.loadRegionsIfNeeded()
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         OutlinedTextField(
@@ -203,74 +196,6 @@ internal fun WizardDetailsStep(state: PostWizardState) {
             errorText = stringResource(R.string.wizard_error_location_required),
             onSelect = state::selectLocation,
         )
-
-        WizardRegionField(state = state)
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun WizardRegionField(state: PostWizardState) {
-    var expanded by remember { mutableStateOf(false) }
-    val selectedLabel = state.regions.firstOrNull { it.code == state.regionCode }?.localizedName
-        ?: state.regionCode
-        ?: ""
-
-    Column {
-        ExposedDropdownMenuBox(
-            expanded = expanded,
-            onExpandedChange = { expanded = it },
-        ) {
-            OutlinedTextField(
-                value = selectedLabel,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text(stringResource(R.string.wizard_field_region)) },
-                placeholder = { Text(stringResource(R.string.wizard_region_placeholder)) },
-                isError = PostWizardError.RegionRequired in state.visibleErrors,
-                supportingText = when {
-                    PostWizardError.RegionRequired in state.visibleErrors -> {
-                        { Text(stringResource(R.string.wizard_error_region_required)) }
-                    }
-
-                    state.regionsLoadFailed -> {
-                        { Text(stringResource(R.string.filter_regions_load_failed)) }
-                    }
-
-                    else -> null
-                },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .menuAnchor(MenuAnchorType.PrimaryNotEditable)
-                    .testTag("wizard_region"),
-            )
-            ExposedDropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-            ) {
-                state.regions.forEach { region ->
-                    DropdownMenuItem(
-                        text = {
-                            Column {
-                                Text(region.localizedName)
-                                if (region.localizedParents.isNotEmpty()) {
-                                    Text(
-                                        text = region.localizedParents.joinToString(" · "),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        },
-                        onClick = {
-                            state.selectRegion(region.code)
-                            expanded = false
-                        },
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -665,11 +590,6 @@ internal fun WizardSummaryStep(state: PostWizardState) {
         SummaryRow(
             label = stringResource(R.string.wizard_summary_type),
             value = stringResource(type.labelRes()),
-        )
-        SummaryRow(
-            label = stringResource(R.string.wizard_field_region),
-            value = state.regions.firstOrNull { it.code == state.regionCode }?.localizedName
-                ?: state.regionCode.orEmpty(),
         )
         if (state.locationName != null) {
             SummaryRow(

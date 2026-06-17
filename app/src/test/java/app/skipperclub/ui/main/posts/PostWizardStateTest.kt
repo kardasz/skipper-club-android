@@ -90,14 +90,12 @@ class PostWizardStateTest {
             setOf(
                 PostWizardError.DescriptionRequired,
                 PostWizardError.LocationRequired,
-                PostWizardError.RegionRequired,
             ),
             state.visibleErrors,
         )
 
         state.updateDescription("Great marina")
         state.selectLocation(geocoded("ACI Marina Split"))
-        state.selectRegion("ADR-HR")
         state.next()
 
         assertEquals(PostWizardStep.Media, state.step)
@@ -109,7 +107,6 @@ class PostWizardStateTest {
         val state = wizard()
         state.selectType(PostType.Photo)
         state.next()
-        state.selectRegion("ADR-HR")
         state.next()
 
         assertEquals(PostWizardStep.Media, state.step)
@@ -133,7 +130,6 @@ class PostWizardStateTest {
         state.next()
         state.updateDescription("Trip")
         state.selectLocation(geocoded("Split"))
-        state.selectRegion("ADR-HR")
         state.next()
 
         assertEquals(PostWizardStep.RouteStops, state.step)
@@ -181,7 +177,6 @@ class PostWizardStateTest {
         state.selectType(PostType.Route)
         state.updateDescription("Island hopping")
         state.selectLocation(geocoded("Split", 43.5, 16.4))
-        state.selectRegion("ADR-HR")
         state.addStop(geocoded("Hvar", 43.1, 16.4))
         state.updateDurationDays("7")
         state.updateLengthNm("120.5")
@@ -189,7 +184,7 @@ class PostWizardStateTest {
         val request = state.buildRequest()!!
 
         assertEquals("route", request.type)
-        assertEquals("ADR-HR", request.regionCode)
+        assertNull(request.regionCode)
         assertEquals("Island hopping", request.description)
         assertEquals("Split", request.locationName)
         assertEquals(43.5, request.coordinates!!.lat, 0.0)
@@ -204,7 +199,6 @@ class PostWizardStateTest {
         val state = wizard()
         state.selectType(PostType.Tips)
         state.updateDescription("Watch the shallows")
-        state.selectRegion("ADR-HR")
 
         val request = state.buildRequest()!!
 
@@ -220,7 +214,6 @@ class PostWizardStateTest {
     fun uploadMediaTracksLifecycleAndCollectsIds() {
         val state = wizard()
         state.selectType(PostType.Photo)
-        state.selectRegion("ADR-HR")
 
         state.uploadMedia(
             "a.jpg",
@@ -257,7 +250,6 @@ class PostWizardStateTest {
         val state = wizard()
         state.selectType(PostType.Tips)
         state.updateDescription("Tip")
-        state.selectRegion("ADR-HR")
         state.next()
         state.next()
         state.next()
@@ -289,7 +281,6 @@ class PostWizardStateTest {
         val state = wizard()
         state.selectType(PostType.Tips)
         state.updateDescription("Tip")
-        state.selectRegion("ADR-HR")
 
         state.publish()
 
@@ -338,7 +329,6 @@ class PostWizardStateTest {
         val state = wizard()
         state.selectType(PostType.Tips)
         state.updateDescription("Tip")
-        state.selectRegion("ADR-HR")
 
         state.updateTagQuery("an")
         assertEquals(2, state.tagResults.size)

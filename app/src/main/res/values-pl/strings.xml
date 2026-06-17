@@ -364,11 +364,8 @@
     <string name="wizard_field_location_optional">Lokalizacja (opcjonalnie)</string>
     <string name="wizard_location_hint">Wyszukaj miejsce…</string>
     <string name="wizard_location_clear">Wyczyść lokalizację</string>
-    <string name="wizard_field_region">Region</string>
-    <string name="wizard_region_placeholder">Wybierz region</string>
     <string name="wizard_error_description_required">Opis jest wymagany.</string>
     <string name="wizard_error_location_required">Wybierz lokalizację z wyników wyszukiwania.</string>
-    <string name="wizard_error_region_required">Wybierz region.</string>
     <string name="wizard_error_media_required">Dodaj przynajmniej jedno zdjęcie.</string>
     <string name="wizard_error_stops_required">Dodaj przynajmniej jeden postój.</string>
     <string name="wizard_stops_subtitle">Dodaj postoje trasy w kolejności żeglugi.</string>

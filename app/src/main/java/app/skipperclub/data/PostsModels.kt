@@ -233,7 +233,7 @@ data class ValidityVoteResult(
 @Serializable
 data class CreatePostRequest(
     val type: String,
-    val regionCode: String,
+    val regionCode: String? = null,
     val description: String? = null,
     val locationName: String? = null,
     val coordinates: CoordinatesDto? = null,
@@ -278,7 +278,7 @@ data class RouteStopDto(
  */
 @Serializable
 data class UpdatePostRequest(
-    val regionCode: String,
+    val regionCode: String? = null,
     val status: String? = null,
     val description: String? = null,
     val locationName: String? = null,

@@ -13,7 +13,6 @@ import app.skipperclub.data.Post
 import app.skipperclub.data.PostCoordinates
 import app.skipperclub.data.PostRouteStop
 import app.skipperclub.data.PostType
-import app.skipperclub.data.Region
 import app.skipperclub.data.RouteStopDto
 import app.skipperclub.data.UpdatePostRequest
 import app.skipperclub.ui.main.posts.PostsGateway
@@ -37,7 +36,6 @@ enum class PostWizardStep { Type, Details, RouteStops, Media, Tags, Summary }
 enum class PostWizardError {
     DescriptionRequired,
     LocationRequired,
-    RegionRequired,
     StopsRequired,
     MediaRequired,
 }
@@ -89,12 +87,8 @@ class PostWizardState(
         private set
     var coordinates by mutableStateOf(editingPost?.coordinates)
         private set
+    /** Preserved from the edited post; the create form no longer exposes a region picker. */
     var regionCode by mutableStateOf(editingPost?.regionCode)
-        private set
-
-    var regions by mutableStateOf<List<Region>>(emptyList())
-        private set
-    var regionsLoadFailed by mutableStateOf(false)
         private set
 
     var locationQuery by mutableStateOf(editingPost?.locationName.orEmpty())
@@ -187,11 +181,6 @@ class PostWizardState(
         if (value.isNotBlank()) visibleErrors = visibleErrors - PostWizardError.DescriptionRequired
     }
 
-    fun selectRegion(code: String) {
-        regionCode = code
-        visibleErrors = visibleErrors - PostWizardError.RegionRequired
-    }
-
     fun updateLocationQuery(value: String) {
         locationQuery = value
         locationSearchJob?.cancel()
@@ -230,18 +219,6 @@ class PostWizardState(
         coordinates = null
         locationQuery = ""
         locationResults = emptyList()
-    }
-
-    fun loadRegionsIfNeeded() {
-        if (regions.isNotEmpty()) return
-        scope.launch {
-            try {
-                regions = gateway.listRegions()
-                regionsLoadFailed = false
-            } catch (_: Exception) {
-                regionsLoadFailed = true
-            }
-        }
     }
 
     fun addStop(location: GeocodedLocation) {
@@ -362,7 +339,6 @@ class PostWizardState(
                 if (type.requiresLocation && (locationName == null || coordinates == null)) {
                     add(PostWizardError.LocationRequired)
                 }
-                if (regionCode == null) add(PostWizardError.RegionRequired)
             }
 
             PostWizardStep.RouteStops ->
@@ -430,10 +406,9 @@ class PostWizardState(
 
     internal fun buildRequest(): CreatePostRequest? {
         val type = selectedType ?: return null
-        val region = regionCode ?: return null
         return CreatePostRequest(
             type = type.wireValue,
-            regionCode = region,
+            regionCode = regionCode,
             description = description.trim().takeIf { it.isNotEmpty() },
             locationName = locationName,
             coordinates = coordinates?.let { CoordinatesDto.from(it) },
@@ -447,9 +422,8 @@ class PostWizardState(
 
     internal fun buildUpdateRequest(): UpdatePostRequest? {
         val type = selectedType ?: return null
-        val region = regionCode ?: return null
         return UpdatePostRequest(
-            regionCode = region,
+            regionCode = regionCode,
             description = description.trim().takeIf { it.isNotEmpty() },
             locationName = locationName,
             coordinates = coordinates?.let { CoordinatesDto.from(it) },
