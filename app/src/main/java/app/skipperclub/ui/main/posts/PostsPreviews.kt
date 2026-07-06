@@ -2,13 +2,20 @@ package app.skipperclub.ui.main.posts
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
+import app.skipperclub.data.AlertCategory
+import app.skipperclub.data.AlertSeverity
 import app.skipperclub.data.Post
+import app.skipperclub.data.PostAlert
+import app.skipperclub.data.PostContainsFilter
+import app.skipperclub.data.PostContent
+import app.skipperclub.data.PostContentKey
 import app.skipperclub.data.PostCoordinates
+import app.skipperclub.data.PostLocation
 import app.skipperclub.data.PostMedia
 import app.skipperclub.data.PostPermissions
+import app.skipperclub.data.PostRoute
 import app.skipperclub.data.PostRouteStop
 import app.skipperclub.data.PostStatus
-import app.skipperclub.data.PostType
 import app.skipperclub.data.PostUser
 import app.skipperclub.data.ReactionSummary
 import app.skipperclub.data.ReactionType
@@ -27,14 +34,30 @@ private val previewPermissions = PostPermissions(
     report = true,
 )
 
+/** Plain text note — no media/route/alert; `contentKeys` is empty. */
+internal val previewNotePost = Post(
+    id = "p0",
+    user = previewAuthor,
+    contentKeys = emptySet(),
+    status = PostStatus.Published,
+    content = PostContent(text = "Anyone sailing out of Split this weekend? #crew #sailing"),
+    location = PostLocation(name = "Split"),
+    hashtags = listOf("crew", "sailing"),
+    commentsCount = 1,
+    reactions = ReactionSummary(total = 2, byType = mapOf(ReactionType.ThumbsUp to 2)),
+    permissions = previewPermissions,
+    publishedAt = "2025-12-05T19:00:00Z",
+    createdAt = "2025-12-05T19:00:00Z",
+    updatedAt = "2025-12-05T19:00:00Z",
+)
+
 internal val previewPhotoPost = Post(
     id = "p1",
-    type = PostType.Photo,
-    status = PostStatus.Published,
-    regionCode = "ADR-HR",
     user = previewAuthor,
-    description = "Beautiful sunset over the Adriatic! #sailing #sunset",
-    locationName = "Split",
+    contentKeys = setOf(PostContentKey.Media),
+    status = PostStatus.Published,
+    content = PostContent(text = "Beautiful sunset over the Adriatic! #sailing #sunset"),
+    location = PostLocation(name = "Split", point = PostCoordinates(43.5081, 16.4402)),
     hashtags = listOf("sailing", "sunset"),
     media = listOf(
         PostMedia(id = "m1", type = "image", url = "https://example.com/sunset.jpg"),
@@ -46,18 +69,18 @@ internal val previewPhotoPost = Post(
         userReactions = setOf(ReactionType.Heart),
     ),
     permissions = previewPermissions,
+    publishedAt = "2025-12-05T18:30:00Z",
     createdAt = "2025-12-05T18:30:00Z",
     updatedAt = "2025-12-05T18:30:00Z",
 )
 
 internal val previewVideoPost = Post(
     id = "p1v",
-    type = PostType.Photo,
-    status = PostStatus.Published,
-    regionCode = "ADR-HR",
     user = previewAuthor,
-    description = "Downwind under spinnaker 🌊 #sailing",
-    locationName = "Trogir",
+    contentKeys = setOf(PostContentKey.Media),
+    status = PostStatus.Published,
+    content = PostContent(text = "Downwind under spinnaker 🌊 #sailing"),
+    location = PostLocation(name = "Trogir"),
     hashtags = listOf("sailing"),
     media = listOf(
         PostMedia(id = "mv1", type = "video", url = "https://example.com/downwind.mp4"),
@@ -65,52 +88,58 @@ internal val previewVideoPost = Post(
     commentsCount = 2,
     reactions = ReactionSummary(total = 2, byType = mapOf(ReactionType.Laugh to 1, ReactionType.Heart to 1)),
     permissions = previewPermissions,
+    publishedAt = "2025-12-05T18:30:00Z",
     createdAt = "2025-12-05T18:30:00Z",
     updatedAt = "2025-12-05T18:30:00Z",
 )
 
 internal val previewRoutePost = Post(
     id = "p2",
-    type = PostType.Route,
-    status = PostStatus.Published,
-    regionCode = "ADR-HR",
     user = PostUser(id = "u2", name = "Jan Kowalski"),
-    description = "Tygodniowa trasa po Dalmacji #chorwacja",
-    locationName = "Split",
-    coordinates = PostCoordinates(43.5081, 16.4402),
-    stops = listOf(
-        PostRouteStop("Split", PostCoordinates(43.5081, 16.4402)),
-        PostRouteStop("Hvar", PostCoordinates(43.1724, 16.4411)),
-        PostRouteStop("Dubrovnik", PostCoordinates(42.6507, 18.0944)),
+    contentKeys = setOf(PostContentKey.Route),
+    status = PostStatus.Published,
+    content = PostContent(
+        text = "Tygodniowa trasa po Dalmacji #chorwacja",
+        route = PostRoute(
+            stops = listOf(
+                PostRouteStop("Split", PostCoordinates(43.5081, 16.4402)),
+                PostRouteStop("Hvar", PostCoordinates(43.1724, 16.4411)),
+                PostRouteStop("Dubrovnik", PostCoordinates(42.6507, 18.0944)),
+            ),
+            durationDays = 7,
+            lengthNm = 120.0,
+        ),
     ),
-    durationDays = 7,
-    lengthNm = 120.0,
+    location = PostLocation(name = "Split", point = PostCoordinates(43.5081, 16.4402)),
     commentsCount = 2,
     reactions = ReactionSummary(total = 3, byType = mapOf(ReactionType.Sailboat to 3)),
     permissions = previewPermissions,
+    publishedAt = "2025-12-04T10:00:00Z",
     createdAt = "2025-12-04T10:00:00Z",
     updatedAt = "2025-12-04T10:00:00Z",
 )
 
-internal val previewBerthPost = Post(
+internal val previewAlertPost = Post(
     id = "p3",
-    type = PostType.Berth,
-    status = PostStatus.Published,
-    regionCode = "ADR-HR",
     user = PostUser(id = "u3", name = "Marek Wiśniewski"),
-    description = "3 wolne miejsca przy kei miejskiej",
-    locationName = "Hvar Town Quay",
-    coordinates = PostCoordinates(43.1724, 16.4411),
+    contentKeys = setOf(PostContentKey.Alert),
+    status = PostStatus.Published,
+    content = PostContent(
+        text = "Podwodna przeszkoda przy wejściu do portu — zachowajcie ostrożność.",
+        alert = PostAlert(category = AlertCategory.Obstruction, severity = AlertSeverity.Warning),
+    ),
+    location = PostLocation(name = "Hvar Town Quay", point = PostCoordinates(43.1724, 16.4411)),
     commentsCount = 0,
     reactions = ReactionSummary(),
     validityVotes = VoteSummary(confirmCount = 4, invalidCount = 0, userVote = ValidityVoteType.Confirm),
     permissions = previewPermissions.copy(validityVote = true, resolve = true, delete = true, archive = true),
     expiresAt = "2025-12-05T23:30:00Z",
+    publishedAt = "2025-12-05T17:30:00Z",
     createdAt = "2025-12-05T17:30:00Z",
     updatedAt = "2025-12-05T17:30:00Z",
 )
 
-internal val previewPosts = listOf(previewPhotoPost, previewRoutePost, previewBerthPost)
+internal val previewPosts = listOf(previewNotePost, previewPhotoPost, previewRoutePost, previewAlertPost)
 
 private val previewActions = PostCardActions(
     onToggleReaction = { _, _ -> },
@@ -149,7 +178,7 @@ private fun PostsScreenPreviewPl() {
             state = PostsFeedUiState(
                 posts = previewPosts,
                 hasLoadedOnce = true,
-                filters = PostFilters(types = setOf(PostType.Berth), regionCode = "ADR-HR"),
+                filters = PostFilters(contains = setOf(PostContainsFilter.Alert), query = "hvar"),
             ),
             nowMillis = previewNow,
             cardActions = previewActions,
@@ -222,9 +251,9 @@ private fun PostCardRoutePreview() {
 
 @Preview(showBackground = true, widthDp = 360, locale = "pl")
 @Composable
-private fun PostCardBerthPreviewPl() {
+private fun PostCardAlertPreviewPl() {
     SkipperClubTheme {
-        PostCard(post = previewBerthPost, nowMillis = previewNow, actions = previewActions)
+        PostCard(post = previewAlertPost, nowMillis = previewNow, actions = previewActions)
     }
 }
 
@@ -256,9 +285,7 @@ private fun ReactionPickerPreview() {
 private fun FilterSheetPreviewPl() {
     SkipperClubTheme {
         PostFilterSheetContent(
-            filters = PostFilters(types = setOf(PostType.Photo, PostType.Berth)),
-            regions = emptyList(),
-            regionsLoadFailed = false,
+            filters = PostFilters(contains = setOf(PostContainsFilter.Alert, PostContainsFilter.Media)),
             currentUserId = "u1",
             onSearchLocations = { emptyList() },
             onApply = {},
@@ -276,8 +303,6 @@ private fun FilterSheetPreviewDark() {
     SkipperClubTheme {
         PostFilterSheetContent(
             filters = PostFilters(),
-            regions = emptyList(),
-            regionsLoadFailed = true,
             currentUserId = "u1",
             onSearchLocations = { emptyList() },
             onApply = {},

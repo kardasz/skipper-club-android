@@ -3,7 +3,6 @@ package app.skipperclub.ui.main.posts.wizard
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,19 +14,22 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.AltRoute
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
@@ -37,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -48,155 +51,65 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.skipperclub.R
-import app.skipperclub.data.PostType
-import app.skipperclub.ui.main.posts.descriptionRes
-import app.skipperclub.ui.main.posts.icon
-import app.skipperclub.ui.main.posts.labelRes
+import app.skipperclub.data.AlertCategory
+import app.skipperclub.data.AlertSeverity
+import app.skipperclub.data.GeocodedLocation
+import app.skipperclub.ui.main.alert.labelRes
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import kotlinx.coroutines.launch
 
+/**
+ * The whole post form on one scrolling surface: text (required) → location →
+ * two mutually exclusive optional sections (route / alert) → media → tags.
+ */
 @Composable
-internal fun WizardTypeStep(state: PostWizardState) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(
-            text = stringResource(R.string.wizard_type_subtitle),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        TypeSection(
-            title = stringResource(R.string.wizard_category_evergreen),
-            types = PostType.entries.filter { it.isEvergreen },
-            state = state,
-        )
-        TypeSection(
-            title = stringResource(R.string.wizard_category_time_sensitive),
-            types = PostType.entries.filter { it.isTimeSensitive },
-            state = state,
-        )
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun TypeSection(
-    title: String,
-    types: List<PostType>,
-    state: PostWizardState,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            maxItemsInEachRow = 2,
-        ) {
-            types.forEach { type ->
-                val selected = state.selectedType == type
-                Surface(
-                    onClick = { state.selectType(type) },
-                    shape = RoundedCornerShape(16.dp),
-                    color = if (selected) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceVariant
-                    },
-                    border = if (selected) {
-                        BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-                    } else {
-                        null
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("wizard_type_${type.wireValue}"),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Icon(
-                            imageVector = type.icon(),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                        Text(
-                            text = stringResource(type.labelRes()),
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        Text(
-                            text = stringResource(type.descriptionRes()),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-internal fun WizardDetailsStep(state: PostWizardState) {
-    val type = state.selectedType ?: return
-
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        OutlinedTextField(
-            value = state.description,
-            onValueChange = state::updateDescription,
-            label = {
-                Text(
-                    stringResource(
-                        if (type.requiresDescription) {
-                            R.string.wizard_field_description
-                        } else {
-                            R.string.wizard_field_description_optional
-                        },
-                    ),
-                )
-            },
-            isError = PostWizardError.DescriptionRequired in state.visibleErrors,
-            supportingText = {
-                if (PostWizardError.DescriptionRequired in state.visibleErrors) {
-                    Text(stringResource(R.string.wizard_error_description_required))
-                } else {
-                    Text("${state.description.length} / $POST_DESCRIPTION_MAX_LENGTH")
-                }
-            },
-            minLines = 4,
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("wizard_description"),
-        )
-
+internal fun WizardForm(state: PostWizardState) {
+    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        WizardTextSection(state)
         WizardLocationField(
             state = state,
-            label = stringResource(
-                if (type.requiresLocation) {
-                    R.string.wizard_field_location
-                } else {
-                    R.string.wizard_field_location_optional
-                },
-            ),
-            isError = PostWizardError.LocationRequired in state.visibleErrors,
-            errorText = stringResource(R.string.wizard_error_location_required),
+            label = stringResource(R.string.wizard_field_location_optional),
+            isError = PostWizardError.AlertLocationRequired in state.visibleErrors,
+            errorText = stringResource(R.string.wizard_error_alert_location_required),
             onSelect = state::selectLocation,
         )
+        WizardOptionalSections(state)
+        HorizontalDivider()
+        WizardMediaSection(state)
+        HorizontalDivider()
+        WizardTagsSection(state)
     }
+}
+
+@Composable
+private fun WizardTextSection(state: PostWizardState) {
+    OutlinedTextField(
+        value = state.text,
+        onValueChange = state::updateText,
+        label = { Text(stringResource(R.string.wizard_text_label)) },
+        isError = PostWizardError.TextRequired in state.visibleErrors,
+        supportingText = {
+            if (PostWizardError.TextRequired in state.visibleErrors) {
+                Text(stringResource(R.string.wizard_error_text_required))
+            } else {
+                Text("${state.text.length} / $POST_TEXT_MAX_LENGTH")
+            }
+        },
+        minLines = 4,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("wizard_text"),
+    )
 }
 
 @Composable
@@ -205,7 +118,7 @@ private fun WizardLocationField(
     label: String,
     isError: Boolean,
     errorText: String,
-    onSelect: (app.skipperclub.data.GeocodedLocation) -> Unit,
+    onSelect: (GeocodedLocation) -> Unit,
 ) {
     Column {
         OutlinedTextField(
@@ -267,13 +180,82 @@ private fun WizardLocationField(
 }
 
 @Composable
-internal fun WizardRouteStopsStep(state: PostWizardState) {
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(
-            text = stringResource(R.string.wizard_stops_subtitle),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+private fun WizardOptionalSections(state: PostWizardState) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionToggle(
+            icon = Icons.Filled.AltRoute,
+            title = stringResource(R.string.wizard_add_route),
+            description = stringResource(R.string.wizard_add_route_desc),
+            checked = state.routeEnabled,
+            onCheckedChange = state::updateRouteEnabled,
+            testTag = "wizard_toggle_route",
         )
+        if (state.routeEnabled) {
+            WizardRouteSubForm(state)
+        }
+        SectionToggle(
+            icon = Icons.Filled.Warning,
+            title = stringResource(R.string.wizard_add_alert),
+            description = stringResource(R.string.wizard_add_alert_desc),
+            checked = state.alertEnabled,
+            onCheckedChange = state::updateAlertEnabled,
+            testTag = "wizard_toggle_alert",
+        )
+        if (state.alertEnabled) {
+            WizardAlertSubForm(state)
+        }
+    }
+}
+
+@Composable
+private fun SectionToggle(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    testTag: String,
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (checked) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(testTag),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp),
+            ) {
+                Text(text = title, style = MaterialTheme.typography.titleSmall)
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = checked, onCheckedChange = onCheckedChange)
+        }
+    }
+}
+
+@Composable
+private fun WizardRouteSubForm(state: PostWizardState) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         WizardLocationField(
             state = state,
             label = stringResource(R.string.wizard_stops_add),
@@ -364,7 +346,59 @@ internal fun WizardRouteStopsStep(state: PostWizardState) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun WizardMediaStep(state: PostWizardState) {
+private fun WizardAlertSubForm(state: PostWizardState) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = stringResource(R.string.wizard_alert_category_label),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            AlertCategory.entries.forEach { category ->
+                FilterChip(
+                    selected = state.alertCategory == category,
+                    onClick = { state.selectAlertCategory(category) },
+                    label = { Text(stringResource(category.labelRes())) },
+                    modifier = Modifier.testTag("wizard_alert_category_${category.name}"),
+                )
+            }
+        }
+        if (PostWizardError.AlertCategoryRequired in state.visibleErrors) {
+            Text(
+                text = stringResource(R.string.wizard_error_alert_category_required),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        Text(
+            text = stringResource(R.string.wizard_alert_severity_label),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = state.alertSeverity == null,
+                onClick = { state.selectAlertSeverity(null) },
+                label = { Text(stringResource(R.string.wizard_alert_severity_none)) },
+            )
+            AlertSeverity.entries.forEach { severity ->
+                FilterChip(
+                    selected = state.alertSeverity == severity,
+                    onClick = { state.selectAlertSeverity(severity) },
+                    label = { Text(stringResource(severity.labelRes())) },
+                    modifier = Modifier.testTag("wizard_alert_severity_${severity.name}"),
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WizardMediaSection(state: PostWizardState) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var oversizeRejected by remember { mutableStateOf(false) }
@@ -391,15 +425,9 @@ internal fun WizardMediaStep(state: PostWizardState) {
         }
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
-            text = stringResource(
-                if (state.selectedType?.requiresMedia == true) {
-                    R.string.wizard_media_subtitle_required
-                } else {
-                    R.string.wizard_media_subtitle_optional
-                },
-            ),
+            text = stringResource(R.string.wizard_media_subtitle_optional),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -421,13 +449,6 @@ internal fun WizardMediaStep(state: PostWizardState) {
             )
             Spacer(modifier = Modifier.size(8.dp))
             Text(stringResource(R.string.wizard_media_add))
-        }
-        if (PostWizardError.MediaRequired in state.visibleErrors) {
-            Text(
-                text = stringResource(R.string.wizard_error_media_required),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
         }
         if (oversizeRejected) {
             Text(
@@ -521,7 +542,7 @@ internal fun WizardMediaStep(state: PostWizardState) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun WizardTagsStep(state: PostWizardState) {
+private fun WizardTagsSection(state: PostWizardState) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = stringResource(R.string.wizard_tags_subtitle),
@@ -581,80 +602,4 @@ internal fun WizardTagsStep(state: PostWizardState) {
             }
         }
     }
-}
-
-@Composable
-internal fun WizardSummaryStep(state: PostWizardState) {
-    val type = state.selectedType ?: return
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SummaryRow(
-            label = stringResource(R.string.wizard_summary_type),
-            value = stringResource(type.labelRes()),
-        )
-        if (state.locationName != null) {
-            SummaryRow(
-                label = stringResource(R.string.wizard_field_location),
-                value = state.locationName.orEmpty(),
-            )
-        }
-        if (state.description.isNotBlank()) {
-            SummaryRow(
-                label = stringResource(R.string.wizard_field_description),
-                value = state.description,
-            )
-        }
-        if (state.stops.isNotEmpty()) {
-            SummaryRow(
-                label = stringResource(R.string.wizard_step_route),
-                value = state.stops.joinToString(" → ") { it.name },
-            )
-        }
-        if (state.media.isNotEmpty()) {
-            SummaryRow(
-                label = stringResource(R.string.wizard_step_media),
-                value = pluralStringResource(
-                    R.plurals.wizard_summary_media,
-                    state.media.size,
-                    state.media.size,
-                ),
-            )
-        }
-        if (state.taggedUsers.isNotEmpty()) {
-            SummaryRow(
-                label = stringResource(R.string.wizard_step_tags),
-                value = state.taggedUsers.joinToString(", ") { it.name },
-            )
-        }
-        expiryNoteRes(type)?.let { noteRes ->
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = stringResource(noteRes),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.tertiary,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SummaryRow(label: String, value: String) {
-    Column {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-    }
-}
-
-private fun expiryNoteRes(type: PostType): Int? = when (type) {
-    PostType.Berth -> R.string.post_expiry_info_berth
-    PostType.Weather -> R.string.post_expiry_info_weather
-    PostType.NavigationWarning -> R.string.post_expiry_info_navigation_warning
-    PostType.Help -> R.string.post_expiry_info_help
-    else -> null
 }

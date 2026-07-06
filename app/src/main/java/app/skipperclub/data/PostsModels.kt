@@ -1,50 +1,21 @@
 package app.skipperclub.data
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
 /**
- * Post type classification. Wire values follow `docs/api/openapi.yaml` (`PostType`),
- * with one caveat: the spec's enum lists `spot` while every create schema, the
- * human-readable docs and the iOS client use `marina`. We follow `marina` and the
- * contract gap is called out in the PR description.
+ * What a post "contains". Server-derived (read-only) — never sent on create/update.
+ * `text` is on every post so it is never a key; drives feed filtering (`contains`)
+ * and UI rendering. See `docs/api/MIGRATION_8.0.md` §3.1.
  */
-enum class PostType(val wireValue: String) {
-    Photo("photo"),
-    Place("place"),
-    Food("food"),
-    Marina("marina"),
-    Tips("tips"),
+enum class PostContentKey(val wireValue: String) {
+    Alert("alert"),
+    Media("media"),
     Route("route"),
-    Berth("berth"),
-    Weather("weather"),
-    NavigationWarning("navigation_warning"),
-    Help("help"),
     ;
 
-    val isTimeSensitive: Boolean
-        get() = this == Berth || this == Weather || this == NavigationWarning || this == Help
-
-    val isEvergreen: Boolean
-        get() = !isTimeSensitive
-
-    /** Community validity voting; `help` is author-resolved only. */
-    val isVotable: Boolean
-        get() = this == Berth || this == Weather || this == NavigationWarning
-
-    val requiresDescription: Boolean
-        get() = this != Photo
-
-    val requiresLocation: Boolean
-        get() = this != Photo && this != Tips
-
-    val requiresMedia: Boolean
-        get() = this == Photo
-
-    val requiresStops: Boolean
-        get() = this == Route
-
     companion object {
-        fun fromWire(value: String): PostType? = entries.firstOrNull { it.wireValue == value }
+        fun fromWire(value: String): PostContentKey? = entries.firstOrNull { it.wireValue == value }
     }
 }
 
@@ -131,17 +102,66 @@ data class PostRouteStop(
     val coordinates: PostCoordinates,
 )
 
+/** Route recommendation carried by `content.route`. */
+data class PostRoute(
+    val stops: List<PostRouteStop> = emptyList(),
+    val durationDays: Int? = null,
+    val lengthNm: Double? = null,
+)
+
+/**
+ * Alert carried by `content.alert`. [category] and [severity] are user-settable;
+ * the remaining fields are read-only attribution present on imported (system)
+ * alerts (see `PostContentAlert` in the OpenAPI spec).
+ */
+data class PostAlert(
+    val category: AlertCategory,
+    val severity: AlertSeverity? = null,
+    val language: String? = null,
+    val source: String? = null,
+    val externalNumber: String? = null,
+    val externalPublishedAt: String? = null,
+    val externalUpdatedAt: String? = null,
+    val externalExpiresAt: String? = null,
+)
+
+/** Structured post body. [text] is required (1–2200 chars); route/alert are exclusive. */
+data class PostContent(
+    val text: String,
+    val route: PostRoute? = null,
+    val alert: PostAlert? = null,
+)
+
+/**
+ * Where a post is anchored. [point] drives the map marker/distance; [area] is a raw
+ * GeoJSON Polygon/MultiPolygon present only on alert posts.
+ */
+data class PostLocation(
+    val name: String? = null,
+    val point: PostCoordinates? = null,
+    val area: JsonObject? = null,
+)
+
 data class PostMedia(
     val id: String,
     val type: String,
     val url: String,
+    val orderIndex: Int = 0,
     val width: Int? = null,
     val height: Int? = null,
+    val size: Long? = null,
+    val status: String? = null,
 ) {
     /** True for `video` attachments; drives the play affordance and frame poster. */
     val isVideo: Boolean
         get() = type.equals("video", ignoreCase = true)
 }
+
+/** Attribution for system-generated posts (imported alerts). */
+data class PostSource(
+    val type: String,
+    val id: String,
+)
 
 data class ReactionSummary(
     val total: Int = 0,
@@ -169,28 +189,37 @@ data class PostPermissions(
 
 data class Post(
     val id: String,
-    val type: PostType,
-    val status: PostStatus,
-    val regionCode: String,
     val user: PostUser,
-    val description: String? = null,
-    val locationName: String? = null,
-    val coordinates: PostCoordinates? = null,
+    val contentKeys: Set<PostContentKey>,
+    val status: PostStatus,
+    val content: PostContent,
+    val location: PostLocation = PostLocation(),
     val hashtags: List<String> = emptyList(),
     val media: List<PostMedia> = emptyList(),
     val taggedUsers: List<PostUser> = emptyList(),
-    val stops: List<PostRouteStop> = emptyList(),
-    val durationDays: Int? = null,
-    val lengthNm: Double? = null,
     val commentsCount: Int = 0,
     val reactions: ReactionSummary = ReactionSummary(),
     val bookmarked: Boolean = false,
     val validityVotes: VoteSummary? = null,
     val permissions: PostPermissions = PostPermissions(),
+    val source: PostSource? = null,
+    val publishedAt: String,
     val expiresAt: String? = null,
+    val resolvedAt: String? = null,
+    val archivedAt: String? = null,
+    val deletedAt: String? = null,
     val createdAt: String,
     val updatedAt: String,
-)
+) {
+    val alert: PostAlert? get() = content.alert
+    val route: PostRoute? get() = content.route
+    val hasAlert: Boolean get() = content.alert != null || contentKeys.contains(PostContentKey.Alert)
+    val hasRoute: Boolean get() = content.route != null || contentKeys.contains(PostContentKey.Route)
+    val hasMedia: Boolean get() = media.isNotEmpty() || contentKeys.contains(PostContentKey.Media)
+
+    /** System-generated posts (imported alerts) cannot be edited/voted by users. */
+    val isSystemGenerated: Boolean get() = source != null
+}
 
 data class PageMeta(
     val total: Int,
@@ -226,22 +255,74 @@ data class ValidityVoteResult(
     val invalidCount: Int,
 )
 
-/**
- * Polymorphic `POST /v1/posts` payload. With `explicitNulls = false` absent optional
- * fields are omitted, so a single DTO covers all ten per-type create schemas.
- */
+// ---------------------------------------------------------------------------
+// Request DTOs (`POST`/`PUT`/`PATCH` /v1/posts). There is no `type` anymore: one
+// body covers every post. With `explicitNulls = false` absent optional fields are
+// omitted. `contentKeys` is derived server-side and never sent.
+// ---------------------------------------------------------------------------
+
 @Serializable
 data class CreatePostRequest(
-    val type: String,
-    val regionCode: String? = null,
-    val description: String? = null,
-    val locationName: String? = null,
-    val coordinates: CoordinatesDto? = null,
+    val content: PostContentInputDto,
+    val location: PostLocationInputDto? = null,
     val mediaIds: List<String>? = null,
     val taggedUserIds: List<String>? = null,
-    val stops: List<RouteStopDto>? = null,
+    val publishedAt: String? = null,
+    val expiresAt: String? = null,
+)
+
+/** Full content replace for `PUT /v1/posts/{id}` (`PostUpdate`). */
+@Serializable
+data class UpdatePostRequest(
+    val content: PostContentInputDto,
+    val location: PostLocationInputDto? = null,
+    val mediaIds: List<String>? = null,
+    val taggedUserIds: List<String>? = null,
+    val publishedAt: String? = null,
+    val expiresAt: String? = null,
+    val status: String? = null,
+)
+
+@Serializable
+data class PostContentInputDto(
+    val text: String,
+    val route: RouteInputDto? = null,
+    val alert: AlertInputDto? = null,
+)
+
+@Serializable
+data class RouteInputDto(
+    val stops: List<RouteStopDto>,
     val durationDays: Int? = null,
     val lengthNm: Double? = null,
+) {
+    companion object {
+        fun from(route: PostRoute): RouteInputDto =
+            RouteInputDto(
+                stops = route.stops.map { RouteStopDto.from(it) },
+                durationDays = route.durationDays,
+                lengthNm = route.lengthNm,
+            )
+    }
+}
+
+/** Only `category` and `severity` are user-settable; source fields are rejected. */
+@Serializable
+data class AlertInputDto(
+    val category: AlertCategory,
+    val severity: AlertSeverity? = null,
+) {
+    companion object {
+        fun from(alert: PostAlert): AlertInputDto =
+            AlertInputDto(category = alert.category, severity = alert.severity)
+    }
+}
+
+@Serializable
+data class PostLocationInputDto(
+    val name: String? = null,
+    val point: CoordinatesDto? = null,
+    val area: JsonObject? = null,
 )
 
 @Serializable
@@ -270,32 +351,13 @@ data class RouteStopDto(
     }
 }
 
-/**
- * Full content update for `PUT /v1/posts/{id}` (`PostUpdate` schema). `type` is
- * immutable so it is intentionally absent. With `explicitNulls = false` omitted
- * optional fields are dropped, matching the spec's "only valid for route posts"
- * route fields. Route-stop/duration/length only set for route posts.
- */
-@Serializable
-data class UpdatePostRequest(
-    val regionCode: String? = null,
-    val status: String? = null,
-    val description: String? = null,
-    val locationName: String? = null,
-    val coordinates: CoordinatesDto? = null,
-    val mediaIds: List<String>? = null,
-    val taggedUserIds: List<String>? = null,
-    val stops: List<RouteStopDto>? = null,
-    val durationDays: Int? = null,
-    val lengthNm: Double? = null,
-)
-
 @Serializable
 internal data class PostReportRequest(
     val reason: String,
     val details: String? = null,
 )
 
+/** Minimal `PATCH /v1/posts/{id}` body for a status-only transition. */
 @Serializable
 internal data class PostStatusPatchRequest(
     val status: String,
@@ -311,13 +373,19 @@ internal data class ValidityVoteRequestDto(
     val voteType: String,
 )
 
+// ---------------------------------------------------------------------------
+// Response DTOs.
+// ---------------------------------------------------------------------------
+
 @Serializable
 internal data class PostUserDto(
     val id: String,
-    val name: String,
+    val displayName: String? = null,
+    val name: String? = null,
     val avatarUrl: String? = null,
 ) {
-    fun toDomain(): PostUser = PostUser(id = id, name = name, avatarUrl = avatarUrl)
+    fun toDomain(): PostUser =
+        PostUser(id = id, name = displayName ?: name ?: "", avatarUrl = avatarUrl)
 }
 
 @Serializable
@@ -325,11 +393,93 @@ internal data class PostMediaDto(
     val id: String,
     val type: String = "image",
     val url: String,
+    val orderIndex: Int = 0,
     val width: Int? = null,
     val height: Int? = null,
+    val size: Long? = null,
+    val status: String? = null,
 ) {
     fun toDomain(): PostMedia =
-        PostMedia(id = id, type = type, url = url, width = width, height = height)
+        PostMedia(
+            id = id,
+            type = type,
+            url = url,
+            orderIndex = orderIndex,
+            width = width,
+            height = height,
+            size = size,
+            status = status,
+        )
+}
+
+@Serializable
+internal data class RouteContentDto(
+    val stops: List<RouteStopDto> = emptyList(),
+    val durationDays: Int? = null,
+    val lengthNm: Double? = null,
+) {
+    fun toDomain(): PostRoute =
+        PostRoute(
+            stops = stops.map { it.toDomain() },
+            durationDays = durationDays,
+            lengthNm = lengthNm,
+        )
+}
+
+@Serializable
+internal data class AlertContentDto(
+    val category: AlertCategory,
+    val severity: AlertSeverity? = null,
+    val language: String? = null,
+    val source: String? = null,
+    val externalNumber: String? = null,
+    val externalPublishedAt: String? = null,
+    val externalUpdatedAt: String? = null,
+    val externalExpiresAt: String? = null,
+) {
+    fun toDomain(): PostAlert =
+        PostAlert(
+            category = category,
+            severity = severity,
+            language = language,
+            source = source,
+            externalNumber = externalNumber,
+            externalPublishedAt = externalPublishedAt,
+            externalUpdatedAt = externalUpdatedAt,
+            externalExpiresAt = externalExpiresAt,
+        )
+}
+
+@Serializable
+internal data class PostContentDto(
+    val text: String = "",
+    val route: RouteContentDto? = null,
+    val alert: AlertContentDto? = null,
+) {
+    fun toDomain(): PostContent =
+        PostContent(
+            text = text,
+            route = route?.toDomain(),
+            alert = alert?.toDomain(),
+        )
+}
+
+@Serializable
+internal data class PostLocationDto(
+    val name: String? = null,
+    val point: CoordinatesDto? = null,
+    val area: JsonObject? = null,
+) {
+    fun toDomain(): PostLocation =
+        PostLocation(name = name, point = point?.toDomain(), area = area)
+}
+
+@Serializable
+internal data class PostSourceDto(
+    val type: String,
+    val id: String,
+) {
+    fun toDomain(): PostSource = PostSource(type = type, id = id)
 }
 
 @Serializable
@@ -391,53 +541,52 @@ internal data class PostPermissionsDto(
 @Serializable
 internal data class PostDto(
     val id: String,
-    val type: String,
-    val status: String = "published",
-    val regionCode: String = "",
     val user: PostUserDto,
-    val description: String? = null,
-    val locationName: String? = null,
-    val coordinates: CoordinatesDto? = null,
+    val contentKeys: List<String> = emptyList(),
+    val status: String = "published",
+    val content: PostContentDto = PostContentDto(),
+    val location: PostLocationDto = PostLocationDto(),
     val hashtags: List<String> = emptyList(),
     val media: List<PostMediaDto> = emptyList(),
     val taggedUsers: List<PostUserDto> = emptyList(),
-    val stops: List<RouteStopDto> = emptyList(),
-    val durationDays: Int? = null,
-    val lengthNm: Double? = null,
     val commentsCount: Int = 0,
     val reactions: ReactionSummaryDto = ReactionSummaryDto(),
     val bookmarked: Boolean = false,
     val validityVotes: VoteSummaryDto? = null,
     val permissions: PostPermissionsDto = PostPermissionsDto(),
+    val source: PostSourceDto? = null,
+    val publishedAt: String? = null,
     val expiresAt: String? = null,
+    val resolvedAt: String? = null,
+    val archivedAt: String? = null,
+    val deletedAt: String? = null,
     val createdAt: String,
     val updatedAt: String,
 ) {
-    /** Posts with unknown type or status are dropped rather than crash the feed. */
+    /** Posts with an unknown status are dropped rather than crash the feed. */
     fun toDomain(): Post? {
-        val postType = PostType.fromWire(type) ?: return null
         val postStatus = PostStatus.fromWire(status) ?: return null
         return Post(
             id = id,
-            type = postType,
-            status = postStatus,
-            regionCode = regionCode,
             user = user.toDomain(),
-            description = description,
-            locationName = locationName,
-            coordinates = coordinates?.toDomain(),
+            contentKeys = contentKeys.mapNotNull { PostContentKey.fromWire(it) }.toSet(),
+            status = postStatus,
+            content = content.toDomain(),
+            location = location.toDomain(),
             hashtags = hashtags,
-            media = media.map { it.toDomain() },
+            media = media.map { it.toDomain() }.sortedBy { it.orderIndex },
             taggedUsers = taggedUsers.map { it.toDomain() },
-            stops = stops.map { it.toDomain() },
-            durationDays = durationDays,
-            lengthNm = lengthNm,
             commentsCount = commentsCount,
             reactions = reactions.toDomain(),
             bookmarked = bookmarked,
             validityVotes = validityVotes?.toDomain(),
             permissions = permissions.toDomain(),
+            source = source?.toDomain(),
+            publishedAt = publishedAt ?: createdAt,
             expiresAt = expiresAt,
+            resolvedAt = resolvedAt,
+            archivedAt = archivedAt,
+            deletedAt = deletedAt,
             createdAt = createdAt,
             updatedAt = updatedAt,
         )

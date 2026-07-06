@@ -10,57 +10,41 @@ import org.junit.Test
 class PostsModelsTest {
 
     @Test
-    fun postTypeBusinessRulesMatchApiContract() {
-        assertEquals(
-            setOf(PostType.Berth, PostType.Weather, PostType.NavigationWarning, PostType.Help),
-            PostType.entries.filter { it.isTimeSensitive }.toSet(),
-        )
-        // help is author-resolved only; no community voting
-        assertEquals(
-            setOf(PostType.Berth, PostType.Weather, PostType.NavigationWarning),
-            PostType.entries.filter { it.isVotable }.toSet(),
-        )
-        assertFalse(PostType.Photo.requiresDescription)
-        assertTrue(PostType.Tips.requiresDescription)
-        assertFalse(PostType.Photo.requiresLocation)
-        assertFalse(PostType.Tips.requiresLocation)
-        assertTrue(PostType.Marina.requiresLocation)
-        assertTrue(PostType.Photo.requiresMedia)
-        assertFalse(PostType.Route.requiresMedia)
-        assertTrue(PostType.Route.requiresStops)
-    }
-
-    @Test
-    fun postTypeWireValuesRoundTrip() {
-        PostType.entries.forEach { type ->
-            assertEquals(type, PostType.fromWire(type.wireValue))
+    fun contentKeyAndStatusWireValuesRoundTrip() {
+        PostContentKey.entries.forEach { key ->
+            assertEquals(key, PostContentKey.fromWire(key.wireValue))
         }
-        assertEquals(PostType.Marina, PostType.fromWire("marina"))
-        assertEquals(PostType.NavigationWarning, PostType.fromWire("navigation_warning"))
-        assertNull(PostType.fromWire("unknown"))
+        assertNull(PostContentKey.fromWire("unknown"))
+        PostStatus.entries.forEach { status ->
+            assertEquals(status, PostStatus.fromWire(status.wireValue))
+        }
+        assertEquals(PostStatus.Resolved, PostStatus.fromWire("resolved"))
+        assertNull(PostStatus.fromWire("hologram"))
     }
 
     @Test
-    fun feedResponseDecodesAllKnownFieldsAndDropsUnknownTypes() {
+    fun feedResponseDecodesContentKeysContentAndDropsUnknownStatuses() {
         val payload = """
             {
               "data": [
                 {
                   "id": "post-1",
-                  "type": "route",
+                  "contentKeys": ["route"],
                   "status": "published",
-                  "regionCode": "ADR-HR",
                   "user": {"id": "u1", "name": "Jan", "avatarUrl": null},
-                  "description": "Trip #adriatic",
-                  "locationName": "Split",
-                  "coordinates": {"lat": 43.5, "lng": 16.4},
+                  "content": {
+                    "text": "Trip #adriatic",
+                    "route": {
+                      "stops": [{"name": "Hvar", "coordinates": {"lat": 43.1, "lng": 16.4}}],
+                      "durationDays": 7,
+                      "lengthNm": 120
+                    }
+                  },
+                  "location": {"name": "Split", "point": {"lat": 43.5, "lng": 16.4}},
                   "hashtags": ["adriatic"],
                   "media": [
                     {"id": "m1", "type": "image", "url": "https://cdn/img.jpg", "width": 100, "height": 80}
                   ],
-                  "stops": [{"name": "Hvar", "coordinates": {"lat": 43.1, "lng": 16.4}}],
-                  "durationDays": 7,
-                  "lengthNm": 120,
                   "commentsCount": 3,
                   "reactions": {
                     "total": 4,
@@ -69,28 +53,34 @@ class PostsModelsTest {
                   },
                   "bookmarked": true,
                   "permissions": {"edit": true, "react": true},
-                  "expiresAt": null,
-                  "createdAt": "2025-12-01T10:00:00Z",
+                  "publishedAt": "2025-12-01T10:00:00Z",
+                  "createdAt": "2025-12-01T09:00:00Z",
                   "updatedAt": "2025-12-01T10:00:00Z"
                 },
                 {
                   "id": "post-2",
-                  "type": "hologram",
-                  "status": "published",
-                  "regionCode": "ADR-HR",
+                  "contentKeys": [],
+                  "status": "hologram",
                   "user": {"id": "u2", "name": "Anna"},
+                  "content": {"text": "?"},
+                  "publishedAt": "2025-12-01T10:00:00Z",
                   "createdAt": "2025-12-01T10:00:00Z",
                   "updatedAt": "2025-12-01T10:00:00Z"
                 },
                 {
                   "id": "post-3",
-                  "type": "berth",
+                  "contentKeys": ["alert"],
                   "status": "published",
-                  "regionCode": "ADR-HR",
                   "user": {"id": "u3", "name": "Marek"},
-                  "description": "Free berth",
+                  "content": {
+                    "text": "Submerged obstruction",
+                    "alert": {"category": "obstruction", "severity": "warning", "source": "navtex"}
+                  },
+                  "location": {"name": "Hvar"},
+                  "source": {"type": "import", "id": "navtex-1"},
                   "validityVotes": {"confirmCount": 2, "invalidCount": 1, "userVote": "confirm"},
                   "expiresAt": "2025-12-01T16:00:00Z",
+                  "publishedAt": "2025-12-01T10:00:00Z",
                   "createdAt": "2025-12-01T10:00:00Z",
                   "updatedAt": "2025-12-01T10:00:00Z"
                 }
@@ -104,27 +94,39 @@ class PostsModelsTest {
             explicitNulls = false
         }.decodeFromString<PostsListDto>(payload).toDomain()
 
-        // unknown post type is dropped, not fatal
+        // unknown status is dropped, not fatal
         assertEquals(listOf("post-1", "post-3"), page.posts.map { it.id })
         assertTrue(page.meta.hasMore)
 
         val route = page.posts[0]
-        assertEquals(PostType.Route, route.type)
-        assertEquals(1, route.stops.size)
-        assertEquals(7, route.durationDays)
-        assertEquals(120.0, route.lengthNm!!, 0.0)
+        assertEquals(setOf(PostContentKey.Route), route.contentKeys)
+        assertTrue(route.hasRoute)
+        assertEquals("Trip #adriatic", route.content.text)
+        assertEquals(1, route.route?.stops?.size)
+        assertEquals(7, route.route?.durationDays)
+        assertEquals(120.0, route.route?.lengthNm!!, 0.0)
+        assertEquals("Split", route.location.name)
+        assertEquals(43.5, route.location.point?.lat!!, 0.0)
+        // publishedAt is read as the feed timestamp, distinct from createdAt
+        assertEquals("2025-12-01T10:00:00Z", route.publishedAt)
         assertTrue(route.bookmarked)
         assertTrue(route.permissions.edit)
         assertFalse(route.permissions.delete)
+        assertFalse(route.isSystemGenerated)
         // unknown reaction types are dropped from byType but total is preserved
         assertEquals(4, route.reactions.total)
         assertEquals(mapOf(ReactionType.Heart to 3), route.reactions.byType)
         assertEquals(setOf(ReactionType.Heart), route.reactions.userReactions)
 
-        val berth = page.posts[1]
-        assertNotNull(berth.validityVotes)
-        assertEquals(ValidityVoteType.Confirm, berth.validityVotes?.userVote)
-        assertEquals("2025-12-01T16:00:00Z", berth.expiresAt)
+        val alert = page.posts[1]
+        assertEquals(setOf(PostContentKey.Alert), alert.contentKeys)
+        assertTrue(alert.hasAlert)
+        assertEquals(AlertCategory.Obstruction, alert.alert?.category)
+        assertEquals(AlertSeverity.Warning, alert.alert?.severity)
+        assertTrue(alert.isSystemGenerated)
+        assertNotNull(alert.validityVotes)
+        assertEquals(ValidityVoteType.Confirm, alert.validityVotes?.userVote)
+        assertEquals("2025-12-01T16:00:00Z", alert.expiresAt)
     }
 
     @Test

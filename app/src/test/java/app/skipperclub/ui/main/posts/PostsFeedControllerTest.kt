@@ -1,7 +1,9 @@
 package app.skipperclub.ui.main.posts
 
+import app.skipperclub.data.PostContainsFilter
+import app.skipperclub.data.PostContent
+import app.skipperclub.data.PostCoordinates
 import app.skipperclub.data.PostSortField
-import app.skipperclub.data.PostType
 import app.skipperclub.data.PostsError
 import app.skipperclub.data.ReactionSummary
 import app.skipperclub.data.ReactionType
@@ -14,6 +16,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -65,10 +68,17 @@ class PostsFeedControllerTest {
     }
 
     @Test
-    fun loadMoreAppendsNextPageWithOffset() {
+    fun loadMoreUsesKeysetCursorOnChronologicalFeed() {
         gateway.pages = listOf(
-            page(listOf(testPost("p1"), testPost("p2")), hasMore = true, total = 3),
-            page(listOf(testPost("p3")), hasMore = false, total = 3),
+            page(
+                listOf(
+                    testPost("p1", publishedAt = "2025-12-02T10:00:00Z"),
+                    testPost("p2", publishedAt = "2025-12-01T10:00:00Z"),
+                ),
+                hasMore = true,
+                total = 3,
+            ),
+            page(listOf(testPost("p3", publishedAt = "2025-11-30T10:00:00Z")), hasMore = false, total = 3),
         )
         val controller = controller()
         controller.loadInitialIfNeeded()
@@ -78,7 +88,36 @@ class PostsFeedControllerTest {
         val state = controller.state.value
         assertEquals(listOf("p1", "p2", "p3"), state.posts.map { it.id })
         assertFalse(state.hasMore)
-        assertEquals(2, gateway.listQueries[1].offset)
+        // Default sort=publishedAt → keyset cursor from the last loaded card (p2).
+        val cursor = gateway.listQueries[1].cursor
+        assertEquals("2025-12-01T10:00:00Z", cursor?.beforePublishedAt)
+        assertEquals("p2", cursor?.beforeId)
+    }
+
+    @Test
+    fun loadMoreFallsBackToOffsetForDistanceSort() {
+        gateway.pages = listOf(
+            page(listOf(testPost("p1"), testPost("p2")), hasMore = true, total = 4),
+            page(listOf(testPost("p1"), testPost("p2")), hasMore = true, total = 4),
+            page(listOf(testPost("p3")), hasMore = false, total = 4),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        // Distance sort with a radius center → offset pagination, no keyset cursor.
+        controller.applyFilters(
+            PostFilters(
+                center = PostCoordinates(43.5, 16.4),
+                radiusKm = 25,
+                sort = PostSortField.Distance,
+            ),
+        )
+
+        controller.loadMore()
+
+        val loadMoreQuery = gateway.listQueries.last()
+        assertNull(loadMoreQuery.cursor)
+        assertEquals(2, loadMoreQuery.offset)
+        assertEquals(PostSortField.Distance, loadMoreQuery.sort)
     }
 
     @Test
@@ -100,16 +139,16 @@ class PostsFeedControllerTest {
 
         controller.applyFilters(
             PostFilters(
-                types = setOf(PostType.Berth),
-                regionCode = "ADR-HR",
+                contains = setOf(PostContainsFilter.Alert),
+                query = "hvar",
                 sort = PostSortField.UpdatedAt,
                 order = SortOrder.Asc,
             ),
         )
 
         val query = gateway.listQueries.last()
-        assertEquals(setOf(PostType.Berth), query.types)
-        assertEquals("ADR-HR", query.regionCode)
+        assertEquals(setOf(PostContainsFilter.Alert), query.contains)
+        assertEquals("hvar", query.query)
         assertEquals(PostSortField.UpdatedAt, query.sort)
         assertEquals(SortOrder.Asc, query.order)
         assertEquals(0, query.offset)
@@ -207,7 +246,7 @@ class PostsFeedControllerTest {
 
     @Test
     fun castingVoteUpdatesVoteSummary() {
-        val post = testPost("p1", type = PostType.Berth).copy(validityVotes = VoteSummary())
+        val post = testPost("p1").copy(validityVotes = VoteSummary())
         gateway.pages = listOf(page(listOf(post), hasMore = false))
         gateway.voteResult = app.skipperclub.data.ValidityVoteResult(
             postId = "p1",
@@ -272,17 +311,19 @@ class PostsFeedControllerTest {
     fun editPostReplacesCardAndEmitsUpdated() {
         val post = testPost("p1")
         gateway.pages = listOf(page(listOf(post, testPost("p2")), hasMore = false))
-        gateway.updatedPost = testPost("p1").copy(description = "updated body")
+        gateway.updatedPost = testPost("p1").copy(content = PostContent(text = "updated body"))
         val controller = controller()
         controller.loadInitialIfNeeded()
 
         controller.editPost(
             "p1",
-            app.skipperclub.data.UpdatePostRequest(regionCode = "ADR-HR", description = "updated body"),
+            app.skipperclub.data.UpdatePostRequest(
+                content = app.skipperclub.data.PostContentInputDto(text = "updated body"),
+            ),
         )
 
         assertEquals("update:p1", gateway.calls.last())
-        assertEquals("updated body", controller.state.value.posts.first { it.id == "p1" }.description)
+        assertEquals("updated body", controller.state.value.posts.first { it.id == "p1" }.content.text)
         assertTrue(events.any { it is PostsFeedEvent.PostUpdated })
     }
 
@@ -303,12 +344,13 @@ class PostsFeedControllerTest {
     @Test
     fun postFiltersToQueryMapsLifecycleAndExtras() {
         val filters = PostFilters(
+            contains = setOf(PostContainsFilter.Alert, PostContainsFilter.Media),
+            query = "hvar",
             hashtag = "sailing",
             locationName = "Split",
             userId = "me",
             statuses = setOf(app.skipperclub.data.PostStatus.Archived),
-            crossRegionTypes = setOf(PostType.Photo),
-            center = app.skipperclub.data.PostCoordinates(43.5, 16.4),
+            center = PostCoordinates(43.5, 16.4),
             radiusKm = 25,
             sort = PostSortField.Distance,
             fromDate = "2025-01-01T00:00:00Z",
@@ -317,11 +359,12 @@ class PostsFeedControllerTest {
 
         val query = filters.toQuery(limit = 20, offset = 0)
 
+        assertEquals(setOf(PostContainsFilter.Alert, PostContainsFilter.Media), query.contains)
+        assertEquals("hvar", query.query)
         assertEquals("sailing", query.hashtag)
         assertEquals("Split", query.locationName)
         assertEquals("me", query.userId)
         assertEquals(setOf(app.skipperclub.data.PostStatus.Archived), query.statuses)
-        assertEquals(setOf(PostType.Photo), query.crossRegionTypes)
         assertEquals(43.5, query.lat!!, 0.0)
         assertEquals(25, query.distanceKm)
         assertEquals("2025-01-01T00:00:00Z", query.fromDate)
@@ -332,7 +375,7 @@ class PostsFeedControllerTest {
     fun postFiltersDropDistanceSortAndCoordsWithoutRadius() {
         val query = PostFilters(sort = PostSortField.Distance).toQuery(limit = 20, offset = 0)
 
-        assertEquals(PostSortField.CreatedAt, query.sort)
+        assertEquals(PostSortField.PublishedAt, query.sort)
         assertEquals(null, query.lat)
         assertEquals(null, query.distanceKm)
     }

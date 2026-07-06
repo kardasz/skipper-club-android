@@ -1,14 +1,23 @@
 package app.skipperclub.ui.main.posts
 
+import app.skipperclub.data.AlertCategory
+import app.skipperclub.data.AlertSeverity
 import app.skipperclub.data.FriendUser
 import app.skipperclub.data.MediaUploadMeta
-import app.skipperclub.data.PostType
+import app.skipperclub.data.Post
+import app.skipperclub.data.PostAlert
+import app.skipperclub.data.PostContent
+import app.skipperclub.data.PostCoordinates
+import app.skipperclub.data.PostLocation
+import app.skipperclub.data.PostMedia
+import app.skipperclub.data.PostRoute
+import app.skipperclub.data.PostRouteStop
+import app.skipperclub.data.PostStatus
 import app.skipperclub.data.PostUser
 import app.skipperclub.data.PostsError
 import app.skipperclub.ui.main.posts.wizard.PostWizardError
 import app.skipperclub.ui.main.posts.wizard.PostWizardEvent
 import app.skipperclub.ui.main.posts.wizard.PostWizardState
-import app.skipperclub.ui.main.posts.wizard.PostWizardStep
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,127 +34,153 @@ class PostWizardStateTest {
     private val gateway = FakePostsGateway()
     private val events = mutableListOf<PostWizardEvent>()
 
-    private fun wizard(token: String? = "token"): PostWizardState {
+    private fun wizard(token: String? = "token", editingPost: Post? = null): PostWizardState {
         val state = PostWizardState(
             scope = scope,
             accessToken = { token },
             gateway = gateway,
             locationSearchDebounceMillis = 0,
+            editingPost = editingPost,
         )
         scope.launch { state.events.collect { events += it } }
         return state
     }
 
+    private fun editPost(
+        id: String = "p1",
+        text: String = "old body",
+        route: PostRoute? = null,
+        alert: PostAlert? = null,
+        location: PostLocation = PostLocation(),
+        media: List<PostMedia> = emptyList(),
+        taggedUsers: List<PostUser> = emptyList(),
+    ) = Post(
+        id = id,
+        user = PostUser("author", "Author"),
+        contentKeys = emptySet(),
+        status = PostStatus.Published,
+        content = PostContent(text = text, route = route, alert = alert),
+        location = location,
+        media = media,
+        taggedUsers = taggedUsers,
+        publishedAt = "2025-12-01T10:00:00Z",
+        createdAt = "2025-12-01T10:00:00Z",
+        updatedAt = "2025-12-01T10:00:00Z",
+    )
+
+    // --- Text (required) ---
+
     @Test
-    fun stepsIncludeRouteStopsOnlyForRouteType() {
+    fun textIsRequiredToPublish() {
         val state = wizard()
 
-        state.selectType(PostType.Photo)
-        assertEquals(
-            listOf(
-                PostWizardStep.Type,
-                PostWizardStep.Details,
-                PostWizardStep.Media,
-                PostWizardStep.Tags,
-                PostWizardStep.Summary,
-            ),
-            state.steps,
-        )
+        assertFalse(state.canPublish)
+        state.publish()
 
-        state.selectType(PostType.Route)
-        assertEquals(
-            listOf(
-                PostWizardStep.Type,
-                PostWizardStep.Details,
-                PostWizardStep.RouteStops,
-                PostWizardStep.Media,
-                PostWizardStep.Tags,
-                PostWizardStep.Summary,
-            ),
-            state.steps,
-        )
+        assertTrue(PostWizardError.TextRequired in state.visibleErrors)
+        assertFalse(gateway.calls.any { it.startsWith("create") })
+        assertFalse(events.any { it is PostWizardEvent.Published })
     }
 
     @Test
-    fun cannotLeaveTypeStepWithoutSelection() {
+    fun textIsCappedAtMaxLength() {
         val state = wizard()
-
-        assertFalse(state.canGoNext)
-        state.selectType(PostType.Tips)
-        assertTrue(state.canGoNext)
-        state.next()
-        assertEquals(PostWizardStep.Details, state.step)
+        state.updateText("x".repeat(3000))
+        assertEquals(2200, state.text.length)
     }
 
     @Test
-    fun detailsStepValidatesPerTypeRequirements() {
+    fun plainTextPublishSendsRequestAndEmitsPublished() {
         val state = wizard()
-        state.selectType(PostType.Marina)
-        state.next()
+        state.updateText("Fair winds")
 
-        state.next() // nothing filled in
+        assertTrue(state.canPublish)
+        state.publish()
 
-        assertEquals(PostWizardStep.Details, state.step)
-        assertEquals(
-            setOf(
-                PostWizardError.DescriptionRequired,
-                PostWizardError.LocationRequired,
-            ),
-            state.visibleErrors,
-        )
-
-        state.updateDescription("Great marina")
-        state.selectLocation(geocoded("ACI Marina Split"))
-        state.next()
-
-        assertEquals(PostWizardStep.Media, state.step)
-        assertTrue(state.visibleErrors.isEmpty())
+        assertTrue(gateway.calls.any { it.startsWith("create") })
+        assertTrue(events.any { it is PostWizardEvent.Published })
+        assertFalse(state.isPublishing)
     }
 
     @Test
-    fun photoSkipsDescriptionAndLocationButRequiresMedia() {
+    fun buildRequestPlainTextOmitsOptionalSections() {
         val state = wizard()
-        state.selectType(PostType.Photo)
-        state.next()
-        state.next()
+        state.updateText("  Hello world  ")
 
-        assertEquals(PostWizardStep.Media, state.step)
-        state.next()
+        val request = state.buildRequest()!!
 
-        // photo requires at least one uploaded media item
-        assertEquals(PostWizardStep.Media, state.step)
-        assertEquals(setOf(PostWizardError.MediaRequired), state.visibleErrors)
-
-        state.uploadMedia("a.jpg", "image/jpeg", byteArrayOf(1), MediaUploadMeta(width = 10, height = 10))
-        state.next()
-        assertEquals(PostWizardStep.Tags, state.step)
-        state.next()
-        assertEquals(PostWizardStep.Summary, state.step)
+        assertEquals("Hello world", request.content.text)
+        assertNull(request.content.route)
+        assertNull(request.content.alert)
+        assertNull(request.location)
+        assertNull(request.mediaIds)
+        assertNull(request.taggedUserIds)
     }
+
+    // --- Location ---
+
+    @Test
+    fun locationSearchPopulatesResultsAndSelectionFillsPoint() {
+        gateway.locations = listOf(geocoded("Hvar", 43.1, 16.4))
+        val state = wizard()
+        state.updateText("Anchored here")
+
+        state.updateLocationQuery("Hva")
+        assertEquals(1, state.locationResults.size)
+
+        state.selectLocation(state.locationResults.single())
+        assertEquals("Hvar", state.locationName)
+        assertEquals(43.1, state.coordinates!!.lat, 0.0)
+        assertTrue(state.locationResults.isEmpty())
+
+        val request = state.buildRequest()!!
+        assertEquals("Hvar", request.location!!.name)
+        assertEquals(16.4, request.location!!.point!!.lng, 0.0)
+        assertNull(request.location!!.area)
+    }
+
+    // --- Route section ---
 
     @Test
     fun routeRequiresAtLeastOneStop() {
         val state = wizard()
-        state.selectType(PostType.Route)
-        state.next()
-        state.updateDescription("Trip")
-        state.selectLocation(geocoded("Split"))
-        state.next()
+        state.updateText("Island hopping")
+        state.updateRouteEnabled(true)
 
-        assertEquals(PostWizardStep.RouteStops, state.step)
-        state.next()
-        assertEquals(PostWizardStep.RouteStops, state.step)
-        assertEquals(setOf(PostWizardError.StopsRequired), state.visibleErrors)
+        state.publish()
+        assertTrue(PostWizardError.StopsRequired in state.visibleErrors)
+        assertFalse(events.any { it is PostWizardEvent.Published })
 
         state.addStop(geocoded("Hvar"))
-        state.next()
-        assertEquals(PostWizardStep.Media, state.step)
+        state.publish()
+        assertTrue(events.any { it is PostWizardEvent.Published })
+    }
+
+    @Test
+    fun routeBuildIncludesStopsAndFields() {
+        val state = wizard()
+        state.updateText("Island hopping")
+        state.updateRouteEnabled(true)
+        state.addStop(geocoded("Split", 43.5, 16.4))
+        state.addStop(geocoded("Hvar", 43.1, 16.4))
+        state.updateDurationDays("7")
+        state.updateLengthNm("120.5")
+
+        val request = state.buildRequest()!!
+        val route = request.content.route!!
+
+        assertEquals(2, route.stops.size)
+        assertEquals("Split", route.stops.first().name)
+        assertEquals(43.5, route.stops.first().coordinates.lat, 0.0)
+        assertEquals(7, route.durationDays)
+        assertEquals(120.5, route.lengthNm!!, 0.0)
+        assertNull(request.content.alert)
     }
 
     @Test
     fun stopsCanBeReorderedAndRemoved() {
         val state = wizard()
-        state.selectType(PostType.Route)
+        state.updateRouteEnabled(true)
         state.addStop(geocoded("Split"))
         state.addStop(geocoded("Hvar"))
         state.addStop(geocoded("Vis"))
@@ -160,83 +195,102 @@ class PostWizardStateTest {
         assertEquals(listOf("Vis", "Hvar"), state.stops.map { it.name })
     }
 
-    @Test
-    fun backWalksStepsAndReturnsFalseAtStart() {
-        val state = wizard()
-        state.selectType(PostType.Tips)
-        state.next()
+    // --- Alert section ---
 
-        assertTrue(state.back())
-        assertEquals(PostWizardStep.Type, state.step)
-        assertFalse(state.back())
+    @Test
+    fun alertRequiresCategoryAndPoint() {
+        val state = wizard()
+        state.updateText("Rocks ahead")
+        state.updateAlertEnabled(true)
+
+        assertEquals(
+            setOf(PostWizardError.AlertCategoryRequired, PostWizardError.AlertLocationRequired),
+            state.validate(),
+        )
+
+        state.selectAlertCategory(AlertCategory.Obstruction)
+        assertEquals(setOf(PostWizardError.AlertLocationRequired), state.validate())
+
+        state.selectLocation(geocoded("Reef", 43.2, 16.1))
+        assertTrue(state.validate().isEmpty())
     }
 
     @Test
-    fun buildRequestForRouteIncludesRouteFields() {
+    fun alertBuildIncludesCategorySeverityAndPoint() {
         val state = wizard()
-        state.selectType(PostType.Route)
-        state.updateDescription("Island hopping")
-        state.selectLocation(geocoded("Split", 43.5, 16.4))
-        state.addStop(geocoded("Hvar", 43.1, 16.4))
-        state.updateDurationDays("7")
-        state.updateLengthNm("120.5")
+        state.updateText("Storm warning")
+        state.updateAlertEnabled(true)
+        state.selectAlertCategory(AlertCategory.Weather)
+        state.selectAlertSeverity(AlertSeverity.Warning)
+        state.selectLocation(geocoded("Bay", 44.0, 15.0))
 
         val request = state.buildRequest()!!
+        val alert = request.content.alert!!
 
-        assertEquals("route", request.type)
-        assertNull(request.regionCode)
-        assertEquals("Island hopping", request.description)
-        assertEquals("Split", request.locationName)
-        assertEquals(43.5, request.coordinates!!.lat, 0.0)
-        assertEquals(1, request.stops!!.size)
-        assertEquals(7, request.durationDays)
-        assertEquals(120.5, request.lengthNm!!, 0.0)
-        assertNull(request.mediaIds)
+        assertEquals(AlertCategory.Weather, alert.category)
+        assertEquals(AlertSeverity.Warning, alert.severity)
+        assertNull(request.content.route)
+        assertEquals(44.0, request.location!!.point!!.lat, 0.0)
     }
 
     @Test
-    fun buildRequestForTipsOmitsRouteFields() {
+    fun alertSeverityIsOptional() {
         val state = wizard()
-        state.selectType(PostType.Tips)
-        state.updateDescription("Watch the shallows")
+        state.updateText("Notice")
+        state.updateAlertEnabled(true)
+        state.selectAlertCategory(AlertCategory.NoticeToMariners)
+        state.selectLocation(geocoded("Port", 45.0, 14.0))
 
-        val request = state.buildRequest()!!
-
-        assertEquals("tips", request.type)
-        assertNull(request.stops)
-        assertNull(request.durationDays)
-        assertNull(request.lengthNm)
-        assertNull(request.locationName)
-        assertNull(request.coordinates)
+        val alert = state.buildRequest()!!.content.alert!!
+        assertEquals(AlertCategory.NoticeToMariners, alert.category)
+        assertNull(alert.severity)
     }
 
+    // --- Route / Alert exclusivity ---
+
     @Test
-    fun uploadMediaTracksLifecycleAndCollectsIds() {
+    fun enablingAlertDisablesRouteAndViceVersa() {
         val state = wizard()
-        state.selectType(PostType.Photo)
+
+        state.updateRouteEnabled(true)
+        assertTrue(state.routeEnabled)
+        assertFalse(state.alertEnabled)
+
+        state.updateAlertEnabled(true)
+        assertFalse(state.routeEnabled)
+        assertTrue(state.alertEnabled)
+
+        state.updateRouteEnabled(true)
+        assertTrue(state.routeEnabled)
+        assertFalse(state.alertEnabled)
+    }
+
+    // --- Media & tags ---
+
+    @Test
+    fun uploadMediaCollectsIdsIntoRequest() {
+        val state = wizard()
+        state.updateText("Sunset shots")
 
         state.uploadMedia(
             "a.jpg",
             "image/jpeg",
             byteArrayOf(1, 2),
-            MediaUploadMeta(width = 100, height = 80, camera = "Pixel", duration = null),
+            MediaUploadMeta(width = 100, height = 80, camera = "Pixel"),
         )
 
         val item = state.media.single()
         assertFalse(item.isUploading)
         assertEquals("media-a.jpg", item.mediaId)
-        assertEquals("https://cdn/a.jpg", item.publicUrl)
         assertEquals("Pixel", gateway.lastUploadMeta?.camera)
 
-        val request = state.buildRequest()!!
-        assertEquals(listOf("media-a.jpg"), request.mediaIds)
+        assertEquals(listOf("media-a.jpg"), state.buildRequest()!!.mediaIds)
     }
 
     @Test
     fun failedUploadMarksItemAndEmitsEvent() {
         gateway.mutationError = PostsError.Validation("too large")
         val state = wizard()
-        state.selectType(PostType.Photo)
 
         state.uploadMedia("a.jpg", "image/jpeg", byteArrayOf(1), MediaUploadMeta())
 
@@ -245,42 +299,29 @@ class PostWizardStateTest {
     }
 
     @Test
-    fun publishSendsRequestAndEmitsPublished() {
-        gateway.createdPost = testPost("created")
+    fun tagSearchExcludesAlreadyTaggedAndBuildRequestIncludesIds() {
+        gateway.friends = listOf(FriendUser("u1", "Ann"), FriendUser("u2", "Bo"))
         val state = wizard()
-        state.selectType(PostType.Tips)
-        state.updateDescription("Tip")
-        state.next()
-        state.next()
-        state.next()
-        state.next()
+        state.updateText("Crew shout-out")
 
-        assertEquals(PostWizardStep.Summary, state.step)
-        state.publish()
+        state.updateTagQuery("an")
+        assertEquals(2, state.tagResults.size)
+        state.addTag(FriendUser("u1", "Ann"))
+        assertEquals(listOf("Ann"), state.taggedUsers.map { it.name })
 
-        assertTrue(gateway.calls.contains("create:tips"))
-        assertTrue(events.any { it is PostWizardEvent.Published })
-        assertFalse(state.isPublishing)
+        state.updateTagQuery("bo")
+        assertEquals(listOf("u2"), state.tagResults.map { it.id })
+
+        assertEquals(listOf("u1"), state.buildRequest()!!.taggedUserIds)
     }
 
-    @Test
-    fun publishBlocksWhenValidationFails() {
-        val state = wizard()
-        state.selectType(PostType.Tips)
-        // description missing
-
-        state.publish()
-
-        assertFalse(gateway.calls.any { it.startsWith("create") })
-        assertTrue(PostWizardError.DescriptionRequired in state.visibleErrors)
-    }
+    // --- Publish failure & session ---
 
     @Test
     fun publishFailureEmitsPublishFailed() {
         gateway.mutationError = PostsError.Server(500, null)
         val state = wizard()
-        state.selectType(PostType.Tips)
-        state.updateDescription("Tip")
+        state.updateText("Hi")
 
         state.publish()
 
@@ -288,110 +329,87 @@ class PostWizardStateTest {
         assertFalse(state.isPublishing)
     }
 
-    @Test
-    fun locationSearchPopulatesResultsAndSelectionFillsFields() {
-        gateway.locations = listOf(geocoded("Hvar"))
-        val state = wizard()
-        state.selectType(PostType.Place)
-
-        state.updateLocationQuery("Hva") // 3 chars triggers search
-        assertEquals(1, state.locationResults.size)
-
-        state.selectLocation(state.locationResults.single())
-        assertEquals("Hvar", state.locationName)
-        assertEquals(43.5, state.coordinates!!.lat, 0.0)
-        assertTrue(state.locationResults.isEmpty())
-    }
+    // --- Edit mode ---
 
     @Test
-    fun shortLocationQueryClearsResults() {
-        gateway.locations = listOf(geocoded("Hvar"))
-        val state = wizard()
-        state.updateLocationQuery("Hvar")
-        assertEquals(1, state.locationResults.size)
-
-        state.updateLocationQuery("H")
-
-        assertTrue(state.locationResults.isEmpty())
-        assertFalse(state.isSearchingLocation)
-    }
-
-    @Test
-    fun descriptionIsCappedAtMaxLength()  {
-        val state = wizard()
-        state.updateDescription("x".repeat(3000))
-        assertEquals(2200, state.description.length)
-    }
-
-    @Test
-    fun tagSearchExcludesAlreadyTaggedAndBuildRequestIncludesIds() {
-        gateway.friends = listOf(FriendUser("u1", "Ann"), FriendUser("u2", "Bo"))
-        val state = wizard()
-        state.selectType(PostType.Tips)
-        state.updateDescription("Tip")
-
-        state.updateTagQuery("an")
-        assertEquals(2, state.tagResults.size)
-        state.addTag(FriendUser("u1", "Ann"))
-        assertEquals(listOf("Ann"), state.taggedUsers.map { it.name })
-
-        // Already-tagged users are filtered out of subsequent results.
-        state.updateTagQuery("bo")
-        assertEquals(listOf("u2"), state.tagResults.map { it.id })
-
-        state.removeTag("u1")
-        assertTrue(state.taggedUsers.isEmpty())
-        state.addTag(FriendUser("u2", "Bo"))
-
-        assertEquals(listOf("u2"), state.buildRequest()!!.taggedUserIds)
-    }
-
-    @Test
-    fun editModeSkipsTypeStepAndPrefillsFields() {
-        val post = testPost("p1", type = PostType.Tips).copy(
-            description = "old body",
-            regionCode = "ADR-HR",
+    fun editModeSeedsRoutePost() {
+        val post = editPost(
+            text = "Great loop",
+            route = PostRoute(
+                stops = listOf(
+                    PostRouteStop("Split", PostCoordinates(43.5, 16.4)),
+                    PostRouteStop("Hvar", PostCoordinates(43.1, 16.4)),
+                ),
+                durationDays = 5,
+                lengthNm = 90.0,
+            ),
+            location = PostLocation(name = "Split", point = PostCoordinates(43.5, 16.4)),
+            media = listOf(PostMedia(id = "m1", type = "image", url = "https://cdn/x.jpg")),
             taggedUsers = listOf(PostUser("u1", "Ann")),
         )
-        val state = PostWizardState(
-            scope = scope,
-            accessToken = { "token" },
-            gateway = gateway,
-            locationSearchDebounceMillis = 0,
-            editingPost = post,
-        )
+        val state = wizard(editingPost = post)
 
         assertTrue(state.isEditing)
-        assertEquals(PostWizardStep.Details, state.step)
-        assertEquals(
-            listOf(PostWizardStep.Details, PostWizardStep.Media, PostWizardStep.Tags, PostWizardStep.Summary),
-            state.steps,
-        )
-        assertEquals("old body", state.description)
-        assertEquals("ADR-HR", state.regionCode)
+        assertEquals("Great loop", state.text)
+        assertTrue(state.routeEnabled)
+        assertFalse(state.alertEnabled)
+        assertEquals(listOf("Split", "Hvar"), state.stops.map { it.name })
+        assertEquals("5", state.durationDaysText)
+        assertEquals("90", state.lengthNmText)
+        assertEquals("Split", state.locationName)
+        assertEquals(43.5, state.coordinates!!.lat, 0.0)
         assertEquals(listOf("Ann"), state.taggedUsers.map { it.name })
+        assertEquals("m1", state.media.single().mediaId)
+    }
+
+    @Test
+    fun editModeSeedsAlertPost() {
+        val post = editPost(
+            text = "Diving works",
+            alert = PostAlert(category = AlertCategory.Diving, severity = AlertSeverity.Critical),
+            location = PostLocation(name = "Reef", point = PostCoordinates(43.0, 16.0)),
+        )
+        val state = wizard(editingPost = post)
+
+        assertTrue(state.alertEnabled)
+        assertFalse(state.routeEnabled)
+        assertEquals(AlertCategory.Diving, state.alertCategory)
+        assertEquals(AlertSeverity.Critical, state.alertSeverity)
+        assertEquals(43.0, state.coordinates!!.lat, 0.0)
     }
 
     @Test
     fun editModePublishEmitsUpdatedWithRequest() {
-        val post = testPost("p1", type = PostType.Tips).copy(description = "old", regionCode = "ADR-HR")
-        val state = PostWizardState(
-            scope = scope,
-            accessToken = { "token" },
-            gateway = gateway,
-            locationSearchDebounceMillis = 0,
-            editingPost = post,
-        )
-        scope.launch { state.events.collect { events += it } }
-        state.updateDescription("new body")
+        val post = editPost(id = "p1", text = "old body")
+        val state = wizard(editingPost = post)
+        state.updateText("new body")
 
         state.publish()
 
         val updated = events.filterIsInstance<PostWizardEvent.Updated>().single()
         assertEquals("p1", updated.postId)
-        assertEquals("new body", updated.request.description)
-        assertEquals("ADR-HR", updated.request.regionCode)
-        // Edit never calls create.
+        assertEquals("new body", updated.request.content.text)
+        assertNull(updated.request.content.route)
+        assertNull(updated.request.content.alert)
         assertFalse(gateway.calls.any { it.startsWith("create") })
+    }
+
+    @Test
+    fun editModeAlertUpdateBuildsAlertContent() {
+        val post = editPost(
+            text = "Storm",
+            alert = PostAlert(category = AlertCategory.Weather, severity = AlertSeverity.Info),
+            location = PostLocation(name = "Bay", point = PostCoordinates(44.0, 15.0)),
+        )
+        val state = wizard(editingPost = post)
+        state.selectAlertSeverity(AlertSeverity.Critical)
+
+        state.publish()
+
+        val updated = events.filterIsInstance<PostWizardEvent.Updated>().single()
+        val alert = updated.request.content.alert!!
+        assertEquals(AlertCategory.Weather, alert.category)
+        assertEquals(AlertSeverity.Critical, alert.severity)
+        assertEquals(44.0, updated.request.location!!.point!!.lat, 0.0)
     }
 }

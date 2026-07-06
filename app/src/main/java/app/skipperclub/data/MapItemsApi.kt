@@ -35,6 +35,7 @@ object MapItemsApi {
     internal fun listRequest(
         accessToken: String,
         bounds: MapViewportBounds,
+        postContains: Set<PostContainsFilter> = emptySet(),
     ): Request {
         val url = "${BuildConfig.API_BASE_URL}/v1/map/items".toHttpUrl()
             .newBuilder()
@@ -42,6 +43,14 @@ object MapItemsApi {
             .addQueryParameter("south", bounds.south.toString())
             .addQueryParameter("east", bounds.east.toString())
             .addQueryParameter("west", bounds.west.toString())
+            .apply {
+                postContains.takeIf { it.isNotEmpty() }?.let {
+                    addQueryParameter(
+                        "postContains",
+                        it.sortedBy { c -> c.ordinal }.joinToString(",") { c -> c.wireValue },
+                    )
+                }
+            }
             .build()
 
         return Request.Builder()
@@ -56,8 +65,9 @@ object MapItemsApi {
     suspend fun list(
         accessToken: String,
         bounds: MapViewportBounds,
+        postContains: Set<PostContainsFilter> = emptySet(),
     ): MapItemsResponse {
-        execute(listRequest(accessToken, bounds)).use { response ->
+        execute(listRequest(accessToken, bounds, postContains)).use { response ->
             if (!response.isSuccessful) throw response.toMapItemsError()
             return decodeResponse(response.body.string(), response.code)
         }

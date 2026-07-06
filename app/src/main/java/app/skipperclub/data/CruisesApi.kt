@@ -58,6 +58,12 @@ object CruisesApi {
             query.toDate?.let { addQueryParameter("toDate", it) }
             query.type?.let { addQueryParameter("type", it.wireValue) }
             query.vesselType?.let { addQueryParameter("vesselType", it.wireValue) }
+            // Spatial filter is all-or-none: only send lat/lng/distance together.
+            if (query.hasSpatialFilter) {
+                addQueryParameter("lat", query.lat.toString())
+                addQueryParameter("lng", query.lng.toString())
+                addQueryParameter("distance", query.distance.toString())
+            }
             addQueryParameter("sort", query.sort.wireValue)
             addQueryParameter("order", query.order.wireValue)
             addQueryParameter("limit", query.limit.toString())

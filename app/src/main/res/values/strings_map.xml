@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Alert severity labels (content.alert.severity). Also used by the posts
+         card + create wizard via AlertSeverity.labelRes(). -->
+    <string name="alert_severity_info">Info</string>
+    <string name="alert_severity_warning">Warning</string>
+    <string name="alert_severity_critical">Critical</string>
+
+    <!-- Alert form severity selector -->
+    <string name="alert_form_severity_label">Severity</string>
+
+    <!-- Error messages when creating an alert post (POST /v1/posts). -->
+    <string name="alert_post_error_validation">Please check the alert details and try again.</string>
+    <string name="alert_post_error_auth">Your session has expired. Please sign in again to add an alert.</string>
+    <string name="alert_post_error_rate_limited">Too many requests. Please wait a moment and try again.</string>
+    <string name="alert_post_error_generic">Couldn\'t add the alert. Please try again.</string>
+</resources>

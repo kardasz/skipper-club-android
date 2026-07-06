@@ -12,6 +12,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -112,6 +113,49 @@ class CruiseListControllerTest {
         assertEquals(VesselType.Catamaran, query.vesselType)
         assertEquals(CruiseSortField.CostPerPerson, query.sort)
         assertEquals(SortOrder.Asc, query.order)
+    }
+
+    @Test
+    fun applyFiltersThreadsNearMeSpatialParamsIntoQuery() {
+        gateway.cruisePages = listOf(cruisesPage(emptyList()))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.applyFilters(
+            CruiseFilters(lat = 43.5081, lng = 16.4402, distanceKm = 50),
+        )
+
+        val query = gateway.listQueries.last()
+        assertEquals(43.5081, query.lat!!, 0.0)
+        assertEquals(16.4402, query.lng!!, 0.0)
+        assertEquals(50, query.distance)
+        assertTrue(query.hasSpatialFilter)
+    }
+
+    @Test
+    fun applyFiltersOmitsSpatialParamsWhenNearMeIncomplete() {
+        gateway.cruisePages = listOf(cruisesPage(emptyList()))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        // Distance missing → near-me is not active, so nothing is threaded through.
+        controller.applyFilters(
+            CruiseFilters(lat = 43.5081, lng = 16.4402),
+        )
+
+        val query = gateway.listQueries.last()
+        assertNull(query.lat)
+        assertNull(query.lng)
+        assertNull(query.distance)
+        assertFalse(query.hasSpatialFilter)
+    }
+
+    @Test
+    fun nearMeCountsAsAnActiveFilter() {
+        val nearMe = CruiseFilters(lat = 43.5081, lng = 16.4402, distanceKm = 50)
+        assertTrue(nearMe.hasNearMe)
+        assertEquals(1, nearMe.activeCount)
+        assertEquals(1, nearMe.filterCount)
     }
 
     @Test

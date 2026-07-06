@@ -6,6 +6,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -102,6 +103,33 @@ class CruisesApiTest {
         requireNotNull(cruise)
         assertEquals(1, cruise.media.size)
         assertEquals("https://cdn.skipperclub.app/cruises/media-1.jpg", cruise.media.single().url)
+    }
+
+    @Test
+    fun listRequestSerializesSpatialFilterWhenLatLngDistancePresent() {
+        val request = CruisesApi.listRequest(
+            "access-token",
+            CruiseListQuery(lat = 43.5081, lng = 16.4402, distance = 50),
+        )
+
+        val url = request.url
+        assertEquals("43.5081", url.queryParameter("lat"))
+        assertEquals("16.4402", url.queryParameter("lng"))
+        assertEquals("50", url.queryParameter("distance"))
+    }
+
+    @Test
+    fun listRequestOmitsSpatialFilterWhenIncomplete() {
+        // Only lat + lng, no distance → the whole triple is dropped (all-or-none).
+        val request = CruisesApi.listRequest(
+            "access-token",
+            CruiseListQuery(lat = 43.5081, lng = 16.4402),
+        )
+
+        val url = request.url
+        assertNull(url.queryParameter("lat"))
+        assertNull(url.queryParameter("lng"))
+        assertNull(url.queryParameter("distance"))
     }
 
     private fun response(code: Int, body: String): Response =

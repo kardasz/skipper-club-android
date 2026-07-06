@@ -27,9 +27,18 @@ data class CruiseFilters(
     val toDate: String? = null,
     val type: CruiseType? = null,
     val vesselType: VesselType? = null,
+    // "Near me" spatial filter. Populated together (device location + chosen radius)
+    // or all null. Threaded to the API as lat/lng/distance (all-or-none).
+    val lat: Double? = null,
+    val lng: Double? = null,
+    val distanceKm: Int? = null,
     val sort: CruiseSortField = CruiseSortField.DepartureDate,
     val order: SortOrder = SortOrder.Desc,
 ) {
+    /** True only when a usable location + radius is set. */
+    val hasNearMe: Boolean
+        get() = lat != null && lng != null && distanceKm != null
+
     val activeCount: Int
         get() = listOf(
             scope != CruiseScope.All,
@@ -38,6 +47,7 @@ data class CruiseFilters(
             !toDate.isNullOrBlank(),
             type != null,
             vesselType != null,
+            hasNearMe,
             sort != CruiseSortField.DepartureDate,
             order != SortOrder.Desc,
         ).count { it }
@@ -177,6 +187,9 @@ class CruiseListController(
             toDate = filters.toDate?.takeIf { it.isNotBlank() },
             type = filters.type,
             vesselType = filters.vesselType,
+            lat = filters.lat.takeIf { filters.hasNearMe },
+            lng = filters.lng.takeIf { filters.hasNearMe },
+            distance = filters.distanceKm.takeIf { filters.hasNearMe },
             sort = filters.sort,
             order = filters.order,
             limit = pageSize,

@@ -20,10 +20,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -31,7 +28,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -51,11 +47,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.skipperclub.R
 import app.skipperclub.data.GeocodedLocation
-import app.skipperclub.data.PostCoordinates
+import app.skipperclub.data.PostContainsFilter
 import app.skipperclub.data.PostSortField
 import app.skipperclub.data.PostStatus
-import app.skipperclub.data.PostType
-import app.skipperclub.data.Region
 import app.skipperclub.data.SortOrder
 import java.time.Instant
 import java.time.ZoneOffset
@@ -78,16 +72,14 @@ private fun PostStatus.labelRes(): Int = when (this) {
 }
 
 /**
- * Feed filter sheet. Beyond type/region/sort it exposes the lifecycle ("My posts" +
- * statuses), hashtag, location-name substring, cross-region evergreen types, a date
- * range and a radius search (geocoded center + km). Edits are local until Apply.
+ * Feed filter sheet. Beyond the "Show" content filter and full-text search it exposes
+ * the lifecycle ("My posts" + statuses), hashtag, location-name substring, a date
+ * range, a radius search (geocoded center + km) and sorting. Local until Apply.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PostFilterSheet(
     filters: PostFilters,
-    regions: List<Region>,
-    regionsLoadFailed: Boolean,
     currentUserId: String?,
     onSearchLocations: suspend (String) -> List<GeocodedLocation>,
     onApply: (PostFilters) -> Unit,
@@ -96,8 +88,6 @@ fun PostFilterSheet(
     ModalBottomSheet(onDismissRequest = onDismiss) {
         PostFilterSheetContent(
             filters = filters,
-            regions = regions,
-            regionsLoadFailed = regionsLoadFailed,
             currentUserId = currentUserId,
             onSearchLocations = onSearchLocations,
             onApply = onApply,
@@ -108,12 +98,24 @@ fun PostFilterSheet(
     }
 }
 
+private val CONTAINS_FILTERS = listOf(
+    PostContainsFilter.Alert,
+    PostContainsFilter.Media,
+    PostContainsFilter.Route,
+    PostContainsFilter.Note,
+)
+
+private fun PostContainsFilter.labelRes(): Int = when (this) {
+    PostContainsFilter.Alert -> R.string.posts_filter_contains_alerts
+    PostContainsFilter.Media -> R.string.posts_filter_contains_photos
+    PostContainsFilter.Route -> R.string.posts_filter_contains_routes
+    PostContainsFilter.Note -> R.string.posts_filter_contains_notes
+}
+
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 internal fun PostFilterSheetContent(
     filters: PostFilters,
-    regions: List<Region>,
-    regionsLoadFailed: Boolean,
     currentUserId: String?,
     onSearchLocations: suspend (String) -> List<GeocodedLocation>,
     onApply: (PostFilters) -> Unit,
@@ -141,63 +143,42 @@ internal fun PostFilterSheetContent(
             }
         }
 
-        FilterSectionLabel(R.string.filter_section_types)
+        FilterSectionLabel(R.string.posts_filter_section_show)
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            PostType.entries.forEach { type ->
-                val selected = type in draft.types
+            CONTAINS_FILTERS.forEach { filter ->
+                val selected = filter in draft.contains
                 FilterChip(
                     selected = selected,
                     onClick = {
                         draft = draft.copy(
-                            types = if (selected) draft.types - type else draft.types + type,
+                            contains = if (selected) draft.contains - filter else draft.contains + filter,
                         )
                     },
-                    label = { Text(stringResource(type.labelRes())) },
+                    label = { Text(stringResource(filter.labelRes())) },
                     leadingIcon = if (selected) {
                         { Icon(imageVector = Icons.Filled.Check, contentDescription = null) }
                     } else {
                         null
                     },
                     colors = FilterChipDefaults.filterChipColors(),
-                    modifier = Modifier.testTag("filter_type_${type.wireValue}"),
+                    modifier = Modifier.testTag("filter_contains_${filter.wireValue}"),
                 )
             }
         }
 
-        FilterSectionLabel(R.string.filter_section_region)
-        RegionDropdown(
-            regions = regions,
-            regionsLoadFailed = regionsLoadFailed,
-            selectedCode = draft.regionCode,
-            onSelect = { draft = draft.copy(regionCode = it) },
+        FilterSectionLabel(R.string.posts_filter_section_search)
+        OutlinedTextField(
+            value = draft.query.orEmpty(),
+            onValueChange = { value -> draft = draft.copy(query = value.ifBlank { null }) },
+            singleLine = true,
+            placeholder = { Text(stringResource(R.string.posts_filter_search_hint)) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("filter_query"),
         )
-
-        FilterSectionLabel(R.string.filter_section_cross_region)
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            PostType.entries.filter { it.isEvergreen }.forEach { type ->
-                val selected = type in draft.crossRegionTypes
-                FilterChip(
-                    selected = selected,
-                    onClick = {
-                        draft = draft.copy(
-                            crossRegionTypes = if (selected) {
-                                draft.crossRegionTypes - type
-                            } else {
-                                draft.crossRegionTypes + type
-                            },
-                        )
-                    },
-                    label = { Text(stringResource(type.labelRes())) },
-                    modifier = Modifier.testTag("filter_crossregion_${type.wireValue}"),
-                )
-            }
-        }
 
         FilterSectionLabel(R.string.filter_section_hashtag)
         OutlinedTextField(
@@ -275,9 +256,9 @@ internal fun PostFilterSheetContent(
         FilterSectionLabel(R.string.filter_section_sort)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(
-                selected = draft.sort == PostSortField.CreatedAt,
-                onClick = { draft = draft.copy(sort = PostSortField.CreatedAt) },
-                label = { Text(stringResource(R.string.filter_sort_created)) },
+                selected = draft.sort == PostSortField.PublishedAt,
+                onClick = { draft = draft.copy(sort = PostSortField.PublishedAt) },
+                label = { Text(stringResource(R.string.posts_filter_sort_published)) },
             )
             FilterChip(
                 selected = draft.sort == PostSortField.UpdatedAt,
@@ -511,70 +492,3 @@ private fun isoFromMillis(millis: Long): String = Instant.ofEpochMilli(millis).t
 
 private fun formatIsoDate(iso: String): String =
     runCatching { ISO_DATE.format(Instant.parse(iso)) }.getOrDefault(iso)
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun RegionDropdown(
-    regions: List<Region>,
-    regionsLoadFailed: Boolean,
-    selectedCode: String?,
-    onSelect: (String?) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val allRegionsLabel = stringResource(R.string.filter_all_regions)
-    val selectedLabel = regions.firstOrNull { it.code == selectedCode }?.localizedName
-        ?: selectedCode
-        ?: allRegionsLabel
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it },
-    ) {
-        OutlinedTextField(
-            value = selectedLabel,
-            onValueChange = {},
-            readOnly = true,
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            supportingText = if (regionsLoadFailed) {
-                { Text(stringResource(R.string.filter_regions_load_failed)) }
-            } else {
-                null
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor(MenuAnchorType.PrimaryNotEditable),
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            DropdownMenuItem(
-                text = { Text(allRegionsLabel) },
-                onClick = {
-                    onSelect(null)
-                    expanded = false
-                },
-            )
-            regions.forEach { region ->
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(region.localizedName)
-                            if (region.localizedParents.isNotEmpty()) {
-                                Text(
-                                    text = region.localizedParents.joinToString(" · "),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    },
-                    onClick = {
-                        onSelect(region.code)
-                        expanded = false
-                    },
-                )
-            }
-        }
-    }
-}

@@ -1,51 +1,10 @@
 package app.skipperclub.data
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 
+/** RegionsApi was removed in the v8.0.0 cutover; only the geocoder remains here. */
 class RegionsAndGeocoderApiTest {
-
-    @Test
-    fun regionsListRequestIsPublicAndSortedByPopularity() {
-        val request = RegionsApi.listRequest()
-
-        assertEquals("GET", request.method)
-        assertEquals("/v1/regions", request.url.encodedPath)
-        assertEquals("popularity", request.url.queryParameter("sort"))
-        assertNull(request.header("Authorization"))
-    }
-
-    @Test
-    fun regionsResponseDecodesLocalizedFields() {
-        val payload = """
-            {
-              "regions": [
-                {
-                  "code": "HR",
-                  "slug": "croatia",
-                  "name": "Croatia",
-                  "path": "mediterranean-sea/croatia",
-                  "localizedName": "Chorwacja",
-                  "localizedParents": ["Morze Śródziemne"],
-                  "localizedPath": "morze-srodziemne/chorwacja",
-                  "parent": "MED",
-                  "popularity": 0.95,
-                  "order": 1,
-                  "level": 1
-                }
-              ]
-            }
-        """.trimIndent()
-
-        val regions = RegionsApi.decodeResponse(payload)
-
-        assertEquals(1, regions.size)
-        assertEquals("HR", regions[0].code)
-        assertEquals("Chorwacja", regions[0].localizedName)
-        assertEquals(listOf("Morze Śródziemne"), regions[0].localizedParents)
-        assertEquals(1, regions[0].level)
-    }
 
     @Test
     fun geocoderSearchRequestIncludesQueryAndAuth() {

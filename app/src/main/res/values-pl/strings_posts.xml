@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Post kind badge (derived from a post's content). -->
+    <string name="post_kind_alert">Ostrzeżenie</string>
+    <string name="post_kind_route">Trasa</string>
+    <string name="post_kind_media">Zdjęcia</string>
+    <string name="post_kind_note">Notatka</string>
+
+    <!-- Feed filter: "Show" content filter + full-text search. -->
+    <string name="posts_filter_section_show">Pokaż</string>
+    <string name="posts_filter_contains_alerts">Ostrzeżenia</string>
+    <string name="posts_filter_contains_photos">Zdjęcia</string>
+    <string name="posts_filter_contains_routes">Trasy</string>
+    <string name="posts_filter_contains_notes">Notatki</string>
+    <string name="posts_filter_section_search">Szukaj</string>
+    <string name="posts_filter_search_hint">Szukaj wpisów…</string>
+    <string name="posts_filter_sort_published">Najnowsze</string>
+</resources>

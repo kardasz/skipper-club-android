@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cruises_filter_near_me">Near me</string>
+    <string name="cruises_filter_use_my_location">Use my location</string>
+    <string name="cruises_filter_distance_km">%1$d km</string>
+    <string name="cruises_filter_location_unavailable">Location unavailable. Check permissions and GPS.</string>
+</resources>

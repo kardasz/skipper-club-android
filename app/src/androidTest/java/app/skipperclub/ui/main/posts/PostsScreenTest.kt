@@ -12,7 +12,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performTextInput
 import app.skipperclub.R
 import app.skipperclub.data.Post
-import app.skipperclub.data.PostType
+import app.skipperclub.data.PostContainsFilter
 import app.skipperclub.data.ReactionType
 import app.skipperclub.data.ValidityVoteType
 import app.skipperclub.ui.main.posts.wizard.PostWizard
@@ -48,7 +48,7 @@ class PostsScreenTest {
     )
 
     @Test
-    fun feedRendersAllProvidedPostTypes() {
+    fun feedRendersProvidedPosts() {
         compose.setContent {
             SkipperClubTheme {
                 PostsScreenContent(
@@ -65,12 +65,11 @@ class PostsScreenTest {
             }
         }
 
+        // Feed renders multiple posts from different authors (note, photo, route, alert).
         compose.onNodeWithText("Anna Nowak").assertExists()
-        compose.onNodeWithText(text(R.string.post_type_photo)).assertExists()
-        compose.onNodeWithText(text(R.string.post_type_route)).assertExists()
         compose.onNodeWithTag("posts_list")
-            .performScrollToNode(hasText(text(R.string.post_type_berth)))
-        compose.onNodeWithText(text(R.string.post_type_berth)).assertExists()
+            .performScrollToNode(hasText("Marek Wiśniewski"))
+        compose.onNodeWithText("Marek Wiśniewski").assertExists()
     }
 
     @Test
@@ -158,7 +157,7 @@ class PostsScreenTest {
     @Test
     fun validityVoteChipsEmitVoteCallback() {
         var vote: ValidityVoteType? = null
-        val post = previewBerthPost.copy(
+        val post = previewAlertPost.copy(
             validityVotes = app.skipperclub.data.VoteSummary(confirmCount = 1, invalidCount = 0, userVote = null),
         )
         compose.setContent {
@@ -202,14 +201,12 @@ class PostsScreenTest {
     }
 
     @Test
-    fun filterSheetAppliesSelectedTypeAndSort() {
+    fun filterSheetAppliesSelectedContainsAndSort() {
         var applied: PostFilters? = null
         compose.setContent {
             SkipperClubTheme {
                 PostFilterSheetContent(
                     filters = PostFilters(),
-                    regions = emptyList(),
-                    regionsLoadFailed = false,
                     currentUserId = "u1",
                     onSearchLocations = { emptyList() },
                     onApply = { applied = it },
@@ -217,16 +214,16 @@ class PostsScreenTest {
             }
         }
 
-        compose.onNodeWithTag("filter_type_berth").performClick()
+        compose.onNodeWithTag("filter_contains_${PostContainsFilter.Alert.wireValue}").performClick()
         compose.onNodeWithText(text(R.string.filter_order_asc)).performClick()
         compose.onNodeWithTag("filter_apply").performClick()
 
-        assertEquals(setOf(PostType.Berth), applied?.types)
+        assertEquals(setOf(PostContainsFilter.Alert), applied?.contains)
         assertEquals(app.skipperclub.data.SortOrder.Asc, applied?.order)
     }
 
     @Test
-    fun wizardBlocksNextUntilTypeSelectedAndValidatesDetails() {
+    fun wizardKeepsPublishDisabledUntilTextEntered() {
         val scope = CoroutineScope(Dispatchers.Main + Job())
         val wizardState = PostWizardState(
             scope = scope,
@@ -238,14 +235,11 @@ class PostsScreenTest {
             }
         }
 
-        compose.onNodeWithTag("wizard_next").assertIsNotEnabled()
-        compose.onNodeWithTag("wizard_type_tips").performClick()
-        compose.onNodeWithTag("wizard_next").assertIsEnabled().performClick()
-
-        // details step: tips requires a description
-        compose.onNodeWithTag("wizard_next").performClick()
-        compose.onNodeWithText(text(R.string.wizard_error_description_required)).assertExists()
-        assertTrue(wizardState.visibleErrors.isNotEmpty())
+        // Single-form wizard: publish stays disabled until the required text is present.
+        compose.onNodeWithTag("wizard_publish").assertIsNotEnabled()
+        compose.onNodeWithTag("wizard_text").performTextInput("Anchored safely for the night")
+        compose.onNodeWithTag("wizard_publish").assertIsEnabled()
+        assertTrue(wizardState.text.isNotBlank())
     }
 
     private fun text(id: Int): String = compose.activity.getString(id)

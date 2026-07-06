@@ -63,10 +63,13 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.skipperclub.R
+import app.skipperclub.data.AlertSeverity
 import app.skipperclub.data.Post
+import app.skipperclub.data.PostRoute
 import app.skipperclub.data.PostUser
 import app.skipperclub.data.ReactionType
 import app.skipperclub.data.ValidityVoteType
+import app.skipperclub.ui.main.alert.labelRes
 import app.skipperclub.ui.theme.extended
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
@@ -113,9 +116,9 @@ fun PostCard(
                     .padding(top = if (post.media.isNotEmpty()) 10.dp else 0.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                PostTypeContent(post = post, nowMillis = nowMillis, actions = actions)
-                if (!post.description.isNullOrBlank()) {
-                    PostDescription(description = post.description)
+                PostContentSection(post = post, nowMillis = nowMillis, actions = actions)
+                if (post.content.text.isNotBlank()) {
+                    PostDescription(description = post.content.text)
                 }
                 if (post.taggedUsers.isNotEmpty()) {
                     PostTaggedUsers(taggedUsers = post.taggedUsers)
@@ -148,18 +151,58 @@ private fun PostHeader(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = relativeTime(post.createdAt, nowMillis),
+                text = relativeTime(post.publishedAt, nowMillis),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        PostTypeBadge(post = post)
+        PostKindBadge(post = post)
         PostHeaderMenu(post = post, actions = actions)
     }
 }
 
+/**
+ * Header badge derived from the post's content. Alert posts show the alert category
+ * plus its severity (colored by severity); every other post shows its [PostKind].
+ */
 @Composable
-private fun PostTypeBadge(post: Post) {
+private fun PostKindBadge(post: Post) {
+    val alert = post.alert
+    if (post.hasAlert && alert != null) {
+        val severity = alert.severity
+        val container = severityContainerColor(severity)
+        val content = severityContentColor(severity)
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = container,
+            contentColor = content,
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Icon(
+                    imageVector = PostKind.Alert.icon(),
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                )
+                val label = if (severity != null) {
+                    "${stringResource(alert.category.labelRes())} · ${stringResource(severity.labelRes())}"
+                } else {
+                    stringResource(alert.category.labelRes())
+                }
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                )
+            }
+        }
+        return
+    }
+
+    val kind = post.primaryKind
     Surface(
         shape = RoundedCornerShape(50),
         color = MaterialTheme.colorScheme.secondaryContainer,
@@ -171,17 +214,31 @@ private fun PostTypeBadge(post: Post) {
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Icon(
-                imageVector = post.type.icon(),
+                imageVector = kind.icon(),
                 contentDescription = null,
                 modifier = Modifier.size(14.dp),
             )
             Text(
-                text = stringResource(post.type.labelRes()),
+                text = stringResource(kind.labelRes()),
                 style = MaterialTheme.typography.labelSmall,
                 maxLines = 1,
             )
         }
     }
+}
+
+@Composable
+private fun severityContainerColor(severity: AlertSeverity?) = when (severity) {
+    AlertSeverity.Critical -> MaterialTheme.colorScheme.errorContainer
+    AlertSeverity.Warning -> MaterialTheme.colorScheme.tertiaryContainer
+    else -> MaterialTheme.colorScheme.secondaryContainer
+}
+
+@Composable
+private fun severityContentColor(severity: AlertSeverity?) = when (severity) {
+    AlertSeverity.Critical -> MaterialTheme.colorScheme.onErrorContainer
+    AlertSeverity.Warning -> MaterialTheme.colorScheme.onTertiaryContainer
+    else -> MaterialTheme.colorScheme.onSecondaryContainer
 }
 
 @Composable
@@ -365,15 +422,16 @@ private fun PostMediaPager(post: Post) {
 }
 
 @Composable
-private fun PostTypeContent(
+private fun PostContentSection(
     post: Post,
     nowMillis: Long,
     actions: PostCardActions,
 ) {
-    if (post.type.isTimeSensitive) {
+    if (post.expiresAt != null) {
         PostExpiryBadge(post = post, nowMillis = nowMillis)
     }
-    if (!post.locationName.isNullOrBlank()) {
+    val locationName = post.location.name
+    if (!locationName.isNullOrBlank()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -385,7 +443,7 @@ private fun PostTypeContent(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = post.locationName,
+                text = locationName,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -393,10 +451,11 @@ private fun PostTypeContent(
             )
         }
     }
-    if (post.stops.isNotEmpty()) {
-        PostRouteInfo(post = post)
+    post.route?.takeIf { it.stops.isNotEmpty() }?.let { route ->
+        PostRouteInfo(route = route)
     }
-    if (post.type.isVotable && post.validityVotes != null) {
+    // Only alert posts carry community validity voting.
+    if (post.hasAlert && post.validityVotes != null) {
         PostValidityRow(post = post, actions = actions)
     }
 }
@@ -438,22 +497,22 @@ private fun PostExpiryBadge(post: Post, nowMillis: Long) {
 }
 
 @Composable
-private fun PostRouteInfo(post: Post) {
+private fun PostRouteInfo(route: PostRoute) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
-                text = pluralStringResource(R.plurals.post_route_stops, post.stops.size, post.stops.size),
+                text = pluralStringResource(R.plurals.post_route_stops, route.stops.size, route.stops.size),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
-            post.durationDays?.let { days ->
+            route.durationDays?.let { days ->
                 Text(
                     text = pluralStringResource(R.plurals.post_route_duration_days, days, days),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
-            post.lengthNm?.let { length ->
+            route.lengthNm?.let { length ->
                 Text(
                     text = stringResource(R.string.post_route_length_nm, formatLengthNm(length)),
                     style = MaterialTheme.typography.labelMedium,
@@ -462,7 +521,7 @@ private fun PostRouteInfo(post: Post) {
             }
         }
         Text(
-            text = post.stops.joinToString(separator = " → ") { it.name },
+            text = route.stops.joinToString(separator = " → ") { it.name },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2,

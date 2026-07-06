@@ -1,9 +1,15 @@
 package app.skipperclub.ui.main.alert
 
 import app.skipperclub.data.AlertCategory
+import app.skipperclub.data.AlertSeverity
 
 /**
- * Drives the navigation-alert creation flow on the map.
+ * Drives the alert-post creation flow on the map.
+ *
+ * Since API v8.0.0 navigation alerts are ordinary posts carrying `content.alert`;
+ * this flow keeps the "aim on the map" UX and, on save, issues a
+ * `POST /v1/posts` with an [app.skipperclub.data.AlertInputDto] and a point
+ * location.
  *
  * Like the check-in flow, the chosen point is not stored while the user is still
  * aiming — it is read from the map's camera target on demand. Once the user taps
@@ -16,11 +22,12 @@ sealed interface AlertUiState {
     /** The center pin is visible; the user is aiming the map at the alert location. */
     data object PickingLocation : AlertUiState
 
-    /** The location is locked; the user fills in category + description. */
+    /** The location is locked; the user picks category + severity and writes the text. */
     data class Form(
         val lat: Double,
         val lng: Double,
-        val category: AlertCategory,
+        val category: AlertCategory = AlertCategory.NavigationWarning,
+        val severity: AlertSeverity = AlertSeverity.Warning,
         val content: String,
         val contentError: AlertContentError? = null,
         val isSubmitting: Boolean = false,

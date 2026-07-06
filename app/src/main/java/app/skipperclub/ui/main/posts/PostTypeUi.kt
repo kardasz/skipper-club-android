@@ -2,60 +2,50 @@ package app.skipperclub.ui.main.posts
 
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.HelpOutline
-import androidx.compose.material.icons.outlined.Anchor
-import androidx.compose.material.icons.outlined.Cloud
-import androidx.compose.material.icons.outlined.DirectionsBoat
-import androidx.compose.material.icons.outlined.Lightbulb
-import androidx.compose.material.icons.outlined.Place
+import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.outlined.PhotoCamera
-import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material.icons.outlined.Route
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.ui.graphics.vector.ImageVector
 import app.skipperclub.R
-import app.skipperclub.data.PostType
+import app.skipperclub.data.Post
 import app.skipperclub.data.ReactionType
 
-@StringRes
-fun PostType.labelRes(): Int = when (this) {
-    PostType.Photo -> R.string.post_type_photo
-    PostType.Place -> R.string.post_type_place
-    PostType.Food -> R.string.post_type_food
-    PostType.Marina -> R.string.post_type_marina
-    PostType.Tips -> R.string.post_type_tips
-    PostType.Route -> R.string.post_type_route
-    PostType.Berth -> R.string.post_type_berth
-    PostType.Weather -> R.string.post_type_weather
-    PostType.NavigationWarning -> R.string.post_type_navigation_warning
-    PostType.Help -> R.string.post_type_help
+/**
+ * Since API v8.0.0 posts no longer carry a `type`; what a post "is" is derived from
+ * its server-computed `contentKeys` / `content`. [PostKind] captures the primary
+ * facet used for the header badge and icon. Precedence — a post that both carries an
+ * alert and media renders as an alert — is alert > route > media > note.
+ */
+enum class PostKind {
+    Alert,
+    Route,
+    Media,
+    Note,
 }
 
+/** The dominant facet of a post, used to pick its header badge/icon. */
+val Post.primaryKind: PostKind
+    get() = when {
+        hasAlert -> PostKind.Alert
+        hasRoute -> PostKind.Route
+        hasMedia -> PostKind.Media
+        else -> PostKind.Note
+    }
+
 @StringRes
-fun PostType.descriptionRes(): Int = when (this) {
-    PostType.Photo -> R.string.post_type_photo_desc
-    PostType.Place -> R.string.post_type_place_desc
-    PostType.Food -> R.string.post_type_food_desc
-    PostType.Marina -> R.string.post_type_marina_desc
-    PostType.Tips -> R.string.post_type_tips_desc
-    PostType.Route -> R.string.post_type_route_desc
-    PostType.Berth -> R.string.post_type_berth_desc
-    PostType.Weather -> R.string.post_type_weather_desc
-    PostType.NavigationWarning -> R.string.post_type_navigation_warning_desc
-    PostType.Help -> R.string.post_type_help_desc
+fun PostKind.labelRes(): Int = when (this) {
+    PostKind.Alert -> R.string.post_kind_alert
+    PostKind.Route -> R.string.post_kind_route
+    PostKind.Media -> R.string.post_kind_media
+    PostKind.Note -> R.string.post_kind_note
 }
 
-fun PostType.icon(): ImageVector = when (this) {
-    PostType.Photo -> Icons.Outlined.PhotoCamera
-    PostType.Place -> Icons.Outlined.Place
-    PostType.Food -> Icons.Outlined.Restaurant
-    PostType.Marina -> Icons.Outlined.Anchor
-    PostType.Tips -> Icons.Outlined.Lightbulb
-    PostType.Route -> Icons.Outlined.Route
-    PostType.Berth -> Icons.Outlined.DirectionsBoat
-    PostType.Weather -> Icons.Outlined.Cloud
-    PostType.NavigationWarning -> Icons.Outlined.WarningAmber
-    PostType.Help -> Icons.AutoMirrored.Outlined.HelpOutline
+fun PostKind.icon(): ImageVector = when (this) {
+    PostKind.Alert -> Icons.Outlined.WarningAmber
+    PostKind.Route -> Icons.Outlined.Route
+    PostKind.Media -> Icons.Outlined.PhotoCamera
+    PostKind.Note -> Icons.AutoMirrored.Outlined.Notes
 }
 
 val ReactionType.emoji: String

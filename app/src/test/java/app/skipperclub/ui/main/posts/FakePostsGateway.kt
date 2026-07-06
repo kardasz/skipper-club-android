@@ -8,17 +8,17 @@ import app.skipperclub.data.GeocodedLocation
 import app.skipperclub.data.PageMeta
 import app.skipperclub.data.Post
 import app.skipperclub.data.PostComment
+import app.skipperclub.data.PostContent
+import app.skipperclub.data.PostContentKey
 import app.skipperclub.data.PostCoordinates
 import app.skipperclub.data.PostFeedQuery
 import app.skipperclub.data.PostPermissions
 import app.skipperclub.data.PostStatus
-import app.skipperclub.data.PostType
 import app.skipperclub.data.PostUser
 import app.skipperclub.data.PostsError
 import app.skipperclub.data.PostsPage
 import app.skipperclub.data.ReactionSummary
 import app.skipperclub.data.ReactionType
-import app.skipperclub.data.Region
 import app.skipperclub.data.ReportReason
 import app.skipperclub.data.UpdatePostRequest
 import app.skipperclub.data.UploadedMedia
@@ -27,23 +27,25 @@ import app.skipperclub.data.ValidityVoteType
 
 internal fun testPost(
     id: String,
-    type: PostType = PostType.Photo,
+    contentKeys: Set<PostContentKey> = emptySet(),
+    content: PostContent = PostContent(text = "post $id"),
     reactions: ReactionSummary = ReactionSummary(),
     bookmarked: Boolean = false,
     commentsCount: Int = 0,
+    publishedAt: String = "2025-12-01T10:00:00Z",
 ) = Post(
     id = id,
-    type = type,
-    status = PostStatus.Published,
-    regionCode = "ADR-HR",
     user = PostUser(id = "author", name = "Author"),
-    description = "post $id",
+    contentKeys = contentKeys,
+    status = PostStatus.Published,
+    content = content,
     reactions = reactions,
     bookmarked = bookmarked,
     commentsCount = commentsCount,
     permissions = PostPermissions(react = true, comment = true, bookmark = true),
-    createdAt = "2025-12-01T10:00:00Z",
-    updatedAt = "2025-12-01T10:00:00Z",
+    publishedAt = publishedAt,
+    createdAt = publishedAt,
+    updatedAt = publishedAt,
 )
 
 internal fun testComment(id: String, userId: String = "author", text: String = "comment $id") =
@@ -70,7 +72,6 @@ internal class FakePostsGateway : PostsGateway {
     var createdPost: Post = testPost("created")
     var fetchedPost: Post = testPost("fetched")
     var getError: PostsError? = null
-    var regions: List<Region> = emptyList()
     var locations: List<GeocodedLocation> = emptyList()
     var friends: List<FriendUser> = emptyList()
 
@@ -111,7 +112,7 @@ internal class FakePostsGateway : PostsGateway {
     }
 
     override suspend fun create(accessToken: String, payload: CreatePostRequest): Post {
-        calls += "create:${payload.type}"
+        calls += "create:${payload.content.text}"
         mutationError?.let { throw it }
         return createdPost
     }
@@ -201,11 +202,6 @@ internal class FakePostsGateway : PostsGateway {
         calls += "vote:$postId:${vote.wireValue}"
         mutationError?.let { throw it }
         return voteResult
-    }
-
-    override suspend fun listRegions(): List<Region> {
-        calls += "listRegions"
-        return regions
     }
 
     override suspend fun searchLocations(accessToken: String, query: String): List<GeocodedLocation> {

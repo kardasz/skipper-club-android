@@ -4,9 +4,10 @@ import java.time.Instant
 import java.time.format.DateTimeParseException
 
 /**
- * Pure countdown logic for time-sensitive posts (`expiresAt`). Kept free of
- * Android/Compose types so it is unit-testable on the JVM; the card maps the
- * phase to localized strings and colors.
+ * Pure countdown logic over a post's `expiresAt` timestamp. Call sites gate on
+ * `expiresAt != null` before rendering a countdown. Kept free of Android/Compose
+ * types so it is unit-testable on the JVM; the card maps the phase to localized
+ * strings and colors.
  */
 object PostExpiry {
 

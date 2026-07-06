@@ -19,8 +19,8 @@ class PostsApiTest {
         val request = PostsApi.listRequest(
             accessToken = "access-token",
             query = PostFeedQuery(
-                types = setOf(PostType.Photo, PostType.Berth),
-                regionCode = "ADR-HR",
+                contains = setOf(PostContainsFilter.Media, PostContainsFilter.Alert),
+                query = "hvar bay",
                 hashtag = "sailing",
                 sort = PostSortField.UpdatedAt,
                 order = SortOrder.Asc,
@@ -32,8 +32,9 @@ class PostsApiTest {
         assertEquals("GET", request.method)
         val url = request.url
         assertEquals("/v1/posts", url.encodedPath)
-        assertEquals(listOf("photo", "berth"), url.queryParameterValues("type"))
-        assertEquals("ADR-HR", url.queryParameter("regionCode"))
+        // contains is joined into a single comma param, sorted by ordinal.
+        assertEquals("alert,media", url.queryParameter("contains"))
+        assertEquals("hvar bay", url.queryParameter("q"))
         assertEquals("sailing", url.queryParameter("hashtag"))
         assertEquals("updatedAt", url.queryParameter("sort"))
         assertEquals("asc", url.queryParameter("order"))
@@ -48,12 +49,30 @@ class PostsApiTest {
         val request = PostsApi.listRequest("token", PostFeedQuery())
 
         val url = request.url
-        assertTrue(url.queryParameterValues("type").isEmpty())
-        assertNull(url.queryParameter("regionCode"))
+        assertNull(url.queryParameter("contains"))
+        assertNull(url.queryParameter("q"))
         assertNull(url.queryParameter("hashtag"))
         assertNull(url.queryParameter("userId"))
-        assertEquals("createdAt", url.queryParameter("sort"))
+        assertEquals("publishedAt", url.queryParameter("sort"))
         assertEquals("desc", url.queryParameter("order"))
+        assertEquals("0", url.queryParameter("offset"))
+    }
+
+    @Test
+    fun listRequestUsesKeysetCursorAndOmitsOffset() {
+        val request = PostsApi.listRequest(
+            accessToken = "token",
+            query = PostFeedQuery(
+                cursor = PostFeedCursor(beforePublishedAt = "2025-12-01T10:00:00Z", beforeId = "post-9"),
+            ),
+        )
+
+        val url = request.url
+        assertEquals("2025-12-01T10:00:00Z", url.queryParameter("beforePublishedAt"))
+        assertEquals("post-9", url.queryParameter("beforeId"))
+        // Keyset walks the feed; offset is not sent alongside a cursor.
+        assertNull(url.queryParameter("offset"))
+        assertEquals("publishedAt", url.queryParameter("sort"))
     }
 
     @Test
@@ -61,9 +80,9 @@ class PostsApiTest {
         val request = PostsApi.listRequest(
             accessToken = "token",
             query = PostFeedQuery(
+                contains = setOf(PostContainsFilter.Note),
                 statuses = setOf(PostStatus.Archived, PostStatus.Published),
                 userId = "me",
-                crossRegionTypes = setOf(PostType.Photo, PostType.Tips),
                 locationName = "Split",
                 lat = 43.5,
                 lng = 16.4,
@@ -75,9 +94,9 @@ class PostsApiTest {
         )
 
         val url = request.url
+        assertEquals("note", url.queryParameter("contains"))
         assertEquals(listOf("published", "archived"), url.queryParameterValues("status"))
         assertEquals("me", url.queryParameter("userId"))
-        assertEquals(listOf("photo", "tips"), url.queryParameterValues("crossRegionTypes"))
         assertEquals("Split", url.queryParameter("locationName"))
         assertEquals("43.5", url.queryParameter("lat"))
         assertEquals("16.4", url.queryParameter("lng"))
@@ -103,15 +122,13 @@ class PostsApiTest {
     }
 
     @Test
-    fun updateRequestSerializesFullPostUpdateWithoutType() {
+    fun updateRequestSerializesFullPostUpdate() {
         val request = PostsApi.updateRequest(
             accessToken = "token",
             postId = "post-1",
             payload = UpdatePostRequest(
-                regionCode = "ADR-HR",
-                description = "Updated text",
-                locationName = "Hvar",
-                coordinates = CoordinatesDto(43.1, 16.4),
+                content = PostContentInputDto(text = "Updated text"),
+                location = PostLocationInputDto(name = "Hvar", point = CoordinatesDto(43.1, 16.4)),
                 mediaIds = listOf("media-1"),
                 taggedUserIds = listOf("user-1"),
             ),
@@ -120,8 +137,8 @@ class PostsApiTest {
         assertEquals("PUT", request.method)
         assertEquals("/v1/posts/post-1", request.url.encodedPath)
         assertEquals(
-            """{"regionCode":"ADR-HR","description":"Updated text","locationName":"Hvar",""" +
-                """"coordinates":{"lat":43.1,"lng":16.4},"mediaIds":["media-1"],"taggedUserIds":["user-1"]}""",
+            """{"content":{"text":"Updated text"},"location":{"name":"Hvar",""" +
+                """"point":{"lat":43.1,"lng":16.4}},"mediaIds":["media-1"],"taggedUserIds":["user-1"]}""",
             request.bodyString(),
         )
     }
@@ -147,20 +164,19 @@ class PostsApiTest {
     }
 
     @Test
-    fun createRequestSerializesPhotoPostWithoutRouteFields() {
+    fun createRequestSerializesMediaPostWithoutRouteOrAlert() {
         val request = PostsApi.createRequest(
             accessToken = "token",
             payload = CreatePostRequest(
-                type = "photo",
-                regionCode = "ADR-HR",
-                description = "Sunset #sailing",
+                content = PostContentInputDto(text = "Sunset #sailing"),
+                location = PostLocationInputDto(name = "Split"),
                 mediaIds = listOf("media-1"),
             ),
         )
 
         assertEquals("POST", request.method)
         assertEquals(
-            """{"type":"photo","regionCode":"ADR-HR","description":"Sunset #sailing","mediaIds":["media-1"]}""",
+            """{"content":{"text":"Sunset #sailing"},"location":{"name":"Split"},"mediaIds":["media-1"]}""",
             request.bodyString(),
         )
     }
@@ -170,22 +186,45 @@ class PostsApiTest {
         val request = PostsApi.createRequest(
             accessToken = "token",
             payload = CreatePostRequest(
-                type = "route",
-                regionCode = "ADR-HR",
-                description = "Island hopping",
-                locationName = "Split",
-                coordinates = CoordinatesDto(43.5, 16.4),
-                stops = listOf(RouteStopDto("Hvar", CoordinatesDto(43.1, 16.4))),
-                durationDays = 7,
-                lengthNm = 120.0,
+                content = PostContentInputDto(
+                    text = "Island hopping",
+                    route = RouteInputDto(
+                        stops = listOf(RouteStopDto("Hvar", CoordinatesDto(43.1, 16.4))),
+                        durationDays = 7,
+                        lengthNm = 120.0,
+                    ),
+                ),
+                location = PostLocationInputDto(name = "Split", point = CoordinatesDto(43.5, 16.4)),
             ),
         )
 
         assertEquals(
-            """{"type":"route","regionCode":"ADR-HR","description":"Island hopping",""" +
-                """"locationName":"Split","coordinates":{"lat":43.5,"lng":16.4},""" +
+            """{"content":{"text":"Island hopping","route":{""" +
                 """"stops":[{"name":"Hvar","coordinates":{"lat":43.1,"lng":16.4}}],""" +
-                """"durationDays":7,"lengthNm":120.0}""",
+                """"durationDays":7,"lengthNm":120.0}},""" +
+                """"location":{"name":"Split","point":{"lat":43.5,"lng":16.4}}}""",
+            request.bodyString(),
+        )
+    }
+
+    @Test
+    fun createRequestSerializesAlertPost() {
+        val request = PostsApi.createRequest(
+            accessToken = "token",
+            payload = CreatePostRequest(
+                content = PostContentInputDto(
+                    text = "Submerged obstruction near the harbour entrance",
+                    alert = AlertInputDto(
+                        category = AlertCategory.Obstruction,
+                        severity = AlertSeverity.Warning,
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            """{"content":{"text":"Submerged obstruction near the harbour entrance",""" +
+                """"alert":{"category":"obstruction","severity":"warning"}}}""",
             request.bodyString(),
         )
     }

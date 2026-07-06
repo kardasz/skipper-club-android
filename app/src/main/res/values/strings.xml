@@ -146,15 +146,7 @@
     <string name="alert_form_save">Save</string>
     <string name="alert_error_content_required">Description is required.</string>
     <string name="alert_success">Alert added.</string>
-    <string name="alert_error_network">No internet connection. Please try again.</string>
-    <string name="alert_error_auth">Please sign in again to add an alert.</string>
-    <string name="alert_error_generic">Couldn\'t add the alert. Please try again.</string>
     <string name="alert_marker_content_description">Alert: %1$s. Tap for details.</string>
-    <string name="alert_detail_source">Source: %1$s</string>
-    <string name="alert_detail_source_number">Source: %1$s · No. %2$s</string>
-    <string name="alert_detail_open_source">View source</string>
-    <string name="alert_detail_reported_by">Reported by</string>
-    <string name="alert_detail_author_avatar_content_description">%1$s\'s avatar</string>
 
     <!-- Alert categories -->
     <string name="alert_category_navigation_warning">Navigation warning</string>
@@ -184,27 +176,7 @@
 
     <string name="main_placeholder_subtitle">Coming soon</string>
 
-    <string name="post_type_photo">Photo</string>
-    <string name="post_type_place">Place</string>
-    <string name="post_type_food">Food</string>
-    <string name="post_type_marina">Marina</string>
-    <string name="post_type_tips">Tips</string>
-    <string name="post_type_route">Route</string>
-    <string name="post_type_berth">Berth</string>
-    <string name="post_type_weather">Weather</string>
-    <string name="post_type_navigation_warning">Nav warning</string>
-    <string name="post_type_help">Help</string>
 
-    <string name="post_type_photo_desc">Share your sailing moments</string>
-    <string name="post_type_place_desc">Recommend an interesting place</string>
-    <string name="post_type_food_desc">Recommend a restaurant or tavern</string>
-    <string name="post_type_marina_desc">Review a marina</string>
-    <string name="post_type_tips_desc">Share advice and experience</string>
-    <string name="post_type_route_desc">Share a sailing route with stops</string>
-    <string name="post_type_berth_desc">Available berth (expires in 6 h)</string>
-    <string name="post_type_weather_desc">Weather alert (expires in 7 days)</string>
-    <string name="post_type_navigation_warning_desc">Navigation hazard (expires in 7 days)</string>
-    <string name="post_type_help_desc">Ask for assistance (expires in 3 days)</string>
 
     <string name="posts_create">New post</string>
     <string name="posts_filter">Filters</string>
@@ -270,10 +242,6 @@
         <item quantity="one">%1$d day</item>
         <item quantity="other">%1$d days</item>
     </plurals>
-    <string name="post_expiry_info_berth">Berth posts expire 6 hours after publishing.</string>
-    <string name="post_expiry_info_weather">Weather posts expire 7 days after publishing.</string>
-    <string name="post_expiry_info_navigation_warning">Navigation warnings expire 7 days after publishing.</string>
-    <string name="post_expiry_info_help">Help requests expire 3 days after publishing.</string>
 
     <string name="reaction_picker_title">Add a reaction</string>
     <string name="reaction_section_standard">Standard</string>
@@ -293,19 +261,13 @@
     <string name="comments_error_generic">Something went wrong. Please try again.</string>
 
     <string name="filter_title">Filters</string>
-    <string name="filter_section_types">Post types</string>
-    <string name="filter_section_region">Region</string>
-    <string name="filter_all_regions">All regions</string>
     <string name="filter_section_sort">Sorting</string>
-    <string name="filter_sort_created">Date added</string>
     <string name="filter_sort_updated">Last updated</string>
     <string name="filter_sort_distance">Nearest</string>
     <string name="filter_order_desc">Newest first</string>
     <string name="filter_order_asc">Oldest first</string>
     <string name="filter_clear">Clear all</string>
     <string name="filter_apply">Apply</string>
-    <string name="filter_regions_load_failed">Couldn\'t load regions.</string>
-    <string name="filter_section_cross_region">Show across all regions</string>
     <string name="filter_section_hashtag">Hashtag</string>
     <string name="filter_hashtag_hint">e.g. sailing</string>
     <string name="filter_section_location">Location name</string>
@@ -325,15 +287,6 @@
     <string name="filter_status_expired">Expired</string>
     <string name="filter_status_resolved">Resolved</string>
 
-    <string name="wizard_step_type">Choose a type</string>
-    <string name="wizard_step_details">Details</string>
-    <string name="wizard_step_route">Route stops</string>
-    <string name="wizard_step_media">Photos &amp; video</string>
-    <string name="wizard_step_tags">Tag people</string>
-    <string name="wizard_step_summary">Review</string>
-    <string name="wizard_type_subtitle">Pick the type that best describes your post.</string>
-    <string name="wizard_category_evergreen">Evergreen</string>
-    <string name="wizard_category_time_sensitive">Time-sensitive</string>
     <string name="wizard_next">Next</string>
     <string name="wizard_back">Back</string>
     <string name="wizard_publish">Publish</string>

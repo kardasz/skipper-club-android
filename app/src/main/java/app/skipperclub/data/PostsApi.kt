@@ -19,12 +19,13 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 
-/** Sort options accepted by `GET /v1/posts`. */
+/** Sort options accepted by `GET /v1/posts` (v8.0.0). */
 enum class PostSortField(val wireValue: String) {
-    CreatedAt("createdAt"),
+    /** Chronological feed; sorts by real publication time. Default. */
+    PublishedAt("publishedAt"),
     UpdatedAt("updatedAt"),
 
-    /** Nearest-first; only valid together with `lat`/`lng`/`distance`. */
+    /** Nearest-first; only valid together with `lat`/`lng`/`distance`, offset-paged. */
     Distance("distance"),
 }
 
@@ -33,18 +34,37 @@ enum class SortOrder(val wireValue: String) {
     Desc("desc"),
 }
 
+/**
+ * Post `contains` filter (feed `contains` / map `postContains`). Overlap match over a
+ * post's server-derived `contentKeys`; `Note` matches posts with empty `contentKeys`.
+ */
+enum class PostContainsFilter(val wireValue: String) {
+    Alert("alert"),
+    Media("media"),
+    Route("route"),
+    Note("note"),
+}
+
 /** Sort options accepted by `GET /v1/profile/bookmarks/posts` (no `distance`). */
 enum class BookmarkSortField(val wireValue: String) {
     CreatedAt("createdAt"),
     UpdatedAt("updatedAt"),
 }
 
-/** Query parameters for `GET /v1/posts`. */
+/**
+ * Keyset cursor for the chronological feed (`sort=publishedAt`). Read from the last
+ * item of a page; passed back as `beforePublishedAt` + `beforeId` for the next page.
+ */
+data class PostFeedCursor(
+    val beforePublishedAt: String,
+    val beforeId: String,
+)
+
+/** Query parameters for `GET /v1/posts` (v8.0.0). */
 data class PostFeedQuery(
-    val types: Set<PostType> = emptySet(),
-    val regionCode: String? = null,
+    val contains: Set<PostContainsFilter> = emptySet(),
+    val query: String? = null,
     val statuses: Set<PostStatus> = emptySet(),
-    val crossRegionTypes: Set<PostType> = emptySet(),
     val locationName: String? = null,
     val lat: Double? = null,
     val lng: Double? = null,
@@ -53,8 +73,9 @@ data class PostFeedQuery(
     val toDate: String? = null,
     val hashtag: String? = null,
     val userId: String? = null,
-    val sort: PostSortField = PostSortField.CreatedAt,
+    val sort: PostSortField = PostSortField.PublishedAt,
     val order: SortOrder = SortOrder.Desc,
+    val cursor: PostFeedCursor? = null,
     val limit: Int = 20,
     val offset: Int = 0,
 )
@@ -90,11 +111,10 @@ object PostsApi {
 
     internal fun listRequest(accessToken: String, query: PostFeedQuery): Request {
         val url = postsUrl().newBuilder().apply {
-            query.types.sortedBy { it.ordinal }.forEach { addQueryParameter("type", it.wireValue) }
-            query.regionCode?.let { addQueryParameter("regionCode", it) }
+            query.contains.takeIf { it.isNotEmpty() }
+                ?.let { addQueryParameter("contains", it.sortedBy { c -> c.ordinal }.joinToString(",") { c -> c.wireValue }) }
+            query.query?.takeIf { it.isNotBlank() }?.let { addQueryParameter("q", it) }
             query.statuses.sortedBy { it.ordinal }.forEach { addQueryParameter("status", it.wireValue) }
-            query.crossRegionTypes.sortedBy { it.ordinal }
-                .forEach { addQueryParameter("crossRegionTypes", it.wireValue) }
             query.locationName?.let { addQueryParameter("locationName", it) }
             query.lat?.let { addQueryParameter("lat", it.toString()) }
             query.lng?.let { addQueryParameter("lng", it.toString()) }
@@ -103,10 +123,15 @@ object PostsApi {
             query.toDate?.let { addQueryParameter("toDate", it) }
             query.hashtag?.let { addQueryParameter("hashtag", it) }
             query.userId?.let { addQueryParameter("userId", it) }
+            query.cursor?.let {
+                addQueryParameter("beforePublishedAt", it.beforePublishedAt)
+                addQueryParameter("beforeId", it.beforeId)
+            }
             addQueryParameter("sort", query.sort.wireValue)
             addQueryParameter("order", query.order.wireValue)
             addQueryParameter("limit", query.limit.toString())
-            addQueryParameter("offset", query.offset.toString())
+            // Keyset walks the chronological feed; distance sort stays offset-paged.
+            if (query.cursor == null) addQueryParameter("offset", query.offset.toString())
         }.build()
         return baseRequest(accessToken).url(url).get().build()
     }

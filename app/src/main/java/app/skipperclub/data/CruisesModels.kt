@@ -130,11 +130,20 @@ data class CruiseListQuery(
     val toDate: String? = null,
     val type: CruiseType? = null,
     val vesselType: VesselType? = null,
+    // Spatial filter: matches cruises whose departure OR arrival port is within
+    // [distance] km of ([lat], [lng]). Sent all-or-none; incomplete triples are omitted.
+    val lat: Double? = null,
+    val lng: Double? = null,
+    val distance: Int? = null,
     val sort: CruiseSortField = CruiseSortField.DepartureDate,
     val order: SortOrder = SortOrder.Desc,
     val limit: Int = 20,
     val offset: Int = 0,
-)
+) {
+    /** True only when the full lat/lng/distance triple is present. */
+    val hasSpatialFilter: Boolean
+        get() = lat != null && lng != null && distance != null
+}
 
 data class CruiseUser(
     val id: String,
@@ -241,7 +250,6 @@ data class CruisePayload(
     val vesselCabins: Int? = null,
     val vesselType: String,
     val mediaIds: List<String>? = null,
-    val regionCode: String? = null,
     val type: String? = null,
     val smokingAllowed: Boolean? = null,
     val alcoholAllowed: Boolean? = null,
@@ -314,7 +322,6 @@ internal data class CruiseAiDraftResponseDto(
     val vesselCabins: Int? = null,
     val vesselType: String? = null,
     val maxParticipants: Int? = null,
-    val regionCode: String? = null,
     val type: String? = null,
     val smokingAllowed: Boolean? = null,
     val alcoholAllowed: Boolean? = null,

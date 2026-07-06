@@ -7,7 +7,6 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -108,11 +107,12 @@ class MapItemsApiTest {
                       "coordinates": { "lat": 54.441, "lng": 18.567 },
                       "geometry": { "type": "Point", "coordinates": [18.567, 54.441] },
                       "attributes": {
-                        "postType": "marina",
+                        "contentKeys": ["media"],
+                        "alertCategory": null,
                         "status": "published",
-                        "regionCode": "ADR-HR",
                         "author": { "id": "u1", "displayName": "Jan K.", "avatarUrl": "https://a/1.jpg" },
-                        "createdAt": "2030-01-01T12:00:00Z",
+                        "publishedAt": "2030-01-01T12:00:00Z",
+                        "expiresAt": null,
                         "mediaPreview": { "id": "m1", "kind": "image", "url": "https://m/1.jpg", "thumbnailUrl": null },
                         "commentsCount": 4,
                         "bookmarked": true
@@ -127,8 +127,12 @@ class MapItemsApiTest {
         val entry = decoded.entries.single()
         val attributes = entry.attributes as MapEntryAttributes.Post
         assertEquals(MapEntryType.Post, entry.type)
-        assertEquals(PostType.Marina, attributes.postType)
+        assertTrue(attributes.hasMedia)
+        assertEquals(false, attributes.hasAlert)
+        assertNull(attributes.alertCategory)
         assertEquals("Jan K.", attributes.author.displayName)
+        assertEquals("2030-01-01T12:00:00Z", attributes.publishedAt)
+        assertNull(attributes.expiresAt)
         assertEquals(4, attributes.commentsCount)
         assertEquals(true, attributes.bookmarked)
         assertEquals("https://m/1.jpg", attributes.mediaPreview?.url)
@@ -136,14 +140,54 @@ class MapItemsApiTest {
     }
 
     @Test
-    fun decodeResponseParsesAlertPolygonGeometryAndClusterBounds() {
+    fun decodeResponseMapsAlertPostAttributes() {
         val decoded = MapItemsApi.decodeResponse(
             """
                 {
                   "data": [
                     {
                       "kind": "item",
-                      "type": "navigation_alert",
+                      "type": "post",
+                      "id": "019eac4a-3e2d-7c11-8761-f9d85d6e6419",
+                      "name": "Weather alert",
+                      "coordinates": { "lat": 54.49, "lng": 18.55 },
+                      "geometry": { "type": "Point", "coordinates": [18.55, 54.49] },
+                      "attributes": {
+                        "contentKeys": ["alert"],
+                        "alertCategory": "weather",
+                        "status": "published",
+                        "author": { "id": "u1", "displayName": "Jan Kowalski", "avatarUrl": null },
+                        "publishedAt": "2030-01-01T12:00:00Z",
+                        "expiresAt": "2030-01-02T12:00:00Z",
+                        "commentsCount": 0,
+                        "bookmarked": false
+                      }
+                    }
+                  ],
+                  "meta": { "hasMoreDetail": false }
+                }
+            """.trimIndent(),
+        )
+
+        val entry = decoded.entries.single()
+        val attributes = entry.attributes as MapEntryAttributes.Post
+        assertEquals(MapEntryType.Post, entry.type)
+        assertTrue(attributes.hasAlert)
+        assertEquals(false, attributes.hasMedia)
+        assertEquals(AlertCategory.Weather, attributes.alertCategory)
+        assertEquals("Jan Kowalski", attributes.author.displayName)
+        assertEquals("2030-01-02T12:00:00Z", attributes.expiresAt)
+    }
+
+    @Test
+    fun decodeResponseParsesAlertPostPolygonGeometryAndClusterBounds() {
+        val decoded = MapItemsApi.decodeResponse(
+            """
+                {
+                  "data": [
+                    {
+                      "kind": "item",
+                      "type": "post",
                       "id": "alert-1",
                       "name": "Obstruction",
                       "coordinates": { "lat": 54.45, "lng": 18.6 },
@@ -151,7 +195,13 @@ class MapItemsApiTest {
                         "type": "Polygon",
                         "coordinates": [[[18.59,54.44],[18.61,54.44],[18.61,54.46],[18.59,54.46],[18.59,54.44]]]
                       },
-                      "attributes": { "category": "obstruction", "content": "Reef.", "source": "user" }
+                      "attributes": {
+                        "contentKeys": ["alert"],
+                        "alertCategory": "obstruction",
+                        "status": "published",
+                        "author": { "id": "u1", "displayName": "Jan K.", "avatarUrl": null },
+                        "publishedAt": "2030-01-01T12:00:00Z"
+                      }
                     },
                     {
                       "kind": "cluster",
@@ -169,6 +219,9 @@ class MapItemsApiTest {
         )
 
         val alert = decoded.entries[0]
+        val attributes = alert.attributes as MapEntryAttributes.Post
+        assertTrue(attributes.hasAlert)
+        assertEquals(AlertCategory.Obstruction, attributes.alertCategory)
         val polygon = alert.geometry as MapGeometry.Polygon
         assertEquals(1, polygon.rings.size)
         assertEquals(5, polygon.rings.first().size)
@@ -263,97 +316,6 @@ class MapItemsApiTest {
         assertEquals("https://media.skipperclub.app/avatars/krzysztof.jpeg", attributes.user.avatarUrl)
         assertEquals("2026-06-09T12:10:07.274Z", attributes.checkedInAt)
         assertEquals("Marina Kornati", attributes.locationName)
-    }
-
-    @Test
-    fun decodeResponseMapsUserNavigationAlertAttributes() {
-        val decoded = MapItemsApi.decodeResponse(
-            """
-                {
-                  "data": [
-                    {
-                      "kind": "item",
-                      "type": "navigation_alert",
-                      "id": "019eac4a-3e2d-7c11-8761-f9d85d6e6419",
-                      "name": "Weather alert",
-                      "coordinates": { "lat": 54.49, "lng": 18.55 },
-                      "geometry": { "type": "Point", "coordinates": [18.55, 54.49] },
-                      "attributes": {
-                        "category": "weather",
-                        "content": "Gale warning in force. Winds gusting to 35 knots.",
-                        "language": "en",
-                        "source": "user",
-                        "sourceId": "01985af0-b793-7d54-a10f-a0d18100b4a0",
-                        "sourceAttributes": null,
-                        "user": {
-                          "id": "01985af0-b793-7d54-a10f-a0d18100b4a0",
-                          "name": "Jan Kowalski",
-                          "avatarUrl": "https://cdn.example/avatars/abc.jpg"
-                        }
-                      }
-                    }
-                  ],
-                  "meta": { "hasMoreDetail": false }
-                }
-            """.trimIndent(),
-        )
-
-        val entry = decoded.entries.single()
-        val attributes = entry.attributes as MapEntryAttributes.NavigationAlert
-        assertEquals(MapEntryType.NavigationAlert, entry.type)
-        assertEquals("Weather alert", entry.name)
-        assertEquals(AlertCategory.Weather, attributes.category)
-        assertEquals("Gale warning in force. Winds gusting to 35 knots.", attributes.content)
-        assertEquals("user", attributes.source)
-        assertNull(attributes.sourceName)
-        assertNull(attributes.sourceNumber)
-        val author = attributes.author
-        assertNotNull(author)
-        assertEquals("01985af0-b793-7d54-a10f-a0d18100b4a0", author!!.id)
-        assertEquals("Jan Kowalski", author.displayName)
-        assertEquals("https://cdn.example/avatars/abc.jpg", author.avatarUrl)
-    }
-
-    @Test
-    fun decodeResponseFlattensOfficialNavigationAlertSourceAttributes() {
-        val decoded = MapItemsApi.decodeResponse(
-            """
-                {
-                  "data": [
-                    {
-                      "kind": "item",
-                      "type": "navigation_alert",
-                      "id": "019eac4a-3e2d-7c11-8761-f9d85d6e6420",
-                      "name": "Navigation warning",
-                      "coordinates": { "lat": 54.40, "lng": 18.60 },
-                      "geometry": { "type": "Point", "coordinates": [18.60, 54.40] },
-                      "attributes": {
-                        "category": "navigation_warning",
-                        "content": "Wreck marked by cardinal buoy.",
-                        "language": "en",
-                        "source": "hhi_rnw",
-                        "sourceId": null,
-                        "sourceAttributes": {
-                          "type": "hhi_rnw",
-                          "externalSourceName": "Hydrographic Institute",
-                          "externalSourceUrl": "https://www.hhi.hr/en/warnings",
-                          "externalNumber": "161/2026"
-                        }
-                      }
-                    }
-                  ],
-                  "meta": { "hasMoreDetail": false }
-                }
-            """.trimIndent(),
-        )
-
-        val attributes = decoded.entries.single().attributes as MapEntryAttributes.NavigationAlert
-        assertEquals(AlertCategory.NavigationWarning, attributes.category)
-        assertEquals("hhi_rnw", attributes.source)
-        assertEquals("Hydrographic Institute", attributes.sourceName)
-        assertEquals("161/2026", attributes.sourceNumber)
-        assertEquals("https://www.hhi.hr/en/warnings", attributes.sourceUrl)
-        assertNull(attributes.author)
     }
 
     @Test

@@ -28,8 +28,12 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Anchor
+import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Photo
+import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -66,9 +70,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.skipperclub.R
 import app.skipperclub.data.AlertCategory
-import app.skipperclub.data.AlertError
-import app.skipperclub.data.AlertGeometry
-import app.skipperclub.data.AlertsApi
+import app.skipperclub.data.AlertInputDto
+import app.skipperclub.data.AlertSeverity
 import app.skipperclub.data.CheckInError
 import app.skipperclub.data.CheckInsApi
 import app.skipperclub.data.MapCoordinates
@@ -82,18 +85,20 @@ import app.skipperclub.data.MapItemsError
 import app.skipperclub.data.MapUserProjection
 import app.skipperclub.data.MapViewportBounds
 import app.skipperclub.data.PhoneContact
-import app.skipperclub.data.PostType
+import app.skipperclub.data.PostContentInputDto
+import app.skipperclub.data.CoordinatesDto
+import app.skipperclub.data.CreatePostRequest
+import app.skipperclub.data.PostLocationInputDto
+import app.skipperclub.data.PostsApi
+import app.skipperclub.data.PostsError
 import app.skipperclub.data.SessionStore
 import app.skipperclub.data.SpotsApi
 import app.skipperclub.ui.main.alert.AlertContentError
-import app.skipperclub.ui.main.alert.AlertDetailSheet
-import app.skipperclub.ui.main.alert.AlertDetailUiState
 import app.skipperclub.ui.main.alert.AlertFormDialog
 import app.skipperclub.ui.main.alert.AlertPickActions
 import app.skipperclub.ui.main.alert.AlertUiState
 import app.skipperclub.ui.main.messages.ChatConversationScreen
 import app.skipperclub.ui.main.posts.PostDetailScreen
-import app.skipperclub.ui.main.posts.icon
 import app.skipperclub.ui.main.profile.PublicProfileScreen
 import app.skipperclub.ui.main.checkin.CheckInDetailSheet
 import app.skipperclub.ui.main.checkin.CheckInDetailUiState
@@ -160,9 +165,10 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
     val mapItemsNetworkErrorMessage = stringResource(R.string.map_items_error_network)
     val mapItemsAuthErrorMessage = stringResource(R.string.map_items_error_auth)
     val mapItemsGenericErrorMessage = stringResource(R.string.map_items_error_generic)
-    val alertNetworkErrorMessage = stringResource(R.string.alert_error_network)
-    val alertAuthErrorMessage = stringResource(R.string.alert_error_auth)
-    val alertGenericErrorMessage = stringResource(R.string.alert_error_generic)
+    val alertValidationErrorMessage = stringResource(R.string.alert_post_error_validation)
+    val alertAuthErrorMessage = stringResource(R.string.alert_post_error_auth)
+    val alertRateLimitedErrorMessage = stringResource(R.string.alert_post_error_rate_limited)
+    val alertGenericErrorMessage = stringResource(R.string.alert_post_error_generic)
     val alertSuccessMessage = stringResource(R.string.alert_success)
 
     val startPosition = remember {
@@ -200,7 +206,6 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
     var selectedMapEntryKey by remember { mutableStateOf<String?>(null) }
     var spotDetailState by remember { mutableStateOf<SpotDetailUiState?>(null) }
     var selectedPostId by remember { mutableStateOf<String?>(null) }
-    var alertDetail by remember { mutableStateOf<AlertDetailUiState?>(null) }
     var checkInDetail by remember { mutableStateOf<CheckInDetailUiState?>(null) }
     var profileUserId by remember { mutableStateOf<String?>(null) }
     var conversationChatId by remember { mutableStateOf<String?>(null) }
@@ -371,17 +376,12 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                                 }
 
                                 entry.type == MapEntryType.Post -> {
+                                    // Every post — including alert posts (contentKeys
+                                    // contains `alert`) — opens the full post detail
+                                    // screen; the map attributes no longer carry the
+                                    // alert body text.
                                     selectedMapEntryKey = null
                                     selectedPostId = entry.id
-                                }
-
-                                entry.type == MapEntryType.NavigationAlert &&
-                                    entry.alertAttributes != null -> {
-                                    selectedMapEntryKey = null
-                                    alertDetail = AlertDetailUiState(
-                                        title = entry.name,
-                                        attributes = entry.alertAttributes!!,
-                                    )
                                 }
 
                                 entry.type == MapEntryType.CheckIn &&
@@ -532,6 +532,7 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                         lat = target.latitude,
                         lng = target.longitude,
                         category = AlertCategory.NavigationWarning,
+                        severity = AlertSeverity.Warning,
                         content = "",
                     )
                 },
@@ -546,6 +547,9 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                 onCategorySelected = { category ->
                     (alertState as? AlertUiState.Form)?.let { alertState = it.copy(category = category) }
                 },
+                onSeveritySelected = { severity ->
+                    (alertState as? AlertUiState.Form)?.let { alertState = it.copy(severity = severity) }
+                },
                 onContentChange = { content ->
                     (alertState as? AlertUiState.Form)?.let {
                         alertState = it.copy(content = content, contentError = null)
@@ -553,7 +557,8 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                 },
                 onSave = {
                     val current = alertState as? AlertUiState.Form ?: return@AlertFormDialog
-                    if (current.content.isBlank()) {
+                    val text = current.content.trim()
+                    if (text.isBlank()) {
                         alertState = current.copy(contentError = AlertContentError.Required)
                         return@AlertFormDialog
                     }
@@ -565,37 +570,41 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                             notificationHostState.show(alertAuthErrorMessage, InAppNotificationType.Error)
                             return@launch
                         }
+                        // Navigation alerts are ordinary posts since v8.0.0: create a
+                        // post carrying `content.alert` plus a point location.
+                        val request = CreatePostRequest(
+                            content = PostContentInputDto(
+                                text = text,
+                                alert = AlertInputDto(
+                                    category = current.category,
+                                    severity = current.severity,
+                                ),
+                            ),
+                            location = PostLocationInputDto(
+                                name = null,
+                                point = CoordinatesDto(lat = current.lat, lng = current.lng),
+                                area = null,
+                            ),
+                        )
                         try {
-                            AlertsApi.create(
-                                accessToken = token,
-                                category = current.category,
-                                content = current.content,
-                                geometry = AlertGeometry.point(current.lat, current.lng),
-                            )
+                            PostsApi.create(accessToken = token, payload = request)
                             alertState = AlertUiState.Idle
                             notificationHostState.show(alertSuccessMessage, InAppNotificationType.Success)
-                            // Refresh so the freshly created alert shows on the map
+                            // Refresh so the freshly created alert post shows on the map
                             // without waiting for the next camera move.
                             val bounds = cameraPositionState.visibleViewportBounds()
                             if (bounds != null) {
                                 runCatching { mapEntries = MapItemsApi.list(token, bounds).entries }
                             }
-                        } catch (e: AlertError.Validation) {
-                            (alertState as? AlertUiState.Form)?.let {
-                                if (e.fieldErrors.containsKey("content")) {
-                                    alertState = it.copy(
-                                        isSubmitting = false,
-                                        contentError = AlertContentError.Required,
-                                    )
-                                } else {
-                                    alertState = it.copy(isSubmitting = false)
-                                    notificationHostState.show(alertGenericErrorMessage, InAppNotificationType.Error)
-                                }
-                            }
-                        } catch (e: AlertError) {
+                        } catch (e: PostsError) {
                             (alertState as? AlertUiState.Form)?.let { alertState = it.copy(isSubmitting = false) }
                             notificationHostState.show(
-                                e.userMessage(alertNetworkErrorMessage, alertAuthErrorMessage, alertGenericErrorMessage),
+                                e.userMessage(
+                                    validation = alertValidationErrorMessage,
+                                    auth = alertAuthErrorMessage,
+                                    rateLimited = alertRateLimitedErrorMessage,
+                                    generic = alertGenericErrorMessage,
+                                ),
                                 InAppNotificationType.Error,
                             )
                         } catch (e: CancellationException) {
@@ -616,14 +625,6 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
                 onDismiss = { spotDetailState = null },
                 onCall = { contact -> context.dialPhoneContact(contact) },
                 onRetry = { loadSpotDetail(detail.spotId, detail.name) },
-            )
-        }
-
-        alertDetail?.let { detail ->
-            AlertDetailSheet(
-                state = detail,
-                onDismiss = { alertDetail = null },
-                onOpenSource = { url -> context.openUrl(url) },
             )
         }
 
@@ -709,14 +710,6 @@ private fun android.content.Context.dialPhoneContact(contact: PhoneContact) {
     runCatching { startActivity(intent) }
 }
 
-/** Opens an external URL (e.g. an official alert source) in the browser. */
-private fun android.content.Context.openUrl(url: String) {
-    val target = url.trim().takeIf { it.isNotBlank() } ?: return
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(target))
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    runCatching { startActivity(intent) }
-}
-
 @Composable
 @GoogleMapComposable
 private fun MapEntryMarker(
@@ -725,7 +718,7 @@ private fun MapEntryMarker(
     onClick: () -> Unit,
 ) {
     val checkInAttributes = entry.checkInAttributes
-    val alertAttributes = entry.alertAttributes
+    val postAttributes = entry.postAttributes
     val avatarUrl = checkInAttributes?.user?.avatarUrl?.takeIf { it.isNotBlank() }
     val context = LocalContext.current
     // MarkerComposable captures its content to a bitmap once it is laid out, so an
@@ -769,12 +762,15 @@ private fun MapEntryMarker(
                 avatarBitmap = avatarBitmap,
             )
 
-            entry.type == MapEntryType.NavigationAlert && alertAttributes != null -> AlertMarkerPin()
-
             entry.type == MapEntryType.Spot -> SpotMapMarker(name = entry.name)
 
+            // Alert posts (contentKeys contains `alert`) get a warning pin; other
+            // posts fall back to a media/route/note pin by content precedence.
+            entry.type == MapEntryType.Post && postAttributes?.hasAlert == true ->
+                AlertMarkerPin()
+
             entry.type == MapEntryType.Post ->
-                PostMapMarker(name = entry.name, postType = entry.postAttributes?.postType)
+                PostMapMarker(name = entry.name, icon = postMarkerIcon(postAttributes))
 
             else -> MapEntryMarkerLabel(entry = entry)
         }
@@ -884,12 +880,23 @@ private fun SpotMarkerPin(modifier: Modifier = Modifier) {
 }
 
 /**
- * Post marker: a per-[PostType] icon in a teardrop pin with the post name as a
+ * Icon for a non-alert post marker, chosen from the post's server-derived
+ * `contentKeys`: media (photo) > route > plain note. Alert posts are handled
+ * separately by [AlertMarkerPin], so `hasAlert` is not considered here.
+ */
+private fun postMarkerIcon(post: MapEntryAttributes.Post?): ImageVector = when {
+    post?.hasMedia == true -> Icons.Filled.Photo
+    post?.hasRoute == true -> Icons.Filled.Route
+    else -> Icons.Filled.Article
+}
+
+/**
+ * Post marker: a content-derived icon in a teardrop pin with the post name as a
  * label above it. Colour (secondary) distinguishes posts from check-ins,
  * alerts and spots. Tapping opens the full post detail screen.
  */
 @Composable
-private fun PostMapMarker(name: String, postType: PostType?) {
+private fun PostMapMarker(name: String, icon: ImageVector) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Surface(
             shape = MaterialTheme.shapes.small,
@@ -910,12 +917,12 @@ private fun PostMapMarker(name: String, postType: PostType?) {
             )
         }
         Spacer(modifier = Modifier.height(4.dp))
-        PostMarkerPin(postType = postType)
+        PostMarkerPin(icon = icon)
     }
 }
 
 @Composable
-private fun PostMarkerPin(postType: PostType?, modifier: Modifier = Modifier) {
+private fun PostMarkerPin(icon: ImageVector, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     Box(
         modifier = modifier
@@ -941,7 +948,7 @@ private fun PostMarkerPin(postType: PostType?, modifier: Modifier = Modifier) {
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                imageVector = (postType ?: PostType.Place).icon(),
+                imageVector = icon,
                 contentDescription = null,
                 tint = colors.onSecondary,
                 modifier = Modifier.size(20.dp),
@@ -1204,16 +1211,24 @@ private fun MapItemsError.userMessage(
     -> generic
 }
 
-private fun AlertError.userMessage(
-    network: String,
+/**
+ * Maps a [PostsError] from `POST /v1/posts` to a user-facing message for the
+ * alert-post creation flow.
+ */
+private fun PostsError.userMessage(
+    validation: String,
     auth: String,
+    rateLimited: String,
     generic: String,
 ): String = when (this) {
-    is AlertError.Network -> network
-    is AlertError.AuthenticationRequired -> auth
-    is AlertError.RateLimited,
-    is AlertError.Validation,
-    is AlertError.Server,
+    is PostsError.Validation -> validation
+    is PostsError.AuthenticationRequired -> auth
+    is PostsError.RateLimited -> rateLimited
+    is PostsError.Network,
+    is PostsError.Forbidden,
+    is PostsError.NotFound,
+    is PostsError.VoteConflict,
+    is PostsError.Server,
     -> generic
 }
 
@@ -1223,15 +1238,16 @@ private val MapEntry.markerKey: String
 private val MapEntry.checkInAttributes: MapEntryAttributes.CheckIn?
     get() = attributes as? MapEntryAttributes.CheckIn
 
-private val MapEntry.alertAttributes: MapEntryAttributes.NavigationAlert?
-    get() = attributes as? MapEntryAttributes.NavigationAlert
-
 private val MapEntry.postAttributes: MapEntryAttributes.Post?
     get() = attributes as? MapEntryAttributes.Post
 
-/** Outer rings of any `Polygon` / `MultiPolygon` geometry, as map-ready points. */
+/**
+ * Outer rings of an alert post's `Polygon` / `MultiPolygon` geometry, as
+ * map-ready points. Only alert posts (`contentKeys` contains `alert`) draw an
+ * area overlay; everything else returns no rings.
+ */
 private fun MapEntry.alertPolygonRings(): List<List<LatLng>> {
-    if (type != MapEntryType.NavigationAlert) return emptyList()
+    if (postAttributes?.hasAlert != true) return emptyList()
     return when (val geom = geometry) {
         is MapGeometry.Polygon -> geom.rings.map { ring -> ring.toLatLngList() }
         is MapGeometry.MultiPolygon -> geom.polygons.mapNotNull { polygon ->
@@ -1458,7 +1474,7 @@ private fun SpotMapMarkerPreviewDark() {
 @Composable
 private fun PostMapMarkerPreviewEn() {
     SkipperClubTheme {
-        MarkerPreviewBox { PostMapMarker(name = "Sopocki bulwar", postType = PostType.Photo) }
+        MarkerPreviewBox { PostMapMarker(name = "Sopocki bulwar", icon = Icons.Filled.Photo) }
     }
 }
 
@@ -1466,7 +1482,7 @@ private fun PostMapMarkerPreviewEn() {
 @Composable
 private fun PostMapMarkerPreviewPl() {
     SkipperClubTheme {
-        MarkerPreviewBox { PostMapMarker(name = "Marina Gdynia", postType = PostType.Marina) }
+        MarkerPreviewBox { PostMapMarker(name = "Marina Gdynia", icon = Icons.Filled.Article) }
     }
 }
 
@@ -1474,7 +1490,7 @@ private fun PostMapMarkerPreviewPl() {
 @Composable
 private fun PostMapMarkerPreviewDark() {
     SkipperClubTheme {
-        MarkerPreviewBox { PostMapMarker(name = "Trasa Hel", postType = PostType.Route) }
+        MarkerPreviewBox { PostMapMarker(name = "Trasa Hel", icon = Icons.Filled.Route) }
     }
 }
 

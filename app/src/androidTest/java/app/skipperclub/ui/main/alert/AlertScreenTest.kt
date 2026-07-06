@@ -13,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import app.skipperclub.R
 import app.skipperclub.data.AlertCategory
+import app.skipperclub.data.AlertSeverity
 import app.skipperclub.ui.main.MapAddMenu
 import app.skipperclub.ui.theme.SkipperClubTheme
 import androidx.compose.ui.unit.dp
@@ -66,6 +67,7 @@ class AlertScreenTest {
                         content = content,
                     ),
                     onCategorySelected = {},
+                    onSeveritySelected = {},
                     onContentChange = {
                         content = it
                         savedContent = it
@@ -84,6 +86,35 @@ class AlertScreenTest {
     }
 
     @Test
+    fun selectingSeverityInvokesCallback() {
+        var selected: AlertSeverity? = null
+
+        compose.setContent {
+            SkipperClubTheme {
+                AlertFormDialog(
+                    state = AlertUiState.Form(
+                        lat = 54.4,
+                        lng = 18.6,
+                        category = AlertCategory.NavigationWarning,
+                        severity = AlertSeverity.Warning,
+                        content = "Wreck near the entrance",
+                    ),
+                    onCategorySelected = {},
+                    onSeveritySelected = { selected = it },
+                    onContentChange = {},
+                    onSave = {},
+                    onDismiss = {},
+                )
+            }
+        }
+
+        compose.onNodeWithTag("alert_form_severity").performClick()
+        compose.onNodeWithText(text(R.string.alert_severity_critical)).performClick()
+
+        assertEquals(AlertSeverity.Critical, selected)
+    }
+
+    @Test
     fun formShowsValidationErrorAndDisablesActionsWhileSubmitting() {
         compose.setContent {
             SkipperClubTheme {
@@ -97,6 +128,7 @@ class AlertScreenTest {
                         isSubmitting = true,
                     ),
                     onCategorySelected = {},
+                    onSeveritySelected = {},
                     onContentChange = {},
                     onSave = {},
                     onDismiss = {},

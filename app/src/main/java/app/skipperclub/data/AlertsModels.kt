@@ -4,8 +4,10 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Navigation alert category. Mirrors the backend `AlertCategory` enum
- * (see docs/api/reference/enums/alert-categories.md). The wire values use
+ * Navigation alert category. Mirrors the backend `AlertCategory` enum. Since API
+ * v8.0.0 alerts are no longer a standalone resource — they are carried by posts
+ * inside `content.alert` (see [PostAlert] / [AlertInputDto]) and surfaced on the
+ * map as `post` items whose `contentKeys` contain `alert`. The wire values use
  * snake_case; the UI maps each entry to a localized label.
  */
 @Serializable
@@ -42,40 +44,18 @@ enum class AlertCategory {
 }
 
 /**
- * GeoJSON geometry for an alert. The MVP only creates `Point` geometries, so
- * [coordinates] is a single `[lng, lat]` pair (GeoJSON longitude-first order).
+ * User-settable severity of an alert post (`content.alert.severity`). Official
+ * imported alerts may omit it. The UI maps each entry to a localized label and a
+ * marker/badge accent.
  */
 @Serializable
-data class AlertGeometry(
-    val type: String,
-    val coordinates: List<Double>,
-) {
-    companion object {
-        /** Builds a GeoJSON `Point` from the given latitude/longitude. */
-        fun point(lat: Double, lng: Double): AlertGeometry =
-            AlertGeometry(type = "Point", coordinates = listOf(lng, lat))
-    }
+enum class AlertSeverity {
+    @SerialName("info")
+    Info,
+
+    @SerialName("warning")
+    Warning,
+
+    @SerialName("critical")
+    Critical,
 }
-
-@Serializable
-internal data class CreateAlertRequest(
-    val category: AlertCategory,
-    val content: String,
-    val geometry: AlertGeometry? = null,
-)
-
-/**
- * Alert as returned by `POST /v1/alerts`. Only the fields the client reads back
- * are modeled; the response carries more (see openapi `AlertResponse`).
- */
-@Serializable
-data class Alert(
-    val id: String? = null,
-    val category: AlertCategory? = null,
-    val content: String? = null,
-    val language: String? = null,
-    val source: String? = null,
-    val geometry: AlertGeometry? = null,
-    val createdAt: String? = null,
-    val updatedAt: String? = null,
-)

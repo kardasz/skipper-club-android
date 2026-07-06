@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Post kind badge (derived from a post's content). -->
+    <string name="post_kind_alert">Alert</string>
+    <string name="post_kind_route">Route</string>
+    <string name="post_kind_media">Photos</string>
+    <string name="post_kind_note">Note</string>
+
+    <!-- Feed filter: "Show" content filter + full-text search. -->
+    <string name="posts_filter_section_show">Show</string>
+    <string name="posts_filter_contains_alerts">Alerts</string>
+    <string name="posts_filter_contains_photos">Photos</string>
+    <string name="posts_filter_contains_routes">Routes</string>
+    <string name="posts_filter_contains_notes">Notes</string>
+    <string name="posts_filter_section_search">Search</string>
+    <string name="posts_filter_search_hint">Search posts…</string>
+    <string name="posts_filter_sort_published">Recent</string>
+</resources>

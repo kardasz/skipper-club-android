@@ -1,7 +1,6 @@
 package app.skipperclub.ui.main.posts.wizard
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -19,7 +17,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -37,9 +34,10 @@ import androidx.compose.ui.unit.dp
 import app.skipperclub.R
 
 /**
- * Full-screen post creation wizard. Steps: type → details → (route stops) →
- * media → summary. State lives in [PostWizardState]; this file is the chrome
- * and step routing, the step bodies live in `PostWizardStepViews.kt`.
+ * Full-screen post creation / edit form. Since API v8.0.0 there is no post-type
+ * chooser: one scrolling form covers every post (text, location, optional route
+ * OR alert, media, tags). State lives in [PostWizardState]; the section bodies
+ * live in `PostWizardStepViews.kt`.
  */
 @Composable
 fun PostWizard(
@@ -56,9 +54,7 @@ fun PostWizard(
         }
     }
 
-    BackHandler {
-        if (!state.back()) requestClose()
-    }
+    BackHandler { requestClose() }
 
     Surface(
         modifier = Modifier
@@ -85,14 +81,7 @@ fun PostWizard(
                         .verticalScroll(scrollState)
                         .padding(horizontal = 20.dp, vertical = 12.dp),
                 ) {
-                    when (state.step) {
-                        PostWizardStep.Type -> WizardTypeStep(state)
-                        PostWizardStep.Details -> WizardDetailsStep(state)
-                        PostWizardStep.RouteStops -> WizardRouteStopsStep(state)
-                        PostWizardStep.Media -> WizardMediaStep(state)
-                        PostWizardStep.Tags -> WizardTagsStep(state)
-                        PostWizardStep.Summary -> WizardSummaryStep(state)
-                    }
+                    WizardForm(state)
                 }
             }
             WizardBottomBar(state = state)
@@ -128,35 +117,24 @@ private fun WizardTopBar(
     state: PostWizardState,
     onCloseRequest: () -> Unit,
 ) {
-    Column {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 4.dp, end = 20.dp, top = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onCloseRequest, modifier = Modifier.testTag("wizard_close")) {
-                Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = stringResource(R.string.wizard_close),
-                )
-            }
-            Text(
-                text = stringResource(state.step.titleRes()),
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                text = "${state.stepIndex + 1}/${state.steps.size}",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 4.dp, end = 20.dp, top = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onCloseRequest, modifier = Modifier.testTag("wizard_close")) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = stringResource(R.string.wizard_close),
             )
         }
-        LinearProgressIndicator(
-            progress = { (state.stepIndex + 1f) / state.steps.size },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp),
+        Text(
+            text = stringResource(
+                if (state.isEditing) R.string.wizard_title_edit else R.string.wizard_title_create,
+            ),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.weight(1f),
         )
     }
 }
@@ -167,53 +145,21 @@ private fun WizardBottomBar(state: PostWizardState) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        if (state.stepIndex > 0) {
-            OutlinedButton(
-                onClick = { state.back() },
-                modifier = Modifier
-                    .weight(1f)
-                    .testTag("wizard_back"),
-            ) {
-                Text(stringResource(R.string.wizard_back))
-            }
+        val publishLabel = when {
+            state.isPublishing && state.isEditing -> R.string.wizard_saving
+            state.isPublishing -> R.string.wizard_publishing
+            state.isEditing -> R.string.wizard_save
+            else -> R.string.wizard_publish
         }
-        if (state.step == PostWizardStep.Summary) {
-            val publishLabel = when {
-                state.isPublishing && state.isEditing -> R.string.wizard_saving
-                state.isPublishing -> R.string.wizard_publishing
-                state.isEditing -> R.string.wizard_save
-                else -> R.string.wizard_publish
-            }
-            Button(
-                onClick = { state.publish() },
-                enabled = !state.isPublishing,
-                modifier = Modifier
-                    .weight(2f)
-                    .testTag("wizard_publish"),
-            ) {
-                Text(text = stringResource(publishLabel))
-            }
-        } else {
-            Button(
-                onClick = { state.next() },
-                enabled = state.canGoNext,
-                modifier = Modifier
-                    .weight(2f)
-                    .testTag("wizard_next"),
-            ) {
-                Text(stringResource(R.string.wizard_next))
-            }
+        Button(
+            onClick = { state.publish() },
+            enabled = state.canPublish,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("wizard_publish"),
+        ) {
+            Text(text = stringResource(publishLabel))
         }
     }
-}
-
-private fun PostWizardStep.titleRes(): Int = when (this) {
-    PostWizardStep.Type -> R.string.wizard_step_type
-    PostWizardStep.Details -> R.string.wizard_step_details
-    PostWizardStep.RouteStops -> R.string.wizard_step_route
-    PostWizardStep.Media -> R.string.wizard_step_media
-    PostWizardStep.Tags -> R.string.wizard_step_tags
-    PostWizardStep.Summary -> R.string.wizard_step_summary
 }

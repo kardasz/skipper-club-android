@@ -152,15 +152,7 @@
     <string name="alert_form_save">Zapisz</string>
     <string name="alert_error_content_required">Opis jest wymagany.</string>
     <string name="alert_success">Ostrzeżenie zostało dodane.</string>
-    <string name="alert_error_network">Brak połączenia z internetem. Spróbuj ponownie.</string>
-    <string name="alert_error_auth">Zaloguj się ponownie, aby dodać ostrzeżenie.</string>
-    <string name="alert_error_generic">Nie udało się dodać ostrzeżenia. Spróbuj ponownie.</string>
     <string name="alert_marker_content_description">Ostrzeżenie: %1$s. Dotknij, aby zobaczyć szczegóły.</string>
-    <string name="alert_detail_source">Źródło: %1$s</string>
-    <string name="alert_detail_source_number">Źródło: %1$s · nr %2$s</string>
-    <string name="alert_detail_open_source">Zobacz źródło</string>
-    <string name="alert_detail_reported_by">Zgłoszone przez</string>
-    <string name="alert_detail_author_avatar_content_description">Awatar użytkownika %1$s</string>
 
     <!-- Kategorie ostrzeżeń -->
     <string name="alert_category_navigation_warning">Ostrzeżenie nawigacyjne</string>
@@ -190,27 +182,7 @@
 
     <string name="main_placeholder_subtitle">Wkrótce</string>
 
-    <string name="post_type_photo">Zdjęcie</string>
-    <string name="post_type_place">Miejsce</string>
-    <string name="post_type_food">Jedzenie</string>
-    <string name="post_type_marina">Marina</string>
-    <string name="post_type_tips">Porady</string>
-    <string name="post_type_route">Trasa</string>
-    <string name="post_type_berth">Miejsce postojowe</string>
-    <string name="post_type_weather">Pogoda</string>
-    <string name="post_type_navigation_warning">Ostrzeżenie naw.</string>
-    <string name="post_type_help">Pomoc</string>
 
-    <string name="post_type_photo_desc">Podziel się żeglarskimi chwilami</string>
-    <string name="post_type_place_desc">Poleć ciekawe miejsce</string>
-    <string name="post_type_food_desc">Poleć restaurację lub tawernę</string>
-    <string name="post_type_marina_desc">Oceń marinę</string>
-    <string name="post_type_tips_desc">Podziel się poradą i doświadczeniem</string>
-    <string name="post_type_route_desc">Udostępnij trasę z postojami</string>
-    <string name="post_type_berth_desc">Wolne miejsce postojowe (wygasa po 6 h)</string>
-    <string name="post_type_weather_desc">Alert pogodowy (wygasa po 7 dniach)</string>
-    <string name="post_type_navigation_warning_desc">Zagrożenie nawigacyjne (wygasa po 7 dniach)</string>
-    <string name="post_type_help_desc">Poproś o pomoc (wygasa po 3 dniach)</string>
 
     <string name="posts_create">Nowy post</string>
     <string name="posts_filter">Filtry</string>
@@ -280,10 +252,6 @@
         <item quantity="many">%1$d dni</item>
         <item quantity="other">%1$d dnia</item>
     </plurals>
-    <string name="post_expiry_info_berth">Posty o miejscach postojowych wygasają 6 godzin po publikacji.</string>
-    <string name="post_expiry_info_weather">Posty pogodowe wygasają 7 dni po publikacji.</string>
-    <string name="post_expiry_info_navigation_warning">Ostrzeżenia nawigacyjne wygasają 7 dni po publikacji.</string>
-    <string name="post_expiry_info_help">Prośby o pomoc wygasają 3 dni po publikacji.</string>
 
     <string name="reaction_picker_title">Dodaj reakcję</string>
     <string name="reaction_section_standard">Standardowe</string>
@@ -303,19 +271,13 @@
     <string name="comments_error_generic">Coś poszło nie tak. Spróbuj ponownie.</string>
 
     <string name="filter_title">Filtry</string>
-    <string name="filter_section_types">Typy postów</string>
-    <string name="filter_section_region">Region</string>
-    <string name="filter_all_regions">Wszystkie regiony</string>
     <string name="filter_section_sort">Sortowanie</string>
-    <string name="filter_sort_created">Data dodania</string>
     <string name="filter_sort_updated">Ostatnia aktualizacja</string>
     <string name="filter_sort_distance">Najbliżej</string>
     <string name="filter_order_desc">Od najnowszych</string>
     <string name="filter_order_asc">Od najstarszych</string>
     <string name="filter_clear">Wyczyść</string>
     <string name="filter_apply">Zastosuj</string>
-    <string name="filter_regions_load_failed">Nie udało się wczytać regionów.</string>
-    <string name="filter_section_cross_region">Pokaż ze wszystkich regionów</string>
     <string name="filter_section_hashtag">Hashtag</string>
     <string name="filter_hashtag_hint">np. sailing</string>
     <string name="filter_section_location">Nazwa lokalizacji</string>
@@ -335,15 +297,6 @@
     <string name="filter_status_expired">Wygasłe</string>
     <string name="filter_status_resolved">Rozwiązane</string>
 
-    <string name="wizard_step_type">Wybierz typ</string>
-    <string name="wizard_step_details">Szczegóły</string>
-    <string name="wizard_step_route">Postoje na trasie</string>
-    <string name="wizard_step_media">Zdjęcia i wideo</string>
-    <string name="wizard_step_tags">Oznacz osoby</string>
-    <string name="wizard_step_summary">Podsumowanie</string>
-    <string name="wizard_type_subtitle">Wybierz typ, który najlepiej opisuje Twój post.</string>
-    <string name="wizard_category_evergreen">Stałe</string>
-    <string name="wizard_category_time_sensitive">Czasowe</string>
     <string name="wizard_next">Dalej</string>
     <string name="wizard_back">Wstecz</string>
     <string name="wizard_publish">Opublikuj</string>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Kreator posta (API v8.0.0, pojedynczy formularz). Tylko nowe teksty; wspólne teksty kreatora są w strings.xml. -->
+    <string name="wizard_title_create">Nowy post</string>
+    <string name="wizard_title_edit">Edytuj post</string>
+
+    <!-- Sekcja tekstu -->
+    <string name="wizard_text_label">Co słychać?</string>
+    <string name="wizard_error_text_required">Dodaj treść posta</string>
+
+    <!-- Przełączniki sekcji opcjonalnych -->
+    <string name="wizard_add_route">Dodaj trasę</string>
+    <string name="wizard_add_route_desc">Udostępnij plan rejsu z przystankami</string>
+    <string name="wizard_add_alert">Dodaj ostrzeżenie</string>
+    <string name="wizard_add_alert_desc">Ostrzeż innych o zagrożeniu lub komunikacie</string>
+
+    <!-- Podformularz ostrzeżenia -->
+    <string name="wizard_alert_category_label">Kategoria</string>
+    <string name="wizard_error_alert_category_required">Wybierz kategorię ostrzeżenia</string>
+    <string name="wizard_alert_severity_label">Ważność</string>
+    <string name="wizard_alert_severity_none">Brak</string>
+    <string name="wizard_error_alert_location_required">Ostrzeżenie wymaga lokalizacji na mapie</string>
+</resources>

@@ -31,8 +31,8 @@ data class MapEntry(
     val count: Int? = null,
     /**
      * Drawable geometry for the item. Point resources duplicate [coordinates];
-     * `navigation_alert` items may carry `Polygon` / `MultiPolygon` areas that
-     * the map renders as overlays. Null for clusters.
+     * alert posts (`contentKeys` contains `alert`) may carry `Polygon` /
+     * `MultiPolygon` areas that the map renders as overlays. Null for clusters.
      */
     val geometry: MapGeometry? = null,
     /** Bounding box of a cluster's member items; used to zoom in on tap. */
@@ -56,7 +56,6 @@ enum class MapEntryType {
     Post,
     Spot,
     CheckIn,
-    NavigationAlert,
 }
 
 data class MapCoordinates(
@@ -71,14 +70,20 @@ sealed interface MapEntryAttributes {
      * is loaded via `GET /v1/posts/{id}` when the user opens the detail screen.
      */
     data class Post(
-        val postType: PostType?,
+        val contentKeys: Set<PostContentKey>,
+        val alertCategory: AlertCategory?,
         val status: String,
         val author: MapUserProjection,
-        val createdAt: String,
+        val publishedAt: String,
+        val expiresAt: String?,
         val commentsCount: Int,
         val bookmarked: Boolean,
         val mediaPreview: MapMediaPreview?,
-    ) : MapEntryAttributes
+    ) : MapEntryAttributes {
+        val hasAlert: Boolean get() = contentKeys.contains(PostContentKey.Alert)
+        val hasMedia: Boolean get() = contentKeys.contains(PostContentKey.Media)
+        val hasRoute: Boolean get() = contentKeys.contains(PostContentKey.Route)
+    }
 
     /**
      * Lightweight metadata for a `spot` map item (see openapi `MapSpotAttributes`).
@@ -97,29 +102,6 @@ sealed interface MapEntryAttributes {
         val user: MapUserProjection,
         val checkedInAt: String,
         val locationName: String?,
-    ) : MapEntryAttributes
-
-    /**
-     * Full payload for a `navigation_alert` map item. The map endpoint already
-     * inlines the alert body (see openapi `MapAlertAttributes`), so the detail
-     * view can render without a separate `GET /v1/alerts/{id}` fetch.
-     *
-     * [sourceName] / [sourceNumber] / [sourceUrl] are flattened from the
-     * optional source-specific attribution (`sourceAttributes`); they are only
-     * present for official imports and `null` for user-created alerts.
-     *
-     * [author] is the author projection inlined by the map endpoint for
-     * `source == "user"` alerts (`null` for official imports), so the detail
-     * sheet can show who filed the alert without a `GET /v1/users/{id}` fetch.
-     */
-    data class NavigationAlert(
-        val category: AlertCategory,
-        val content: String,
-        val source: String,
-        val sourceName: String? = null,
-        val sourceNumber: String? = null,
-        val sourceUrl: String? = null,
-        val author: MapUserProjection? = null,
     ) : MapEntryAttributes
 }
 
@@ -213,11 +195,11 @@ internal data class MapItemsMetaDto(
 
 @Serializable
 private data class MapPostAttributesDto(
-    val postType: String? = null,
+    val contentKeys: List<String> = emptyList(),
+    val alertCategory: AlertCategory? = null,
     val status: String = "published",
-    val regionCode: String = "",
     val author: MapUserProjectionDto,
-    val createdAt: String,
+    val publishedAt: String,
     val expiresAt: String? = null,
     val mediaPreview: MapMediaPreviewDto? = null,
     val commentsCount: Int = 0,
@@ -225,10 +207,12 @@ private data class MapPostAttributesDto(
 ) {
     fun toDomain(): MapEntryAttributes.Post =
         MapEntryAttributes.Post(
-            postType = postType?.let { PostType.fromWire(it) },
+            contentKeys = contentKeys.mapNotNull { PostContentKey.fromWire(it) }.toSet(),
+            alertCategory = alertCategory,
             status = status,
             author = author.toDomain(),
-            createdAt = createdAt,
+            publishedAt = publishedAt,
+            expiresAt = expiresAt,
             commentsCount = commentsCount,
             bookmarked = bookmarked,
             mediaPreview = mediaPreview?.toDomain(),
@@ -277,54 +261,6 @@ private data class MapCheckInAttributesDto(
             user = user.toDomain(),
             checkedInAt = checkedInAt,
             locationName = locationName,
-        )
-}
-
-@Serializable
-private data class MapAlertAttributesDto(
-    val category: AlertCategory,
-    val content: String,
-    val language: String? = null,
-    val source: String = "user",
-    val sourceId: String? = null,
-    val sourceAttributes: MapAlertSourceAttributesDto? = null,
-    val user: MapAlertUserDto? = null,
-) {
-    fun toDomain(): MapEntryAttributes.NavigationAlert =
-        MapEntryAttributes.NavigationAlert(
-            category = category,
-            content = content,
-            source = source,
-            sourceName = sourceAttributes?.externalSourceName,
-            sourceNumber = sourceAttributes?.externalNumber,
-            sourceUrl = sourceAttributes?.externalSourceUrl,
-            author = user?.toDomain(),
-        )
-}
-
-@Serializable
-private data class MapAlertSourceAttributesDto(
-    val type: String? = null,
-    val externalSourceName: String? = null,
-    val externalSourceUrl: String? = null,
-    val externalNumber: String? = null,
-)
-
-/**
- * Author projection inlined on `source='user'` navigation alerts (openapi
- * `AlertUserAttribute`). Note the wire field is `name`, not `displayName`.
- */
-@Serializable
-private data class MapAlertUserDto(
-    val id: String,
-    val name: String,
-    val avatarUrl: String? = null,
-) {
-    fun toDomain(): MapUserProjection =
-        MapUserProjection(
-            id = id,
-            displayName = name,
-            avatarUrl = avatarUrl,
         )
 }
 
@@ -381,7 +317,6 @@ private fun String.toMapEntryType(): MapEntryType? =
         "post" -> MapEntryType.Post
         "spot" -> MapEntryType.Spot
         "check_in" -> MapEntryType.CheckIn
-        "navigation_alert" -> MapEntryType.NavigationAlert
         else -> null
     }
 
@@ -399,10 +334,6 @@ private fun MapEntryType.toDomainAttributes(attributes: JsonObject?): MapEntryAt
 
             MapEntryType.CheckIn -> mapAttributesJson
                 .decodeFromJsonElement<MapCheckInAttributesDto>(attributes)
-                .toDomain()
-
-            MapEntryType.NavigationAlert -> mapAttributesJson
-                .decodeFromJsonElement<MapAlertAttributesDto>(attributes)
                 .toDomain()
         }
     } catch (_: SerializationException) {

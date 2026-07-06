@@ -1,11 +1,12 @@
 package app.skipperclub.ui.main.posts
 
 import app.skipperclub.data.Post
+import app.skipperclub.data.PostContainsFilter
 import app.skipperclub.data.PostCoordinates
+import app.skipperclub.data.PostFeedCursor
 import app.skipperclub.data.PostFeedQuery
 import app.skipperclub.data.PostSortField
 import app.skipperclub.data.PostStatus
-import app.skipperclub.data.PostType
 import app.skipperclub.data.PostsError
 import app.skipperclub.data.PostsPage
 import app.skipperclub.data.ReactionType
@@ -26,9 +27,10 @@ import kotlinx.coroutines.launch
 
 /** Feed filters chosen in the filter sheet. */
 data class PostFilters(
-    val types: Set<PostType> = emptySet(),
-    val regionCode: String? = null,
-    val crossRegionTypes: Set<PostType> = emptySet(),
+    /** What a post "contains" (Alerts/Photos/Routes/Notes); overlap match. */
+    val contains: Set<PostContainsFilter> = emptySet(),
+    /** Full-text search across post text (`q`). */
+    val query: String? = null,
     val hashtag: String? = null,
     val locationName: String? = null,
     val fromDate: String? = null,
@@ -40,35 +42,39 @@ data class PostFilters(
     /** Author scope; set to the current user for lifecycle ("My posts") filtering. */
     val userId: String? = null,
     val statuses: Set<PostStatus> = emptySet(),
-    val sort: PostSortField = PostSortField.CreatedAt,
+    val sort: PostSortField = PostSortField.PublishedAt,
     val order: SortOrder = SortOrder.Desc,
 ) {
     /** Radius search requires a center; `sort=distance` requires the radius. */
     private val hasRadius: Boolean get() = center != null && radiusKm != null
 
-    private val effectiveSort: PostSortField
-        get() = if (sort == PostSortField.Distance && !hasRadius) PostSortField.CreatedAt else sort
+    val effectiveSort: PostSortField
+        get() = if (sort == PostSortField.Distance && !hasRadius) PostSortField.PublishedAt else sort
+
+    /**
+     * The chronological feed (`sort=publishedAt`) is keyset-paginated; every other
+     * sort (`updatedAt`, `distance`) stays offset-paginated.
+     */
+    val usesKeyset: Boolean get() = effectiveSort == PostSortField.PublishedAt
 
     val activeCount: Int
         get() = listOf(
-            types.isNotEmpty(),
-            regionCode != null,
-            crossRegionTypes.isNotEmpty(),
+            contains.isNotEmpty(),
+            !query.isNullOrBlank(),
             !hashtag.isNullOrBlank(),
             !locationName.isNullOrBlank(),
             fromDate != null || toDate != null,
             hasRadius,
             userId != null,
             statuses.isNotEmpty(),
-            effectiveSort != PostSortField.CreatedAt || order != SortOrder.Desc,
+            effectiveSort != PostSortField.PublishedAt || order != SortOrder.Desc,
         ).count { it }
 
-    fun toQuery(limit: Int, offset: Int): PostFeedQuery =
+    fun toQuery(limit: Int, offset: Int, cursor: PostFeedCursor? = null): PostFeedQuery =
         PostFeedQuery(
-            types = types,
-            regionCode = regionCode,
+            contains = contains,
+            query = query?.takeIf { it.isNotBlank() },
             statuses = if (userId != null) statuses else emptySet(),
-            crossRegionTypes = crossRegionTypes,
             locationName = locationName?.takeIf { it.isNotBlank() },
             lat = center?.lat?.takeIf { hasRadius },
             lng = center?.lng?.takeIf { hasRadius },
@@ -79,6 +85,7 @@ data class PostFilters(
             userId = userId,
             sort = effectiveSort,
             order = order,
+            cursor = cursor,
             limit = limit,
             offset = offset,
         )
@@ -157,7 +164,14 @@ class PostsFeedController(
             }
             try {
                 val snapshot = _state.value
-                val page = loadPage(token, offset = snapshot.posts.size)
+                // Keyset walks the chronological feed off the last card's (publishedAt, id);
+                // bookmarks (pageLoader) and non-chronological sorts stay offset-paged.
+                val cursor = if (pageLoader == null && snapshot.filters.usesKeyset) {
+                    snapshot.posts.lastOrNull()?.let { PostFeedCursor(it.publishedAt, it.id) }
+                } else {
+                    null
+                }
+                val page = loadPage(token, offset = snapshot.posts.size, cursor = cursor)
                 _state.update { state ->
                     val knownIds = state.posts.mapTo(mutableSetOf()) { it.id }
                     state.copy(
@@ -318,7 +332,8 @@ class PostsFeedController(
                 return@launch
             }
             try {
-                val page = loadPage(token, offset = 0)
+                // Reload always restarts from the head: no cursor, offset 0.
+                val page = loadPage(token, offset = 0, cursor = null)
                 _state.update {
                     it.copy(
                         posts = page.posts,
@@ -338,9 +353,9 @@ class PostsFeedController(
         }
     }
 
-    private suspend fun loadPage(token: String, offset: Int): PostsPage =
+    private suspend fun loadPage(token: String, offset: Int, cursor: PostFeedCursor?): PostsPage =
         pageLoader?.invoke(token, offset, pageSize)
-            ?: gateway.list(token, _state.value.filters.toQuery(limit = pageSize, offset = offset))
+            ?: gateway.list(token, _state.value.filters.toQuery(limit = pageSize, offset = offset, cursor = cursor))
 
     private suspend fun requireToken(): String? {
         val token = runCatching { accessToken() }.getOrNull()

@@ -4,15 +4,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import app.skipperclub.data.AlertCategory
+import app.skipperclub.data.AlertInputDto
+import app.skipperclub.data.AlertSeverity
 import app.skipperclub.data.CoordinatesDto
 import app.skipperclub.data.CreatePostRequest
 import app.skipperclub.data.FriendUser
 import app.skipperclub.data.GeocodedLocation
 import app.skipperclub.data.MediaUploadMeta
 import app.skipperclub.data.Post
+import app.skipperclub.data.PostContentInputDto
 import app.skipperclub.data.PostCoordinates
+import app.skipperclub.data.PostLocationInputDto
 import app.skipperclub.data.PostRouteStop
-import app.skipperclub.data.PostType
+import app.skipperclub.data.RouteInputDto
 import app.skipperclub.data.RouteStopDto
 import app.skipperclub.data.UpdatePostRequest
 import app.skipperclub.ui.main.posts.PostsGateway
@@ -25,19 +30,17 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 
-const val POST_DESCRIPTION_MAX_LENGTH = 2200
+const val POST_TEXT_MAX_LENGTH = 2200
 const val POST_MEDIA_MAX_COUNT = 10
 const val POST_ROUTE_STOPS_MAX_COUNT = 30
 const val POST_TAGGED_USERS_MAX_COUNT = 20
 
-enum class PostWizardStep { Type, Details, RouteStops, Media, Tags, Summary }
-
-/** Validation problems surfaced under the relevant field / step. */
+/** Validation problems surfaced under the relevant field / section. */
 enum class PostWizardError {
-    DescriptionRequired,
-    LocationRequired,
+    TextRequired,
     StopsRequired,
-    MediaRequired,
+    AlertCategoryRequired,
+    AlertLocationRequired,
 }
 
 sealed interface PostWizardEvent {
@@ -61,9 +64,13 @@ data class WizardMedia(
 )
 
 /**
- * State machine for the post creation wizard. Pure Kotlin + Compose snapshot
- * state (no Android types) so step flow, validation and request building are
- * unit-testable on the JVM with a fake [PostsGateway].
+ * State holder for the post creation / edit form. Since API v8.0.0 there is a
+ * single form (no post-type chooser): required [text], an optional [locationName]
+ * anchor, and two mutually exclusive optional sections — a route ([routeEnabled])
+ * or an alert ([alertEnabled]) — plus media and tagged users.
+ *
+ * Pure Kotlin + Compose snapshot state (no Android types) so validation and
+ * request building are unit-testable on the JVM with a fake [PostsGateway].
  */
 class PostWizardState(
     private val scope: CoroutineScope,
@@ -72,47 +79,53 @@ class PostWizardState(
     private val locationSearchDebounceMillis: Long = 350,
     editingPost: Post? = null,
 ) {
-    /** Non-null in edit mode; type is immutable so the Type step is skipped. */
     val editingPostId: String? = editingPost?.id
     val isEditing: Boolean get() = editingPostId != null
 
-    var step by mutableStateOf(if (editingPost != null) PostWizardStep.Details else PostWizardStep.Type)
-        private set
-    var selectedType by mutableStateOf(editingPost?.type)
-        private set
-
-    var description by mutableStateOf(editingPost?.description.orEmpty())
-        private set
-    var locationName by mutableStateOf(editingPost?.locationName)
-        private set
-    var coordinates by mutableStateOf(editingPost?.coordinates)
-        private set
-    /** Preserved from the edited post; the create form no longer exposes a region picker. */
-    var regionCode by mutableStateOf(editingPost?.regionCode)
+    // --- Text (required) ---
+    var text by mutableStateOf(editingPost?.content?.text.orEmpty())
         private set
 
-    var locationQuery by mutableStateOf(editingPost?.locationName.orEmpty())
+    // --- Location ---
+    var locationName by mutableStateOf(editingPost?.location?.name)
+        private set
+    var coordinates by mutableStateOf(editingPost?.location?.point)
+        private set
+    var locationQuery by mutableStateOf(editingPost?.location?.name.orEmpty())
         private set
     var locationResults by mutableStateOf<List<GeocodedLocation>>(emptyList())
         private set
     var isSearchingLocation by mutableStateOf(false)
         private set
 
+    // --- Route (optional, mutually exclusive with alert) ---
+    var routeEnabled by mutableStateOf(editingPost?.content?.route != null)
+        private set
     val stops = mutableStateListOf<PostRouteStop>()
-    var durationDaysText by mutableStateOf(editingPost?.durationDays?.toString().orEmpty())
+    var durationDaysText by mutableStateOf(editingPost?.content?.route?.durationDays?.toString().orEmpty())
         private set
     var lengthNmText by mutableStateOf(
-        editingPost?.lengthNm?.let { if (it == it.toLong().toDouble()) it.toLong().toString() else it.toString() }
+        editingPost?.content?.route?.lengthNm
+            ?.let { if (it == it.toLong().toDouble()) it.toLong().toString() else it.toString() }
             .orEmpty(),
     )
         private set
 
+    // --- Alert (optional, mutually exclusive with route) ---
+    var alertEnabled by mutableStateOf(editingPost?.content?.alert != null)
+        private set
+    var alertCategory by mutableStateOf(editingPost?.content?.alert?.category)
+        private set
+    var alertSeverity by mutableStateOf(editingPost?.content?.alert?.severity)
+        private set
+
+    // --- Media ---
     val media = mutableStateListOf<WizardMedia>()
 
     /** People tagged in this post (max [POST_TAGGED_USERS_MAX_COUNT]). */
     val taggedUsers = mutableStateListOf<FriendUser>()
 
-    // People search (tag step)
+    // People search (tag section)
     var tagQuery by mutableStateOf("")
         private set
     var tagResults by mutableStateOf<List<FriendUser>>(emptyList())
@@ -126,7 +139,7 @@ class PostWizardState(
     private var nextMediaLocalId = 0L
 
     init {
-        editingPost?.stops?.let { stops.addAll(it) }
+        editingPost?.content?.route?.stops?.let { stops.addAll(it) }
         editingPost?.media?.forEach { item ->
             media.add(
                 WizardMedia(
@@ -144,7 +157,7 @@ class PostWizardState(
         }
     }
 
-    /** Set after a failed Next tap so fields can highlight what is missing. */
+    /** Set after a failed publish so fields can highlight what is missing. */
     var visibleErrors by mutableStateOf<Set<PostWizardError>>(emptySet())
         private set
 
@@ -154,32 +167,12 @@ class PostWizardState(
     private var locationSearchJob: Job? = null
     private var tagSearchJob: Job? = null
 
-    /** Ordered steps for the selected type (route inserts the stops step). */
-    val steps: List<PostWizardStep>
-        get() {
-            val type = selectedType
-            return buildList {
-                if (!isEditing) add(PostWizardStep.Type)
-                add(PostWizardStep.Details)
-                if (type?.requiresStops == true) add(PostWizardStep.RouteStops)
-                add(PostWizardStep.Media)
-                add(PostWizardStep.Tags)
-                add(PostWizardStep.Summary)
-            }
-        }
-
-    val stepIndex: Int
-        get() = steps.indexOf(step).coerceAtLeast(0)
-
-    fun selectType(type: PostType) {
-        selectedType = type
-        visibleErrors = emptySet()
+    fun updateText(value: String) {
+        text = value.take(POST_TEXT_MAX_LENGTH)
+        if (text.isNotBlank()) visibleErrors = visibleErrors - PostWizardError.TextRequired
     }
 
-    fun updateDescription(value: String) {
-        description = value.take(POST_DESCRIPTION_MAX_LENGTH)
-        if (value.isNotBlank()) visibleErrors = visibleErrors - PostWizardError.DescriptionRequired
-    }
+    // --- Location ---
 
     fun updateLocationQuery(value: String) {
         locationQuery = value
@@ -211,7 +204,7 @@ class PostWizardState(
         coordinates = location.coordinates
         locationQuery = location.displayName
         locationResults = emptyList()
-        visibleErrors = visibleErrors - PostWizardError.LocationRequired
+        visibleErrors = visibleErrors - PostWizardError.AlertLocationRequired
     }
 
     fun clearLocation() {
@@ -220,6 +213,39 @@ class PostWizardState(
         locationQuery = ""
         locationResults = emptyList()
     }
+
+    // --- Route / Alert exclusivity ---
+
+    fun updateRouteEnabled(enabled: Boolean) {
+        routeEnabled = enabled
+        if (enabled) {
+            alertEnabled = false
+            visibleErrors = visibleErrors - PostWizardError.AlertCategoryRequired - PostWizardError.AlertLocationRequired
+        } else {
+            visibleErrors = visibleErrors - PostWizardError.StopsRequired
+        }
+    }
+
+    fun updateAlertEnabled(enabled: Boolean) {
+        alertEnabled = enabled
+        if (enabled) {
+            routeEnabled = false
+            visibleErrors = visibleErrors - PostWizardError.StopsRequired
+        } else {
+            visibleErrors = visibleErrors - PostWizardError.AlertCategoryRequired - PostWizardError.AlertLocationRequired
+        }
+    }
+
+    fun selectAlertCategory(category: AlertCategory) {
+        alertCategory = category
+        visibleErrors = visibleErrors - PostWizardError.AlertCategoryRequired
+    }
+
+    fun selectAlertSeverity(severity: AlertSeverity?) {
+        alertSeverity = severity
+    }
+
+    // --- Route stops ---
 
     fun addStop(location: GeocodedLocation) {
         if (stops.size >= POST_ROUTE_STOPS_MAX_COUNT) return
@@ -246,6 +272,8 @@ class PostWizardState(
         lengthNmText = value.filter { it.isDigit() || it == '.' }.take(7)
     }
 
+    // --- Media ---
+
     fun uploadMedia(
         fileName: String,
         mimeType: String,
@@ -271,7 +299,6 @@ class PostWizardState(
                 replaceMedia(item.localId) {
                     it.copy(isUploading = false, mediaId = uploaded.mediaId, publicUrl = uploaded.publicUrl)
                 }
-                visibleErrors = visibleErrors - PostWizardError.MediaRequired
             } catch (error: Exception) {
                 replaceMedia(item.localId) { it.copy(isUploading = false, failed = true) }
                 _events.tryEmit(PostWizardEvent.MediaUploadFailed(error))
@@ -285,6 +312,8 @@ class PostWizardState(
 
     val isUploadingMedia: Boolean
         get() = media.any { it.isUploading }
+
+    // --- Tags ---
 
     fun updateTagQuery(value: String) {
         tagQuery = value
@@ -327,121 +356,84 @@ class PostWizardState(
     private val uploadedMediaIds: List<String>
         get() = media.mapNotNull { it.mediaId }
 
-    /** Validation errors blocking the given step's Next action. */
-    fun errorsFor(step: PostWizardStep): Set<PostWizardError> {
-        val type = selectedType ?: return emptySet()
-        return when (step) {
-            PostWizardStep.Type -> emptySet()
-            PostWizardStep.Details -> buildSet {
-                if (type.requiresDescription && description.isBlank()) {
-                    add(PostWizardError.DescriptionRequired)
-                }
-                if (type.requiresLocation && (locationName == null || coordinates == null)) {
-                    add(PostWizardError.LocationRequired)
-                }
-            }
-
-            PostWizardStep.RouteStops ->
-                if (type.requiresStops && stops.isEmpty()) {
-                    setOf(PostWizardError.StopsRequired)
-                } else {
-                    emptySet()
-                }
-
-            PostWizardStep.Media ->
-                if (type.requiresMedia && uploadedMediaIds.isEmpty()) {
-                    setOf(PostWizardError.MediaRequired)
-                } else {
-                    emptySet()
-                }
-
-            PostWizardStep.Tags -> emptySet()
-
-            PostWizardStep.Summary -> emptySet()
-        }
-    }
-
-    val canGoNext: Boolean
-        get() = when (step) {
-            PostWizardStep.Type -> selectedType != null
-            PostWizardStep.Media -> !isUploadingMedia
-            PostWizardStep.Summary -> !isPublishing
-            else -> true
-        }
-
-    /** Advances if the current step validates; otherwise surfaces the errors. */
-    fun next() {
-        val errors = errorsFor(step)
-        if (errors.isNotEmpty()) {
-            visibleErrors = errors
-            return
-        }
-        visibleErrors = emptySet()
-        val ordered = steps
-        val index = ordered.indexOf(step)
-        if (index < ordered.lastIndex) {
-            step = ordered[index + 1]
-        }
-    }
-
-    /** Returns false when already at the first step (caller should close). */
-    fun back(): Boolean {
-        val ordered = steps
-        val index = ordered.indexOf(step)
-        if (index <= 0) return false
-        visibleErrors = emptySet()
-        step = ordered[index - 1]
-        return true
-    }
-
-    val hasUserInput: Boolean
-        get() = selectedType != null &&
-            (
-                description.isNotBlank() || locationName != null || regionCode != null ||
-                    stops.isNotEmpty() || media.isNotEmpty()
-                )
-
     private val taggedUserIds: List<String>
         get() = taggedUsers.map { it.id }
 
+    /** All validation problems blocking publish. Empty means the form is valid. */
+    fun validate(): Set<PostWizardError> = buildSet {
+        if (text.isBlank() || text.length > POST_TEXT_MAX_LENGTH) add(PostWizardError.TextRequired)
+        if (routeEnabled && stops.isEmpty()) add(PostWizardError.StopsRequired)
+        if (alertEnabled) {
+            if (alertCategory == null) add(PostWizardError.AlertCategoryRequired)
+            if (coordinates == null) add(PostWizardError.AlertLocationRequired)
+        }
+    }
+
+    val canPublish: Boolean
+        get() = !isPublishing && !isUploadingMedia && validate().isEmpty()
+
+    val hasUserInput: Boolean
+        get() = text.isNotBlank() || locationName != null || routeEnabled || alertEnabled ||
+            stops.isNotEmpty() || media.isNotEmpty() || taggedUsers.isNotEmpty()
+
+    private fun buildContent(): PostContentInputDto {
+        val route = if (routeEnabled && !alertEnabled) {
+            RouteInputDto(
+                stops = stops.map { RouteStopDto.from(it) },
+                durationDays = durationDaysText.toIntOrNull(),
+                lengthNm = lengthNmText.toDoubleOrNull(),
+            )
+        } else {
+            null
+        }
+        val category = alertCategory
+        val alert = if (alertEnabled && !routeEnabled && category != null) {
+            AlertInputDto(category = category, severity = alertSeverity)
+        } else {
+            null
+        }
+        return PostContentInputDto(text = text.trim(), route = route, alert = alert)
+    }
+
+    private fun buildLocation(): PostLocationInputDto? {
+        val name = locationName
+        val point = coordinates
+        if (name == null && point == null) return null
+        return PostLocationInputDto(
+            name = name,
+            point = point?.let { CoordinatesDto.from(it) },
+            area = null,
+        )
+    }
+
     internal fun buildRequest(): CreatePostRequest? {
-        val type = selectedType ?: return null
+        if (routeEnabled && alertEnabled) return null
         return CreatePostRequest(
-            type = type.wireValue,
-            regionCode = regionCode,
-            description = description.trim().takeIf { it.isNotEmpty() },
-            locationName = locationName,
-            coordinates = coordinates?.let { CoordinatesDto.from(it) },
+            content = buildContent(),
+            location = buildLocation(),
             mediaIds = uploadedMediaIds.takeIf { it.isNotEmpty() },
             taggedUserIds = taggedUserIds.takeIf { it.isNotEmpty() },
-            stops = if (type.requiresStops) stops.map { RouteStopDto.from(it) } else null,
-            durationDays = if (type.requiresStops) durationDaysText.toIntOrNull() else null,
-            lengthNm = if (type.requiresStops) lengthNmText.toDoubleOrNull() else null,
         )
     }
 
     internal fun buildUpdateRequest(): UpdatePostRequest? {
-        val type = selectedType ?: return null
+        if (routeEnabled && alertEnabled) return null
         return UpdatePostRequest(
-            regionCode = regionCode,
-            description = description.trim().takeIf { it.isNotEmpty() },
-            locationName = locationName,
-            coordinates = coordinates?.let { CoordinatesDto.from(it) },
+            content = buildContent(),
+            location = buildLocation(),
             mediaIds = uploadedMediaIds.takeIf { it.isNotEmpty() },
             taggedUserIds = taggedUserIds.takeIf { it.isNotEmpty() },
-            stops = if (type.requiresStops) stops.map { RouteStopDto.from(it) } else null,
-            durationDays = if (type.requiresStops) durationDaysText.toIntOrNull() else null,
-            lengthNm = if (type.requiresStops) lengthNmText.toDoubleOrNull() else null,
         )
     }
 
     fun publish() {
         if (isPublishing) return
-        val allErrors = steps.flatMap { errorsFor(it) }.toSet()
-        if (allErrors.isNotEmpty()) {
-            visibleErrors = allErrors
+        val errors = validate()
+        if (errors.isNotEmpty()) {
+            visibleErrors = errors
             return
         }
+        visibleErrors = emptySet()
         val editId = editingPostId
         if (editId != null) {
             val updateRequest = buildUpdateRequest() ?: return

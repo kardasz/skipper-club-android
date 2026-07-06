@@ -45,18 +45,21 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.skipperclub.R
 import app.skipperclub.data.AlertCategory
+import app.skipperclub.data.AlertSeverity
 import app.skipperclub.ui.theme.SkipperClubTheme
 
 /**
  * Full-screen alert form, rendered as an opaque overlay (matching the project's
  * full-screen wizard pattern rather than an Android [android.app.Dialog]). The
- * location is already fixed (the coordinates live in [state]); here the user only
- * picks a category and writes a description.
+ * location is already fixed (the coordinates live in [state]); here the user picks
+ * a category and a severity and writes a description. On save the caller turns this
+ * into a `POST /v1/posts` with `content.alert`.
  */
 @Composable
 fun AlertFormDialog(
     state: AlertUiState.Form,
     onCategorySelected: (AlertCategory) -> Unit,
+    onSeveritySelected: (AlertSeverity) -> Unit,
     onContentChange: (String) -> Unit,
     onSave: () -> Unit,
     onDismiss: () -> Unit,
@@ -64,10 +67,12 @@ fun AlertFormDialog(
     BackHandler(enabled = !state.isSubmitting) { onDismiss() }
     AlertFormContent(
         category = state.category,
+        severity = state.severity,
         content = state.content,
         contentError = state.contentError,
         isSubmitting = state.isSubmitting,
         onCategorySelected = onCategorySelected,
+        onSeveritySelected = onSeveritySelected,
         onContentChange = onContentChange,
         onSave = onSave,
         onDismiss = onDismiss,
@@ -77,10 +82,12 @@ fun AlertFormDialog(
 @Composable
 private fun AlertFormContent(
     category: AlertCategory,
+    severity: AlertSeverity,
     content: String,
     contentError: AlertContentError?,
     isSubmitting: Boolean,
     onCategorySelected: (AlertCategory) -> Unit,
+    onSeveritySelected: (AlertSeverity) -> Unit,
     onContentChange: (String) -> Unit,
     onSave: () -> Unit,
     onDismiss: () -> Unit,
@@ -129,6 +136,14 @@ private fun AlertFormContent(
                 selected = category,
                 enabled = !isSubmitting,
                 onSelected = onCategorySelected,
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            AlertSeverityField(
+                selected = severity,
+                enabled = !isSubmitting,
+                onSelected = onSeveritySelected,
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -223,16 +238,60 @@ private fun AlertCategoryField(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AlertSeverityField(
+    selected: AlertSeverity,
+    enabled: Boolean,
+    onSelected: (AlertSeverity) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val options = remember { AlertSeverity.entries }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { if (enabled) expanded = it },
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        OutlinedTextField(
+            value = stringResource(selected.labelRes()),
+            onValueChange = {},
+            readOnly = true,
+            enabled = enabled,
+            label = { Text(stringResource(R.string.alert_form_severity_label)) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth()
+                .testTag("alert_form_severity"),
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(option.labelRes())) },
+                    onClick = {
+                        onSelected(option)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
 @Preview(showBackground = true, widthDp = 360, heightDp = 740, locale = "en")
 @Composable
 private fun AlertFormPreviewEn() {
     SkipperClubTheme {
         AlertFormContent(
             category = AlertCategory.Weather,
+            severity = AlertSeverity.Warning,
             content = "Strong bora expected near the Velebit channel.",
             contentError = null,
             isSubmitting = false,
             onCategorySelected = {},
+            onSeveritySelected = {},
             onContentChange = {},
             onSave = {},
             onDismiss = {},
@@ -246,10 +305,12 @@ private fun AlertFormPreviewPl() {
     SkipperClubTheme {
         AlertFormContent(
             category = AlertCategory.Obstruction,
+            severity = AlertSeverity.Critical,
             content = "",
             contentError = AlertContentError.Required,
             isSubmitting = false,
             onCategorySelected = {},
+            onSeveritySelected = {},
             onContentChange = {},
             onSave = {},
             onDismiss = {},
@@ -268,10 +329,12 @@ private fun AlertFormPreviewDark() {
     SkipperClubTheme {
         AlertFormContent(
             category = AlertCategory.MilitaryExercise,
+            severity = AlertSeverity.Info,
             content = "Live firing exercise in progress.",
             contentError = null,
             isSubmitting = true,
             onCategorySelected = {},
+            onSeveritySelected = {},
             onContentChange = {},
             onSave = {},
             onDismiss = {},

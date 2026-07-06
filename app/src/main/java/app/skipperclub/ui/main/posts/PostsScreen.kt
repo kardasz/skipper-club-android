@@ -50,7 +50,6 @@ import androidx.compose.ui.window.DialogProperties
 import app.skipperclub.R
 import app.skipperclub.data.Post
 import app.skipperclub.data.PostsError
-import app.skipperclub.data.Region
 import app.skipperclub.data.SessionStore
 import app.skipperclub.ui.main.posts.wizard.PostWizard
 import app.skipperclub.ui.main.posts.wizard.PostWizardEvent
@@ -137,19 +136,6 @@ fun PostsScreen(modifier: Modifier = Modifier) {
     var showBookmarks by remember { mutableStateOf(false) }
     var showWizard by rememberSaveable { mutableStateOf(false) }
 
-    var regions by remember { mutableStateOf<List<Region>>(emptyList()) }
-    var regionsLoadFailed by remember { mutableStateOf(false) }
-    LaunchedEffect(showFilters) {
-        if (showFilters && regions.isEmpty()) {
-            try {
-                regions = RealPostsGateway.listRegions()
-                regionsLoadFailed = false
-            } catch (_: Exception) {
-                regionsLoadFailed = true
-            }
-        }
-    }
-
     val cardActions = remember(controller, overlay) { postCardActions(controller, overlay) }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -195,8 +181,6 @@ fun PostsScreen(modifier: Modifier = Modifier) {
     if (showFilters) {
         PostFilterSheet(
             filters = state.filters,
-            regions = regions,
-            regionsLoadFailed = regionsLoadFailed,
             currentUserId = currentUserId,
             onSearchLocations = { query ->
                 val token = SessionStore.validSession()?.accessToken

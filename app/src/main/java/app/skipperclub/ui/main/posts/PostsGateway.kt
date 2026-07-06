@@ -18,8 +18,6 @@ import app.skipperclub.data.PostsApi
 import app.skipperclub.data.PostsPage
 import app.skipperclub.data.ReactionSummary
 import app.skipperclub.data.ReactionType
-import app.skipperclub.data.Region
-import app.skipperclub.data.RegionsApi
 import app.skipperclub.data.ReportReason
 import app.skipperclub.data.UpdatePostRequest
 import app.skipperclub.data.UploadedMedia
@@ -48,7 +46,6 @@ interface PostsGateway {
     suspend fun addBookmark(accessToken: String, postId: String)
     suspend fun removeBookmark(accessToken: String, postId: String)
     suspend fun castValidityVote(accessToken: String, postId: String, vote: ValidityVoteType): ValidityVoteResult
-    suspend fun listRegions(): List<Region>
     suspend fun searchLocations(accessToken: String, query: String): List<GeocodedLocation>
     suspend fun searchFriends(accessToken: String, query: String): List<FriendUser>
     suspend fun uploadMedia(
@@ -118,8 +115,6 @@ object RealPostsGateway : PostsGateway {
         postId: String,
         vote: ValidityVoteType,
     ): ValidityVoteResult = PostsApi.castValidityVote(accessToken, postId, vote)
-
-    override suspend fun listRegions(): List<Region> = RegionsApi.list()
 
     override suspend fun searchLocations(accessToken: String, query: String): List<GeocodedLocation> =
         GeocoderApi.search(accessToken, query)
