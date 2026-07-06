@@ -26,7 +26,7 @@ Start integrating with the API quickly.
 Machine-readable API contracts for automated tooling.
 
 - [OpenAPI Specification](./openapi.yaml) — REST API contract (OpenAPI 3.1)
-- [AsyncAPI Specification](./asyncapi.yaml) — WebSocket events contract (AsyncAPI 2.6)
+- [AsyncAPI Specification](./asyncapi.yaml) — WebSocket events contract (AsyncAPI 3.0)
 
 ### Feature Modules
 
@@ -43,15 +43,15 @@ Detailed documentation for each API module.
 - [Notifications](./notifications/index.md) — Notification center
 - [Notification Settings](./notifications/notification-settings.md) — User-level notification channel preferences
 - [Push Notifications](./notifications/push-notifications.md) — APNs/FCM setup and mobile push flow
-- [Regions](./regions/index.md) — Sailing regions
-- [Sailing Brief](./sailing-brief/index.md) — AI-generated regional sailing briefings
+- [Regions](./regions/index.md) — Removed legacy region picker surface
+- [Sailing Brief](./sailing-brief/index.md) — AI-generated coordinate-based sailing briefings
 - [Media](./media/index.md) — File uploads and media processing
 - [Audio](./audio/index.md) — Audio transcription
 - [Geocoder](./geocoder/index.md) — Location search and reverse geocoding
 - [Check-ins](./check-ins/index.md) — Latest user location presence and nearby discovery
 - [Spots](./spots/index.md) — Community-driven spots directory with admin approval workflow
-- [Map](./map/index.md) — Unified map view across posts, spots, check-ins, and alerts
-- [Alerts](./alerts/index.md) — User-submitted navigation alerts (weather, obstructions, regattas, …)
+- [Map](./map/index.md) — Unified map view across posts, spots, check-ins, and alert posts
+- [Alerts](./alerts/index.md) — Ingestion-backed alerts exposed publicly as posts
 - [Email](./email/index.md) — Queue-based email delivery system
 
 ### Reference
@@ -70,6 +70,7 @@ Setup and deployment information.
 - [Tech Stack](./technical/tech-stack.md) — Technologies and frameworks
 - [Docker Setup](./technical/docker.md) — Container deployment
 - [Development](./technical/development.md) — Local development setup
+- [Testing Strategy](./technical/testing-strategy.md) — Unit vs integration vs E2E, what belongs where
 - [Deployment](./technical/deployment.md) — CI/CD pipelines and production deployment
 
 ## Base URL

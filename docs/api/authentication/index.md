@@ -260,16 +260,17 @@ Responses:
 
 Each login or registration creates a new session. Users can have multiple active sessions across devices.
 
-**Session Properties:**
+**Session Properties (as stored in the `sessions` table):**
 
-| Property      | Description                        |
-| ------------- | ---------------------------------- |
-| Session ID    | Unique identifier for the session  |
-| User ID       | Owner of the session               |
-| Access Token  | Current valid access token         |
-| Refresh Token | Current valid refresh token        |
-| Expires At    | Refresh token expiration timestamp |
-| Created At    | Session creation timestamp         |
+| Property           | Description                                             |
+| ------------------ | ------------------------------------------------------- |
+| Session ID         | Unique identifier for the session                       |
+| User ID            | Owner of the session                                    |
+| Refresh Token Hash | SHA-256 hash of the current refresh token (never plain) |
+| Expires At         | Refresh token expiration timestamp                      |
+| Created At         | Session creation timestamp                              |
+
+> **Token storage:** the access token is **not** stored at rest (it is short-lived and unnecessary to persist). Only the **SHA-256 hash** of the current refresh token is stored in `sessions.refresh_token_hash`; the raw token is returned to the client once and never persisted. On refresh, the presented token is hashed and compared (constant-time) against the stored hash. A database backup or read-replica leak therefore exposes no usable token.
 
 ### Session Lifecycle
 
@@ -302,7 +303,7 @@ When refreshing tokens:
 
 1. Both access and refresh tokens are regenerated
 2. Previous tokens are invalidated
-3. Session record is updated with new tokens
+3. The session record is updated with the **hash** of the new refresh token (no raw token is stored)
 
 This prevents token reuse and limits exposure from stolen tokens.
 
@@ -409,6 +410,7 @@ The following endpoints require CAPTCHA verification when enabled:
 - `POST /auth/otp` - Request OTP code
 - `POST /auth/otp/verify` - Verify OTP code
 - `POST /auth/login` - Email and password login
+- `POST /auth/password-reset-request` - Request a password reset (see [Password Reset](#password-reset))
 
 ### How It Works
 

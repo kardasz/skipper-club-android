@@ -222,7 +222,8 @@ Content-Type: application/json
 
 - Codes expire after 15 minutes
 - Rate limiting: 3 requests per minute per IP
-- Account lockout after 10 failed attempts (15-minute lockout)
+- Lockout after 10 failed attempts from the same IP+email pair (15-minute lockout)
+- Additional global lockout after 20 failed attempts for the same email across all IPs (60-minute lockout)
 - Codes are single-use and invalidated after verification
 
 ## Using Access Tokens

@@ -32,7 +32,7 @@ flowchart TD
         B --> C[Save Cruise to DB]:::state
         C --> D[Publish CruiseCreatedEvent]:::notify
         D --> E[CruiseChatEventsHandler]:::state
-        E --> F["Create CRUISE_GROUP Chat in MongoDB"]:::success
+        E --> F["Create CRUISE_GROUP Chat in PostgreSQL"]:::success
         F --> G[Organizer added as participant]:::success
     end
 
@@ -78,39 +78,38 @@ sequenceDiagram
     participant EB as EventBus
     participant CEH as CruiseChatEventsHandler
     participant PG as PostgreSQL
-    participant MG as MongoDB
 
-    Note over Org,MG: Cruise Creation & Chat Initialization
+    Note over Org,PG: Cruise Creation & Chat Initialization
     Org->>API: POST /cruises
     API->>CH: CreateCruiseCommand
     CH->>PG: Save cruise
     PG-->>CH: Cruise saved
     CH->>EB: Publish CruiseCreatedEvent
     EB->>CEH: Handle CruiseCreatedEvent
-    CEH->>MG: Create CRUISE_GROUP chat
-    MG-->>CEH: Chat created
+    CEH->>PG: Create CRUISE_GROUP chat
+    PG-->>CEH: Chat created
     CH-->>API: CruiseResponseDto
     API-->>Org: 201 Created
 
-    Note over Org,MG: Participant Joins
+    Note over Org,PG: Participant Joins
     participant User as Participant
     User->>API: POST /cruises/:id/participants
     API->>PG: Create participant (PENDING)
     Org->>API: PATCH /cruises/:id/participants/:pid (ACCEPTED)
     API->>EB: Publish CruiseParticipantJoinedEvent
     EB->>CEH: Handle CruiseParticipantJoinedEvent
-    CEH->>MG: Add user to chat.participants
-    MG-->>CEH: Updated
+    CEH->>PG: Add user to chat_participants
+    PG-->>CEH: Updated
     API-->>Org: 200 OK
 
-    Note over Org,MG: Send Message
+    Note over Org,PG: Send Message
     User->>API: POST /cruises/:id/group-chat/messages
-    API->>MG: Find chat
-    MG-->>API: Chat found
+    API->>PG: Find chat
+    PG-->>API: Chat found
     API->>PG: Verify authorization
     PG-->>API: Authorized
-    API->>MG: Create message
-    API->>MG: Update chat.lastMessage
+    API->>PG: Create message
+    API->>PG: Update chat.lastMessage
     API-->>User: 201 MessageResponseDto
 ```
 
@@ -158,30 +157,29 @@ sequenceDiagram
     participant API as API
     participant Handler as Handler
     participant PG as PostgreSQL
-    participant MG as MongoDB
 
-    Note over User,MG: User sends first message - creates chat
+    Note over User,PG: User sends first message - creates chat
     User->>API: POST /cruises/:cruiseId/qa-chat/messages
     API->>Handler: CreateCruiseQAChatMessageCommand
     Handler->>PG: Find cruise
     PG-->>Handler: Cruise found
-    Handler->>MG: Find chat
-    MG-->>Handler: Not found
-    Handler->>MG: Create new CRUISE_QNA chat
-    Note over MG: participants: user + organizer
-    MG-->>Handler: Chat created
-    Handler->>MG: Create message
-    Handler->>MG: Update chat.lastMessage
+    Handler->>PG: Find chat
+    PG-->>Handler: Not found
+    Handler->>PG: Create new CRUISE_QNA chat
+    Note over PG: participants: user + organizer
+    PG-->>Handler: Chat created
+    Handler->>PG: Create message
+    Handler->>PG: Update chat.lastMessage
     Handler-->>API: MessageResponseDto
     API-->>User: 201 Created
 
-    Note over User,MG: User gets Q&A chat - now exists
+    Note over User,PG: User gets Q&A chat - now exists
     User->>API: GET /cruises/:cruiseId/qa-chat
     API->>Handler: GetCruiseQAChatQuery
     Handler->>PG: Find cruise
     PG-->>Handler: Cruise found
-    Handler->>MG: Find chat
-    MG-->>Handler: Chat found
+    Handler->>PG: Find chat
+    PG-->>Handler: Chat found
     Handler-->>API: ChatResponseDto
     API-->>User: 200 OK
 ```

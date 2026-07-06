@@ -131,7 +131,7 @@ It includes content constraints, ownership and visibility rules, user-facing qua
 
 ### Attachment Limits
 
-- Post attachments: minimum 1 and maximum 10 media items when media is required by post type.
+- Post attachments: optional, maximum 10 media items per post.
 - Cruise attachments: maximum 10 media items.
 
 ### Publishing Readiness

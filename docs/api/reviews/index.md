@@ -172,15 +172,15 @@ When a review is submitted:
 
 ### Errors
 
-| Status | Type                             | Description                                                      |
-| ------ | -------------------------------- | ---------------------------------------------------------------- |
-| 403    | `/errors/not-cruise-participant` | Reviewer is not an accepted participant                          |
-| 404    | `/errors/cruise-not-found`       | Cruise doesn't exist                                             |
-| 404    | `/errors/user-not-found`         | Reviewed user doesn't exist                                      |
-| 422    | `/errors/cruise-not-completed`   | Cruise has not completed yet                                     |
-| 422    | `/errors/review-already-exists`  | Already reviewed this user for this cruise                       |
-| 422    | `/errors/cannot-review-self`     | Cannot submit self-review                                        |
-| 422    | `/errors/validation`             | Validation failed (ratings out of range, comment too short/long) |
+| Status | Type                             | Description                                                                                                                           |
+| ------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 403    | `/errors/not-cruise-participant` | Reviewer is not an accepted participant                                                                                               |
+| 404    | `/errors/cruise-not-found`       | Cruise doesn't exist                                                                                                                  |
+| 404    | `/errors/user-not-found`         | Reviewed user exists but was not an accepted participant/organizer on this cruise (also returned if the user genuinely doesn't exist) |
+| 422    | `/errors/cruise-not-completed`   | Cruise has not completed yet                                                                                                          |
+| 422    | `/errors/review-already-exists`  | Already reviewed this user for this cruise                                                                                            |
+| 422    | `/errors/cannot-review-self`     | Cannot submit self-review                                                                                                             |
+| 422    | `/errors/validation`             | Validation failed (ratings out of range, comment too short/long)                                                                      |
 
 ---
 
@@ -383,7 +383,7 @@ Host: api.skipperclub.app
 ### Understanding the Response
 
 - **`reviews`** — Individual published reviews where this user was reviewed
-- **`averageRatings`** — Aggregate averages across ALL published reviews for this user
+- **`averageRatings`** — Intended to aggregate across ALL published reviews for this user; **known bug** — `GetUserReviewsHandler` currently computes it only over the current page (after `skip`/`take`), so it's inaccurate for users with more than `limit` reviews once you're not on the first page
 - **`total`** — Total number of published reviews
 
 ### Errors

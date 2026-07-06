@@ -9,17 +9,17 @@ This document focuses on product behavior and business rules. It intentionally a
 ## Business Objectives
 
 - Help sailors share practical, regional knowledge and trip experiences.
-- Keep feed content relevant by separating evergreen and time-sensitive information.
+- Keep feed content relevant through location, content-key filtering, scheduling, expiration, and alert validity voting.
 - Strengthen trust through transparent post lifecycle, community validation, and reporting.
 - Support meaningful social engagement through comments, reactions, and bookmarking.
-- Improve discovery with region-aware and location-aware feed navigation.
+- Improve discovery with coordinate-aware feed and map navigation.
 
 ## Scope
 
 ### In Scope
 
-- Post creation across all supported post types.
-- Region and location context for posts.
+- One-flow post creation with structured content objects.
+- Location context for posts through optional representative points and areas.
 - Post lifecycle management (published, archived, expired, resolved, deleted).
 - Feed discovery and filtering by business-relevant dimensions.
 - Social interactions on posts (comments, reactions, bookmarks).
@@ -78,29 +78,35 @@ Core business capabilities:
 
 The post domain is designed to support both experience sharing and operational sailing information.
 
-### Post Type Groups
+### Content Classification
 
-- **Evergreen types**: `photo`, `place`, `food`, `marina`, `tips`, `route`  
-  Business intent: long-term discovery and inspiration.
-- **Time-sensitive types**: `berth`, `weather`, `navigation_warning`, `help`  
-  Business intent: short-lived operational information.
+There is no user-facing post type. What a post "is" follows from structured
+content and attachments:
+
+- `content.text` is required for every post.
+- `content.route` adds route context.
+- `content.alert` marks the post as an alert.
+- attached media adds media context.
+
+The product exposes derived `contentKeys` such as `alert`, `route`, and
+`media` for filtering and rendering.
 
 ### Post Content Components
 
 A post can include:
 
-- Core classification: post type and associated region.
-- Narrative context: description and extracted hashtags.
+- Narrative context: `content.text` and extracted hashtags.
 - Social context: tagged users.
-- Place context: location name and coordinates (required for location-driven post types).
-- Media context: photo/video assets (required for photo posts).
-- Route context: route stops and optional route summary details (for route posts).
+- Place context: optional location name and representative coordinates.
+- Affected-area context for alert posts.
+- Media context: optional photo/video assets.
+- Route context: route stops and optional route summary details.
 
 ### Time Relevance
 
-- Evergreen posts remain relevant without automatic expiration.
-- Time-sensitive posts have built-in validity windows and can become outdated quickly.
-- Community mechanisms can resolve time-sensitive information early when it is no longer valid.
+- Regular posts remain relevant without automatic expiration unless the author sets an expiration.
+- Imported alert posts receive source-driven validity windows and can become outdated quickly.
+- Community mechanisms can resolve alert information early when it is no longer valid.
 
 ## Post Lifecycle and Visibility Rules
 
@@ -142,24 +148,17 @@ Business implications:
 - Authors can still view their content history.
 - Social and trust interactions are blocked once effective expiration is reached.
 
-## Regional Relevance and Location Discovery
+## Location Discovery
 
-### Region Association
-
-- Every post must be linked to a sailing region.
-- Region-based discovery follows region hierarchy, so selecting a broader region includes its sub-regions.
-
-### Cross-Region Discovery
-
-- Evergreen post types can be surfaced across regions to support broad inspiration and discovery.
-- Time-sensitive post types remain region-scoped to preserve local relevance and safety.
+Posts are not assigned to product regions. Feed and map relevance are driven by
+coordinates, distance, viewport bounds, and optional affected-area geometry.
 
 ### Location Context and Geocoder-Assisted Input
 
 Location input supports practical post creation and discovery:
 
-- Location-based post types require location name and coordinates.
-- `photo` and `tips` may include location context but do not require it.
+- Location is optional for regular posts.
+- Alert posts require a representative point.
 - Users can provide location through assisted search flows (autocomplete, search, reverse lookup) to improve accuracy.
 
 Business value:
@@ -194,9 +193,9 @@ Comments, reactions, bookmarks, reports, and validity voting are only available 
 
 ### Validity Voting
 
-Validity voting keeps time-sensitive information trustworthy.
+Validity voting keeps alert information trustworthy.
 
-- Applicable only to `berth`, `weather`, and `navigation_warning`.
+- Applicable only to posts whose `content.alert` object is present.
 - Vote options communicate whether information remains valid or has become invalid.
 - One user can submit one immutable vote per post.
 - Repeated identical input is treated as no additional change.
@@ -219,18 +218,14 @@ Reporting enables community-led safety enforcement.
 
 ## Business Rules and Constraints
 
-- Post type is fixed after creation.
-- Description supports concise-to-detailed narrative text (business range: 1-2200 characters where required).
+- There is no post type field.
+- `content.text` supports concise-to-detailed narrative text (business range: 1-2200 characters).
 - Comment length supports short discussion format (business range: 1-500 characters).
 - Report details support concise context (business maximum: 500 characters).
 - A post can tag up to 20 users.
-- Photo posts require media; non-photo post types rely on structured textual/location context.
-- Route posts require at least one stop and support route metadata (duration and length).
-- Time-sensitive expiration windows:
-  - `berth`: 6 hours
-  - `weather`: 7 days
-  - `navigation_warning`: 7 days
-  - `help`: 72 hours
+- Media is allowed on every post and required on none; maximum 10 attachments.
+- Route content requires at least one stop and supports route metadata (duration and length).
+- Author-set expiration is optional for regular posts; imported alert expiration follows source validity metadata.
 
 ## User Stories
 
@@ -240,12 +235,12 @@ As a user I want to share sailing-related content to contribute to the community
 
 Acceptance criteria:
 
-1. I can choose from 10 post types based on content purpose: photo, place, food, marina, tips, route, berth, weather, navigation warning, or help request.
-2. I can add relevant post content depending on post type (media, description, and location context).
+1. I can create a post through one simple flow without choosing a post type.
+2. I can add text, optional route content, optional alert content, optional media, and optional location context.
 3. I can tag up to 20 other users in my post.
-4. I must associate my post with a sailing region.
-5. Time-sensitive posts automatically receive a finite validity window.
-6. Route posts support route-specific planning context through stops and optional trip metadata.
+4. Alert posts require representative coordinates and can include an affected area.
+5. I can optionally schedule publication and set expiration.
+6. Route content supports route-specific planning context through stops and optional trip metadata.
 
 ### US-020: Browsing the Post Feed
 
@@ -254,10 +249,10 @@ As a user I want to browse posts to discover content relevant to my sailing inte
 Acceptance criteria:
 
 1. I can view a feed of posts with pagination.
-2. I can filter by post type, region, status, author, location name, hashtags, and date range.
+2. I can filter by contained content (`alert`, `media`, `route`, `note`), status, author, location name, hashtags, and date range.
 3. I can discover posts near a selected location using proximity context.
-4. Evergreen posts can be discovered across broader regions.
-5. Time-sensitive posts remain region-specific.
+4. I can discover alerts and other posts without switching to a separate public alerts surface.
+5. Map and feed use the same public post source.
 6. I can sort feed results by recency and relevance context.
 7. Hashtag filtering is case-insensitive.
 
@@ -338,20 +333,14 @@ Acceptance criteria:
 
 The following areas require explicit product decisions to keep business documentation fully consistent:
 
-1. **Region code canonical policy**  
-   Confirm one canonical region code convention for all product documents (sea-level, country-level, and sub-region notation).
+1. **Geocoder dependency fallback**  
+   Define expected user experience when location assistance is temporarily unavailable, especially for alert posts that require representative coordinates.
 
-2. **Geocoder dependency fallback**  
-   Define expected user experience when location assistance is temporarily unavailable for post types that require location.
-
-3. **Region-location consistency policy**  
-   Define whether selected location must always be geographically consistent with the selected region, and how mismatches are handled.
-
-4. **Location localization persistence**  
+2. **Location localization persistence**  
    Confirm how localized place names should be persisted when users create posts in different languages.
 
-5. **Moderation SLA and escalation**  
+3. **Moderation SLA and escalation**  
    Define expected review timelines and escalation rules for high-risk reports.
 
-6. **Moderator vs administrator boundaries**  
+4. **Moderator vs administrator boundaries**  
    Confirm where moderation responsibility ends and administrator intervention begins.

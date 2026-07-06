@@ -73,7 +73,7 @@ Users can only perform certain status transitions:
 
 ### User-Initiated Transitions
 
-- `published` → `archived`: Any post type (via PATCH)
+- `published` → `archived`: Any author-managed post (via PATCH)
 - `published` → `resolved`: Time-sensitive types only (via PATCH)
 
 ## Usage

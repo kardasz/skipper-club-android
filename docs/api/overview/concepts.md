@@ -309,54 +309,31 @@ Once connected as friends:
 
 ## Navigation Alerts
 
-Alerts let any authenticated user share navigation-relevant information
-with the rest of the community — weather warnings, obstructions, regattas,
-diving zones, military exercises, NAVTEX-style and Notice-to-Mariners-style
-messages, and a generic "other" category. They are the first object type
-that supports area-based geometry (polygons and multipolygons) in addition
-to points.
+Alerts are no longer a standalone product surface with their own public CRUD.
+`GET/POST/PUT/DELETE /v1/alerts` are removed (404). Two related but distinct
+things share the "alert" name:
 
-### Authorship and Ownership
+- **Ingested source alerts** (`alerts` table) — official navigation warnings,
+  NAVTEX/Notice-to-Mariners feeds, etc., imported by the HHI RNW pipeline.
+  Each import is synced into a system-authored post
+  (`posts.source_type = 'alert'`, `posts.user_id` = the seeded system user
+  "SkipperClub Alerts"). Nobody, including admins, can edit or delete these
+  posts through the regular endpoints.
+- **User-created alert posts** — any signed-in user creates one via
+  `POST /v1/posts` with `content.alert` (`category` and optional
+  `severity`), the same way as any other post. There is no separate alert
+  ownership model: standard post permission rules (author-only edit/delete)
+  apply.
 
-- Any signed-in user can create an alert. The server stamps
-  `source = 'user'` and `sourceId = <authenticated user id>`.
-- Admins can update or delete any alert through the standard endpoints.
-  Non-admins can only update or delete alerts they created. There is no
-  separate admin-only endpoint tree — the role check is inline. See
-  [Alert Ownership Flow](../reference/flows/alert-ownership-flow.md).
-- Deletes are soft (`deleted_at` timestamp). Soft-deleted alerts disappear
-  from every read endpoint, including the unified map.
+Both kinds render identically everywhere alerts are visible — feed,
+`GET /v1/posts/{id}`, and `/v1/map/items` (as post items with
+`contentKeys` containing `alert`) — since they are the same underlying
+object (a post), not two parallel resources.
 
-### Geometry and Anchor
-
-- Alerts may carry an optional GeoJSON `Point`, `Polygon`, or
-  `MultiPolygon`. Every other geometry type is rejected with
-  `422 /errors/invalid-alert-geometry`.
-- Whenever geometry is set, the server also computes an `anchor` Point:
-  the geometry itself for `Point`, and `ST_PointOnSurface(geometry)` for
-  polygons. The anchor backs marker placement, radius filtering, and
-  clustering — so every alert behaves the same on the map regardless of
-  whether it is a single point or an area.
-- Alerts without geometry are stored and returned by `GET /v1/alerts` (when
-  no viewport filter is requested) but never appear on `/v1/map/items`.
-
-### Categories
-
-Alerts are tagged with one of ten categories — see
-[Alert Categories](../reference/enums/alert-categories.md) for the full
-enum. Severity is intentionally not modelled; the category alone drives
-client presentation and any official-source attribution is exposed via
-`sourceAttributes` instead.
-
-### Localization
-
-- `Content-Language` controls what gets stored in `alerts.language` at
-  write time. Missing header defaults to `en` on both `POST` and `PUT`
-  (no inheritance).
-- `GET` endpoints return `content` and `language` as-is.
-- On `/v1/map/items`, the alert item `name` field is a short
-  category-derived label localized via `Accept-Language`. The full alert
-  body stays on `attributes.content`.
+See [Alerts](../alerts/index.md) for the full ingestion model, geometry
+handling (`location.point`/`location.area`), and sync lifecycle, and
+[Regions (removed)](../regions/index.md) for why region-based resolution no
+longer applies to alerts, cruises, or the map.
 
 ## Notifications
 

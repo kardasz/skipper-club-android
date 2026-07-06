@@ -120,7 +120,7 @@ Cruise type and vessel type taxonomy provide consistency across publishing and d
 Users can discover cruises using criteria such as:
 
 - Date window.
-- Region and location context.
+- Location context (coordinates + distance, not a region picker — see [PRD-009: Location & Areas](./PRD-009-location.md)).
 - Vessel type.
 - Cruise type.
 - Participation preferences.
@@ -167,15 +167,18 @@ Business expectations:
 
 Voice-assisted drafting is treated as an input channel to the same drafting outcome.
 
-## 10. Location and Region Context
+## 10. Location Context
 
-Location context improves relevance of cruise discovery and planning.
+Location context improves relevance of cruise discovery and planning. There
+is no region picker or region taxonomy — see
+[PRD-009: Location & Areas](./PRD-009-location.md) for the replacement model
+(coordinates, radius, and technical area polygons).
 
 Business requirements:
 
-- Region-based classification should be consistent across listing and filtering.
+- Distance-based filtering should be consistent across listing and filtering.
 - Localized naming must support English and Polish user experiences.
-- GPS-aware experiences may prefill region context, especially on mobile.
+- GPS-aware experiences may prefill departure/arrival coordinates, especially on mobile.
 - Location suggestions should reduce user input effort while preserving organizer control.
 
 ## 11. End-to-End User Journeys
@@ -256,7 +259,7 @@ As a user, I want to filter cruises by relevant criteria so I can quickly find a
 
 Acceptance criteria:
 
-1. I can filter by date, region, cruise type, and vessel type.
+1. I can filter by date, location (coordinates + distance), cruise type, and vessel type.
 2. I can apply additional preference-based filters.
 3. I can use keywords and hashtags to narrow results.
 4. I can combine filters for precise matching.
@@ -365,5 +368,5 @@ Acceptance criteria:
 
 - Should waitlist be introduced as a future business capability?
 - Should private cruises support shareable access links for controlled discovery?
-- Should region-location consistency be mandatory for departure and arrival context?
+- Should coordinate consistency be mandatory between departure and arrival context?
 - What is the policy for communication retention after long-term account deletion?

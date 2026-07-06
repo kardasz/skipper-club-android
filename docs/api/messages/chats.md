@@ -384,9 +384,10 @@ This allows users to "clean up" their chat list without affecting other particip
 
 ### Errors
 
-| Status | Type                     | Description                                     |
-| ------ | ------------------------ | ----------------------------------------------- |
-| 404    | `/errors/chat-not-found` | Chat doesn't exist or user is not a participant |
+| Status | Type                            | Description                              |
+| ------ | ------------------------------- | ---------------------------------------- |
+| 404    | `/errors/chat-not-found`        | Chat doesn't exist                       |
+| 403    | `/errors/chat-access-forbidden` | Chat exists but user isn't a participant |
 
 ---
 
@@ -488,9 +489,10 @@ If the user previously hid the chat (via `DELETE /chats/{chatId}`), only message
 
 ### Errors
 
-| Status | Type                     | Description                                     |
-| ------ | ------------------------ | ----------------------------------------------- |
-| 404    | `/errors/chat-not-found` | Chat doesn't exist or user is not a participant |
+| Status | Type                            | Description                              |
+| ------ | ------------------------------- | ---------------------------------------- |
+| 404    | `/errors/chat-not-found`        | Chat doesn't exist                       |
+| 403    | `/errors/chat-access-forbidden` | Chat exists but user isn't a participant |
 
 ---
 
@@ -562,10 +564,11 @@ When a message is sent:
 
 ### Errors
 
-| Status | Type                     | Description                                     |
-| ------ | ------------------------ | ----------------------------------------------- |
-| 404    | `/errors/chat-not-found` | Chat doesn't exist or user is not a participant |
-| 422    | `/errors/validation`     | Invalid message (empty or too long)             |
+| Status | Type                            | Description                              |
+| ------ | ------------------------------- | ---------------------------------------- |
+| 404    | `/errors/chat-not-found`        | Chat doesn't exist                       |
+| 403    | `/errors/chat-access-forbidden` | Chat exists but user isn't a participant |
+| 422    | `/errors/validation`            | Invalid message (empty or too long)      |
 
 ---
 
@@ -622,10 +625,11 @@ Content-Type: application/json
 
 ### Errors
 
-| Status | Type                        | Description                                     |
-| ------ | --------------------------- | ----------------------------------------------- |
-| 404    | `/errors/chat-not-found`    | Chat doesn't exist or user is not a participant |
-| 404    | `/errors/message-not-found` | Message doesn't exist in this chat              |
+| Status | Type                            | Description                              |
+| ------ | ------------------------------- | ---------------------------------------- |
+| 404    | `/errors/chat-not-found`        | Chat doesn't exist                       |
+| 403    | `/errors/chat-access-forbidden` | Chat exists but user isn't a participant |
+| 404    | `/errors/message-not-found`     | Message doesn't exist in this chat       |
 
 ---
 
@@ -639,10 +643,10 @@ Perform bulk operations on multiple chats.
 
 ### Request Body
 
-| Field     | Type   | Required | Description                                        |
-| --------- | ------ | -------- | -------------------------------------------------- |
-| `action`  | enum   | Yes      | Action to perform: `mark-read` or `delete`         |
-| `chatIds` | uuid[] | Yes      | Array of chat IDs to perform action on (1-100 IDs) |
+| Field     | Type   | Required | Description                                                                |
+| --------- | ------ | -------- | -------------------------------------------------------------------------- |
+| `action`  | enum   | Yes      | Action to perform: `mark-read` or `delete`                                 |
+| `chatIds` | uuid[] | Yes      | Non-empty array of chat IDs to perform action on (no upper bound enforced) |
 
 ### Actions
 
@@ -712,7 +716,8 @@ See [Chat Hiding Behavior](#chat-hiding-behavior) for details.
 | Status | Type                               | Description                                                    |
 | ------ | ---------------------------------- | -------------------------------------------------------------- |
 | 400    | `/errors/invalid-chat-bulk-action` | Invalid action or empty chatIds array                          |
-| 404    | `/errors/chat-not-found`           | One or more chats don't exist or user is not a participant     |
+| 404    | `/errors/chat-not-found`           | One or more chats don't exist                                  |
+| 403    | `/errors/chat-access-forbidden`    | One or more chats exist but user isn't a participant           |
 | 422    | `/errors/validation`               | Request contains validation errors (e.g., invalid UUID format) |
 
 ---
@@ -762,14 +767,16 @@ All errors follow RFC 7807 Problem Details format:
 
 ### Error Types
 
-| Type                               | Status | Description                             |
-| ---------------------------------- | ------ | --------------------------------------- |
-| `/errors/chat-not-found`           | 404    | Chat doesn't exist or user lacks access |
-| `/errors/message-not-found`        | 404    | Message doesn't exist in this chat      |
-| `/errors/validation`               | 422    | Request validation failed               |
-| `/errors/group-chat-name-required` | 422    | Group chats must have a name            |
-| `/errors/invalid-participants`     | 422    | One or more participant IDs are invalid |
-| `/errors/authentication-required`  | 401    | Missing or invalid authentication       |
+| Type                               | Status | Description                                |
+| ---------------------------------- | ------ | ------------------------------------------ |
+| `/errors/chat-not-found`           | 404    | Chat doesn't exist                         |
+| `/errors/chat-access-forbidden`    | 403    | Chat exists but user isn't a participant   |
+| `/errors/message-not-found`        | 404    | Message doesn't exist in this chat         |
+| `/errors/invalid-chat-bulk-action` | 400    | Invalid bulk action or empty chatIds array |
+| `/errors/validation`               | 422    | Request validation failed                  |
+| `/errors/group-chat-name-required` | 422    | Group chats must have a name               |
+| `/errors/invalid-participants`     | 422    | One or more participant IDs are invalid    |
+| `/errors/authentication-required`  | 401    | Missing or invalid authentication          |
 
 ---
 

@@ -30,7 +30,7 @@ This results in long recruitment times, the risk of conflicts on the yacht, frag
 - Post-cruise blind review system
 - AI-assisted content creation (cruise drafts, voice transcription)
 - Community-driven content (posts, comments, reactions, validity voting)
-- Location services (regions, geocoding, place search)
+- Location services (coordinates, geocoding, place search, technical brief areas)
 - Media management (photos, videos with metadata)
 - Multi-language support (English, Polish)
 - Email notifications and delivery tracking
@@ -64,7 +64,7 @@ This results in long recruitment times, the risk of conflicts on the yacht, frag
 
 7. Less than 5% of posts are reported for violations.
 8. 80% of submitted reviews are published (both parties complete their reviews).
-9. The platform maintains an average of 100 new posts per week across all regions.
+9. The platform maintains an average of 100 new posts per week across active sailing areas.
 
 ## PRD Modules Index
 
@@ -76,8 +76,9 @@ This results in long recruitment times, the risk of conflicts on the yacht, frag
 - [PRD-006: Friends](./PRD-006-friends.md)
 - [PRD-007: Reviews](./PRD-007-reviews.md)
 - [PRD-008: Media](./PRD-008-media.md)
-- [PRD-009: Location & Regions](./PRD-009-location.md)
+- [PRD-009: Location & Areas](./PRD-009-location.md)
 - [PRD-010: AI & Voice](./PRD-010-ai.md)
 - [PRD-011: Sailing Brief](./PRD-011-sailing-brief.md)
 - [PRD-012: Check-Ins (Location Presence)](./PRD-012-check-ins.md)
 - [PRD-013: Spots Directory](./PRD-013-spots.md)
+- [PRD-014: Unified Map](./PRD-014-map.md)

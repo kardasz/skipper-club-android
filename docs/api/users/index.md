@@ -34,6 +34,7 @@ Key features include:
 | POST   | `/profile/avatar/{id}/confirm-upload` | Confirm avatar upload                 |
 | DELETE | `/profile`                            | Schedule profile deletion             |
 | POST   | `/profile/cancel-deletion`            | Cancel scheduled deletion             |
+| GET    | `/profile/bookmarks/posts`            | List current user's bookmarked posts  |
 
 ### User Discovery
 
@@ -188,6 +189,7 @@ Authorization: Bearer <token>
   "yearsOfExperience": 10,
   "languagesSpoken": ["pl", "en", "de"],
   "preferredVoyageStyles": ["racing", "coastal"],
+  "preferredLanguage": "pl",
   "cruisesCount": 15,
   "friendsCount": 42,
   "postsCount": 28,
@@ -296,6 +298,12 @@ PATCH /profile
 
 Partial update of profile. Only include fields you want to change.
 
+> **Known bug:** `PATCH` and `PUT` both use the same `UpdateProfileDto`,
+> where `name` is required (not `@IsOptional`). A PATCH request that omits
+> `name` — like the example below — currently fails validation. Treat `name`
+> as required on PATCH until this is fixed with a dedicated partial-update
+> DTO.
+
 ### Example Request
 
 ```http
@@ -305,6 +313,7 @@ Authorization: Bearer <token>
 Content-Type: application/json
 
 {
+  "name": "Jan Kowalski",
   "bio": "Updated bio text"
 }
 ```
@@ -531,7 +540,39 @@ Authorization: Bearer <token>
 - Scheduling deletion sends an account email notification
 - Logging in with password or OTP automatically cancels scheduled deletion and sends an account email notification
 - User can also cancel deletion manually before the scheduled date via `POST /profile/cancel-deletion` (also sends an account email notification)
-- After 30 days, a background cron finalizes deletion by deactivating login data and anonymizing account identifiers, then sends a final account email notification
+- After 30 days, a background cron finalizes deletion and sends a final account email notification
+
+#### What the cron finalization purges (GDPR)
+
+Finalization runs in a single transaction per user. It **invalidates all active
+sessions** (a deleted account can no longer be used), then hard-deletes the
+user's personal data and anonymizes the retained user row:
+
+- **Sessions** — deleted; any previously issued token is rejected immediately.
+- **Avatar & media** — DB rows removed inside the transaction; the underlying R2
+  objects are removed after commit (see the storage-failure note below).
+- **Posts, comments, reactions, chat messages** — hard-deleted (free-text PII).
+- **Cruise participations** — deleted. **Organized cruises** — deleted, cascading
+  their participants and media (a cruise cannot exist without an organizer).
+- **Friends & pending friend requests** — removed in both directions.
+- **Reviews** — reviews the user **authored** are deleted. Reviews **about** the
+  user (written by other members) keep their rating scores, but the free-text
+  comment is scrubbed to an empty string, since it may describe the erased user.
+- **Check-ins, push tokens, bookmarks, reports, validity votes, post tags,
+  notification settings** — deleted.
+- **User row** — retained for referential integrity but fully anonymized: email
+  and name are replaced, `passwordHash` is cleared, and every profile field (bio,
+  location, social handles, sailing details, avatar link) is nulled. `deletedAt`
+  is set.
+
+The DB work runs in one transaction: a failure rolls it back and the account is
+retried on the next run. R2 object deletion happens after that commit. If a
+storage object fails to delete, the flow does **not** report full success —
+instead it logs a structured `account_deletion_storage_cleanup_incomplete` error
+(captured by Sentry) listing the affected user and the leftover object keys, so
+the residual PII cleanup is monitored and can be actioned. The
+"Successfully deleted user profile" log line is emitted only when every step,
+including R2 removal, completed.
 
 ---
 

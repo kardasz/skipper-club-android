@@ -27,12 +27,26 @@ Spot
 
 ## Deduplication Rules
 
-| Constraint                         | Scope            | HTTP |
-| ---------------------------------- | ---------------- | ---- |
-| Same `nameNormalized` within 100 m | Active spots     | 409  |
-| Same `phoneIdentity`               | Per spot, active | 409  |
-| Same `channelNormalized`           | Per spot, active | 409  |
-| `isPrimary = true`                 | One per spot     | 409  |
+Creating or updating a spot's name/coordinates runs a three-level duplicate
+check (`SpotDeduplicationService`), each throwing `409` on the first match:
+
+1. **Exact name match** — same `nameNormalized` within 100 m of active spots.
+2. **Identical pin** — any active spot within 50 m, regardless of name.
+3. **Geocoder-enhanced** — if the geocoder is configured (`GOOGLE_MAPS_API_KEY`),
+   the canonical coordinates Google Maps returns for the entered name are
+   checked against active spots within 200 m (skipped if that canonical
+   result is more than 5 km from the entered pin). This check degrades
+   gracefully: it's skipped entirely if no API key is configured or the
+   geocoder call fails, so spot creation never hard-fails on that dependency.
+
+| Constraint                            | Scope            | HTTP |
+| ------------------------------------- | ---------------- | ---- |
+| Same `nameNormalized` within 100 m    | Active spots     | 409  |
+| Identical pin within 50 m             | Active spots     | 409  |
+| Geocoder-canonical match within 200 m | Active spots     | 409  |
+| Same `phoneIdentity`                  | Per spot, active | 409  |
+| Same `channelNormalized`              | Per spot, active | 409  |
+| `isPrimary = true`                    | One per spot     | 409  |
 
 ## Admin Workflows
 

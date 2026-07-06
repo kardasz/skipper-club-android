@@ -37,7 +37,7 @@ flowchart TD
         B --> C[Save Cruise to DB]:::state
         C --> D[Publish CruiseCreatedEvent]:::notify
         D --> E[CruiseChatEventsHandler]:::state
-        E --> F["Create CRUISE_GROUP Chat in MongoDB"]:::success
+        E --> F["Create CRUISE_GROUP Chat in PostgreSQL"]:::success
         F --> G[Organizer added as participant]:::success
     end
 
@@ -352,30 +352,29 @@ sequenceDiagram
     participant Org as Organizer
     participant API as API
     participant PG as PostgreSQL
-    participant MG as MongoDB
 
-    Note over Org,MG: Cruise Creation & Chat Initialization
+    Note over Org,PG: Cruise Creation & Chat Initialization
     Org->>API: POST /cruises
     API->>PG: Save cruise
     PG-->>API: Cruise saved
-    API->>MG: Create CRUISE_GROUP chat
-    MG-->>API: Chat created
+    API->>PG: Create CRUISE_GROUP chat
+    PG-->>API: Chat created
     API-->>Org: 201 Created
 
-    Note over Org,MG: Participant Joins
+    Note over Org,PG: Participant Joins
     participant User as Participant
     User->>API: Request to join cruise
     Org->>API: Accept participant
-    API->>MG: Add user to chat.participants
-    MG-->>API: Updated
+    API->>PG: Add user to chat_participants
+    PG-->>API: Updated
     API-->>Org: 200 OK
 
-    Note over Org,MG: Access Group Chat
+    Note over Org,PG: Access Group Chat
     User->>API: GET /cruises/:id/group-chat
     API->>PG: Verify user is participant
     PG-->>API: Verified
-    API->>MG: Find chat by cruiseId
-    MG-->>API: Chat found
+    API->>PG: Find chat by relatedCruiseId
+    PG-->>API: Chat found
     API-->>User: 200 ChatResponseDto
 ```
 
@@ -387,37 +386,36 @@ sequenceDiagram
     participant User as User
     participant API as API
     participant PG as PostgreSQL
-    participant MG as MongoDB
 
-    Note over User,MG: User sends first question - creates chat
+    Note over User,PG: User sends first question - creates chat
     User->>API: POST /cruises/:cruiseId/qa-chat/messages
     API->>PG: Find cruise
     PG-->>API: Cruise found
-    API->>MG: Find chat (CRUISE_QNA, cruiseId, user+organizer)
-    MG-->>API: Not found
-    API->>MG: Create new CRUISE_QNA chat
-    Note over MG: participants: user + organizer
-    MG-->>API: Chat created
-    API->>MG: Create message
-    API->>MG: Update chat.lastMessage
+    API->>PG: Find chat (CRUISE_QNA, cruiseId, user+organizer)
+    PG-->>API: Not found
+    API->>PG: Create new CRUISE_QNA chat
+    Note over PG: participants: user + organizer
+    PG-->>API: Chat created
+    API->>PG: Create message
+    API->>PG: Update chat.lastMessage
     API-->>User: 201 Created
 
-    Note over User,MG: User gets Q&A chat
+    Note over User,PG: User gets Q&A chat
     User->>API: GET /cruises/:id/qa-chat
     API->>PG: Find cruise
     PG-->>API: Cruise found
-    API->>MG: Find chat
-    MG-->>API: Chat found
+    API->>PG: Find chat
+    PG-->>API: Chat found
     API-->>User: 200 ChatResponseDto
 
-    Note over User,MG: Organizer responds via messages API
+    Note over User,PG: Organizer responds via messages API
     participant Org as Organizer
     Org->>API: GET /messages/chats (filter: CRUISE_QNA)
-    API->>MG: Find chats
-    MG-->>API: Q&A chats found
+    API->>PG: Find chats
+    PG-->>API: Q&A chats found
     API-->>Org: List of Q&A chats
     Org->>API: POST /messages/chats/:chatId/messages
-    API->>MG: Create message
+    API->>PG: Create message
     API-->>Org: 201 Created
 ```
 
@@ -453,19 +451,24 @@ When a participant is removed from the group chat:
 
 ## Data Model
 
+Chats are stored in PostgreSQL (TypeORM entities in `src/database/entities/`):
+
+| Table                | Purpose                                                                                   |
+| -------------------- | ----------------------------------------------------------------------------------------- |
+| `chats`              | Conversation metadata — type, name, related cruise, reference to the last message         |
+| `chat_participants`  | Chat membership (`chat_id` + `user_id`)                                                   |
+| `chat_messages`      | Messages (text up to 1000 characters, timestamps)                                         |
+| `chat_message_reads` | Per-message read receipts (`message_id` + `user_id` + `read_at`)                          |
+| `user_chat_states`   | Per-user read state — last read message, unread count, hidden flag, joined date, settings |
+
 ```typescript
 interface Chat {
   id: string; // UUID v7
   type: 'CRUISE_GROUP' | 'CRUISE_QNA' | 'ONE_TO_ONE' | 'GROUP';
-  name?: string; // e.g., "Cruise Title - Group Chat"
-  participants: string[]; // Array of user IDs
-  relatedCruiseId?: string; // Links chat to cruise
-  lastMessage?: {
-    id: string;
-    userId: string;
-    text: string;
-    createdAt: Date;
-  };
+  name: string | null; // e.g., "Cruise Title - Group Chat"
+  relatedCruiseId: string | null; // Links chat to cruise
+  lastMessageId: string | null; // References chat_messages
+  participants: ChatParticipant[]; // Rows in chat_participants
   createdAt: Date;
   updatedAt: Date;
 }

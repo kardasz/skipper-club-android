@@ -99,7 +99,7 @@ interface ChatResponse {
 }
 ```
 
-**Note:** `lastReadMessageId` and `unreadCount` are user-specific fields computed from the `UserChatState` collection (MongoDB). They are not stored directly in the `Chat` schema but are joined at query time to provide per-user read state.
+**Note:** `lastReadMessageId` and `unreadCount` are user-specific fields computed from the `user_chat_states` table (PostgreSQL). They are not stored directly on the `chats` table but are joined at query time to provide per-user read state.
 
 ## Usage Notes
 

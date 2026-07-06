@@ -19,7 +19,6 @@ flowchart TB
 
     subgraph Data["Data Layer"]
         PG[(PostgreSQL)]:::success
-        MG[(MongoDB)]:::success
     end
 
     subgraph Storage
@@ -33,10 +32,9 @@ flowchart TB
     EXT --> REST
 
     REST --> PG
-    REST --> MG
     REST --> R2
 
-    WS --> MG
+    WS --> PG
 
     classDef trigger fill:#3B82F6,stroke:#1E40AF,color:#FFFFFF
     classDef state fill:#6B7280,stroke:#374151,color:#FFFFFF
@@ -64,7 +62,7 @@ The backend follows these architectural patterns:
 
 ```mermaid
 flowchart LR
-    subgraph PostgreSQL["PostgreSQL 16"]
+    subgraph PostgreSQL["PostgreSQL 18 + PostGIS"]
         U[Users]:::state
         C[Cruises]:::state
         F[Friends]:::state
@@ -72,9 +70,6 @@ flowchart LR
         P[Posts]:::state
         N[Notifications]:::state
         S[Sessions]:::state
-    end
-
-    subgraph MongoDB["MongoDB 8"]
         CH[Chats]:::trigger
         M[Messages]:::trigger
     end
@@ -83,10 +78,9 @@ flowchart LR
     classDef trigger fill:#3B82F6,stroke:#1E40AF,color:#FFFFFF
 ```
 
-| Database       | Purpose                                                                                    |
-| -------------- | ------------------------------------------------------------------------------------------ |
-| **PostgreSQL** | Primary relational data — users, cruises, friends, reviews, posts, notifications, sessions |
-| **MongoDB**    | Chat and messaging — optimized for real-time conversation workloads                        |
+| Database       | Purpose                                                                                                     |
+| -------------- | ----------------------------------------------------------------------------------------------------------- |
+| **PostgreSQL** | All application data — users, cruises, friends, reviews, posts, notifications, sessions, chats and messages |
 
 > **Note:** Redis backs the BullMQ job queues used for email and push notification delivery (including dead-letter queues). It is not yet used for caching or session storage.
 
@@ -188,7 +182,6 @@ src/modules/
 ├── posts/          # Social posts
 ├── push/           # Push notifications (APNs/FCM)
 ├── redis/          # Redis connection module
-├── regions/        # Sailing regions
 ├── reviews/        # Rating system
 ├── sailing-brief/  # AI-generated sailing briefs
 ├── spots/          # Sailing spots & validity voting
@@ -300,7 +293,8 @@ flowchart LR
     A[Push]:::trigger --> B[Lint & Format]:::state
     B --> C[TypeScript Check]:::state
     C --> D[Unit Tests]:::state
-    D --> E[E2E Tests]:::state
+    D --> D2[Integration Tests]:::state
+    D2 --> E[E2E Tests]:::state
     E --> F[Build Docker]:::state
     F --> G[Deploy]:::success
 
@@ -308,6 +302,10 @@ flowchart LR
     classDef state fill:#6B7280,stroke:#374151,color:#FFFFFF
     classDef success fill:#10B981,stroke:#047857,color:#FFFFFF
 ```
+
+> **Note:** GitHub Actions runs a dedicated `integration-tests` job (against a
+> `postgis/postgis:18-3.6` service) between unit and E2E tests. GitLab CI does
+> not currently have an equivalent stage — only `unit-tests` and `e2e-tests`.
 
 ### Infrastructure
 

@@ -75,5 +75,5 @@ Once a vote is cast, it cannot be changed:
 ## Related
 
 - [Posts](../../posts/index.md) — Post API documentation
-- [Post Types](post-type.md) — Available post types
+- [Post Content Keys](post-types.md) — Alert posts and content-based filtering
 - [Post Status](post-status.md) — Post lifecycle states

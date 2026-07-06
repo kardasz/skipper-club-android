@@ -163,7 +163,7 @@ The product enforces normalization and deduplication so the directory remains co
 - **Cruises:** organizers anchor cruises to known spots so participants can recognize departure/arrival points.
 - **Posts:** location-aware posts can reference a known spot for trustworthy place context.
 - **Check-Ins:** members frequently check in at marinas/harbors that exist in the spots directory.
-- **Location & Regions:** spots complement the broader region taxonomy with on-the-ground place-level detail.
+- **Location & Areas:** spots complement the broader coordinate-based location model with on-the-ground place-level detail (see [PRD-009: Location & Areas](./PRD-009-location.md)).
 - **Sailing Brief / Friends / Reviews:** higher quality place data improves clarity in any place-aware narrative.
 
 ## End-to-End User Journeys
@@ -372,7 +372,7 @@ Acceptance criteria:
 - Approval rate of community-submitted proposals.
 - Median time from proposal submission to administrator decision.
 - Reduction in duplicate or conflicting spots flagged after deduplication rules are enforced.
-- Coverage of geographic queries returning at least one nearby spot in target sailing regions.
+- Coverage of geographic queries returning at least one nearby spot in target sailing areas.
 
 ## Risks and Mitigations
 
@@ -448,6 +448,6 @@ Mitigation:
 ## Related
 
 - `PRD-003-cruises.md` for cruise journeys that anchor on departure and arrival spots.
-- `PRD-009-location.md` for the broader location and region context model.
+- `PRD-009-location.md` for the broader location and area context model.
 - `PRD-012-check-ins.md` for real-time presence frequently anchored at known spots.
 - `PRD-001-users.md` for authentication and administrator role context.

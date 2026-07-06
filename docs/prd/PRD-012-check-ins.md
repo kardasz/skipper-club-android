@@ -141,7 +141,7 @@ Core business responsibilities:
 - **Messages:** discovery may lead directly into a private conversation with another nearby sailor.
 - **Cruises:** an organizer at the marina can spot nearby sailors who might fill an open spot.
 - **Spots Directory:** check-ins are typically anchored at sailing places (marinas, harbors), reinforcing the value of a curated spots dataset.
-- **Location & Regions:** check-ins are a real-time complement to the broader location and region context of the platform.
+- **Location & Areas:** check-ins are a real-time complement to the broader coordinate-based location model of the platform (see [PRD-009: Location & Areas](./PRD-009-location.md)).
 
 ## End-to-End User Journeys
 
@@ -347,5 +347,5 @@ Mitigation:
 
 - `PRD-001-users.md` for identity and authenticated audience assumptions.
 - `PRD-006-friends.md` for trust context that may inform future audience scoping.
-- `PRD-009-location.md` for the broader location, region, and place context model.
+- `PRD-009-location.md` for the broader location and area context model.
 - `PRD-013-spots.md` for the curated sailing places that frequently anchor check-ins.

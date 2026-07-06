@@ -144,13 +144,13 @@ Returns a paginated list of participants for a cruise.
 
 #### Query Parameters
 
-| Parameter | Type    | Default     | Description                       |
-| --------- | ------- | ----------- | --------------------------------- |
-| `limit`   | integer | 20          | Results per page (1-100)          |
-| `offset`  | integer | 0           | Results to skip                   |
-| `order`   | string  | `desc`      | Sort order (`asc`, `desc`)        |
-| `sort`    | string  | `createdAt` | Sort field (`createdAt`, `state`) |
-| `state`   | enum    | —           | Filter by participant state       |
+| Parameter | Type    | Default     | Description                                    |
+| --------- | ------- | ----------- | ---------------------------------------------- |
+| `limit`   | integer | 20          | Results per page (1-100)                       |
+| `offset`  | integer | 0           | Results to skip                                |
+| `order`   | string  | `asc`       | Sort order (`asc`, `desc`)                     |
+| `sort`    | string  | `createdAt` | Sort field (`createdAt`, `updatedAt`, `state`) |
+| `state`   | enum    | —           | Filter by participant state                    |
 
 #### Example Request
 
@@ -277,10 +277,10 @@ The `Location` header contains the URI of the created participant.
 | Status | Type                                          | Description                             |
 | ------ | --------------------------------------------- | --------------------------------------- |
 | 404    | `/errors/cruise-not-found`                    | Cruise does not exist                   |
-| 404    | `/errors/user-not-found`                      | Target user does not exist              |
+| 422    | `/errors/user-not-found`                      | Target user does not exist              |
 | 409    | `/errors/participant-already-exists`          | User already has a participant record   |
 | 409    | `/errors/cruise-full`                         | Cruise has reached maximum participants |
-| 400    | `/errors/cannot-add-organizer-as-participant` | Cannot add organizer as participant     |
+| 422    | `/errors/cannot-add-organizer-as-participant` | Cannot add organizer as participant     |
 
 ---
 

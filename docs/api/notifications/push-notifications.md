@@ -192,36 +192,36 @@ The FCM provider sends via FCM HTTP v1 API. The `notification` object contains t
 
 ### Data Fields Reference
 
-| Field            | Type             | Required | Description                                                       |
-| ---------------- | ---------------- | -------- | ----------------------------------------------------------------- |
-| `notificationId` | string (UUID v7) | yes      | Notification record ID                                            |
-| `eventType`      | string           | yes      | One of 17 `NotificationEventType` values (see table below)        |
-| `sourceType`     | string           | yes      | `CRUISE`, `POST`, `FRIEND`, or `REVIEW`                           |
-| `sourceId`       | string (UUID v7) | yes      | ID of the source entity (cruise, post, friend request, or review) |
-| `deepLink`       | string           | yes      | Always `/notifications/{notificationId}`                          |
-| `relationId`     | string (UUID v7) | no       | Actor or related user ID (present on all current event types)     |
+| Field            | Type             | Required | Description                                                                                                  |
+| ---------------- | ---------------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| `notificationId` | string (UUID v7) | yes      | Notification record ID                                                                                       |
+| `eventType`      | string           | yes      | One of 17 `NotificationEventType` values (see table below)                                                   |
+| `sourceType`     | string           | yes      | `CRUISE`, `POST`, `FRIEND`, or `REVIEW`                                                                      |
+| `sourceId`       | string (UUID v7) | yes      | ID of the source entity (cruise, post, friend request, or review)                                            |
+| `deepLink`       | string           | yes      | Always `/notifications/{notificationId}`                                                                     |
+| `relationId`     | string (UUID v7) | no       | Actor or related user ID; omitted from the payload entirely for `CRUISE_REVIEW_REMINDER`, which has no actor |
 
 ### Event Type Reference
 
-| Event Type                   | Source Type | `sourceId` refers to | `relationId` refers to | Title (EN)                     | Body template (EN)                                            | Suggested screen    |
-| ---------------------------- | ----------- | -------------------- | ---------------------- | ------------------------------ | ------------------------------------------------------------- | ------------------- |
-| `CRUISE_INVITATION_SENT`     | `CRUISE`    | cruise ID            | inviter user ID        | Cruise invitation              | {actor} invited you to "{cruiseTitle}"                        | Cruise detail       |
-| `CRUISE_PARTICIPANT_JOINED`  | `CRUISE`    | cruise ID            | joined user ID         | New cruise participant         | {actor} joined "{cruiseTitle}"                                | Cruise detail       |
-| `CRUISE_REQUEST_PENDING`     | `CRUISE`    | cruise ID            | requester user ID      | New join request               | {actor} requested to join "{cruiseTitle}"                     | Cruise participants |
-| `CRUISE_REQUEST_ACCEPTED`    | `CRUISE`    | cruise ID            | organizer user ID      | Request accepted               | {actor} accepted your join request                            | Cruise detail       |
-| `CRUISE_REQUEST_REJECTED`    | `CRUISE`    | cruise ID            | organizer user ID      | Request rejected               | {actor} rejected your join request                            | Cruise list         |
-| `CRUISE_INVITATION_ACCEPTED` | `CRUISE`    | cruise ID            | accepting user ID      | Invitation accepted            | {actor} accepted your cruise invitation                       | Cruise detail       |
-| `CRUISE_PARTICIPANT_LEFT`    | `CRUISE`    | cruise ID            | user who left ID       | Participant left               | {actor} left "{cruiseTitle}"                                  | Cruise detail       |
-| `CRUISE_PARTICIPANT_REMOVED` | `CRUISE`    | cruise ID            | remover user ID        | You were removed from a cruise | {actor} removed you from "{cruiseTitle}"                      | Cruise list         |
-| `CRUISE_DETAILS_CHANGED`     | `CRUISE`    | cruise ID            | editor user ID         | Cruise details updated         | {actor} updated "{cruiseTitle}"                               | Cruise detail       |
-| `POST_REACTED`               | `POST`      | post ID              | reactor user ID        | New post reaction              | {actor} reacted to your post (reactionType)                   | Post detail         |
-| `POST_COMMENTED`             | `POST`      | post ID              | commenter user ID      | New post comment               | {commentText} or "{actor} commented on your post"             | Post detail         |
-| `FRIEND_REQUEST_SENT`        | `FRIEND`    | friend request ID    | sender user ID         | New friend request             | {actor} sent you a friend request                             | Friend requests     |
-| `FRIEND_REQUEST_ACCEPTED`    | `FRIEND`    | friend request ID    | accepter user ID       | Friend request accepted        | {actor} accepted your friend request                          | User profile        |
-| `FRIEND_REQUEST_REJECTED`    | `FRIEND`    | friend request ID    | rejecter user ID       | Friend request rejected        | {actor} rejected your friend request                          | Friend list         |
-| `REVIEW_PENDING_RECEIVED`    | `REVIEW`    | review ID            | reviewer user ID       | New review pending             | {actor} reviewed you after "{cruiseTitle}"                    | Review detail       |
-| `REVIEW_PUBLISHED`           | `REVIEW`    | review ID            | reviewer user ID       | Review published               | {actor} published a review after "{cruiseTitle}"              | Review detail       |
-| `CRUISE_REVIEW_REMINDER`     | `CRUISE`    | cruise ID            | `null`                 | Review your crew               | Your cruise "{cruiseTitle}" has ended. Share your experience! | Cruise reviews      |
+| Event Type                   | Source Type | `sourceId` refers to | `relationId` refers to | Title (EN)                     | Body template (EN)                                                                         | Suggested screen    |
+| ---------------------------- | ----------- | -------------------- | ---------------------- | ------------------------------ | ------------------------------------------------------------------------------------------ | ------------------- |
+| `CRUISE_INVITATION_SENT`     | `CRUISE`    | cruise ID            | inviter user ID        | Cruise invitation              | {actor} invited you to "{cruiseTitle}"                                                     | Cruise detail       |
+| `CRUISE_PARTICIPANT_JOINED`  | `CRUISE`    | cruise ID            | joined user ID         | New cruise participant         | {actor} joined "{cruiseTitle}"                                                             | Cruise detail       |
+| `CRUISE_REQUEST_PENDING`     | `CRUISE`    | cruise ID            | requester user ID      | New join request               | {actor} requested to join "{cruiseTitle}"                                                  | Cruise participants |
+| `CRUISE_REQUEST_ACCEPTED`    | `CRUISE`    | cruise ID            | organizer user ID      | Request accepted               | {actor} accepted your join request                                                         | Cruise detail       |
+| `CRUISE_REQUEST_REJECTED`    | `CRUISE`    | cruise ID            | organizer user ID      | Request rejected               | {actor} rejected your join request                                                         | Cruise list         |
+| `CRUISE_INVITATION_ACCEPTED` | `CRUISE`    | cruise ID            | accepting user ID      | Invitation accepted            | {actor} accepted your cruise invitation                                                    | Cruise detail       |
+| `CRUISE_PARTICIPANT_LEFT`    | `CRUISE`    | cruise ID            | user who left ID       | Participant left               | {actor} left "{cruiseTitle}"                                                               | Cruise detail       |
+| `CRUISE_PARTICIPANT_REMOVED` | `CRUISE`    | cruise ID            | remover user ID        | You were removed from a cruise | {actor} removed you from "{cruiseTitle}"                                                   | Cruise list         |
+| `CRUISE_DETAILS_CHANGED`     | `CRUISE`    | cruise ID            | editor user ID         | Cruise details updated         | {actor} updated "{cruiseTitle}"                                                            | Cruise detail       |
+| `POST_REACTED`               | `POST`      | post ID              | reactor user ID        | New post reaction              | {actor} reacted to your post (reactionType)                                                | Post detail         |
+| `POST_COMMENTED`             | `POST`      | post ID              | commenter user ID      | New post comment               | {commentText} (truncated to 120 chars, `...` appended) or "{actor} commented on your post" | Post detail         |
+| `FRIEND_REQUEST_SENT`        | `FRIEND`    | friend request ID    | sender user ID         | New friend request             | {actor} sent you a friend request                                                          | Friend requests     |
+| `FRIEND_REQUEST_ACCEPTED`    | `FRIEND`    | friend request ID    | accepter user ID       | Friend request accepted        | {actor} accepted your friend request                                                       | User profile        |
+| `FRIEND_REQUEST_REJECTED`    | `FRIEND`    | friend request ID    | rejecter user ID       | Friend request rejected        | {actor} rejected your friend request                                                       | Friend list         |
+| `REVIEW_PENDING_RECEIVED`    | `REVIEW`    | review ID            | reviewer user ID       | New review pending             | {actor} reviewed you after "{cruiseTitle}"                                                 | Review detail       |
+| `REVIEW_PUBLISHED`           | `REVIEW`    | review ID            | reviewer user ID       | Review published               | {actor} published a review after "{cruiseTitle}"                                           | Review detail       |
+| `CRUISE_REVIEW_REMINDER`     | `CRUISE`    | cruise ID            | omitted                | Review your crew               | Your cruise "{cruiseTitle}" has ended. Share your experience!                              | Cruise reviews      |
 
 ### Full APNs Example Payloads
 
@@ -425,7 +425,7 @@ Job payload:
 
 Retry policy:
 
-- exponential backoff
+- up to 5 attempts, exponential backoff starting at 30s
 - retry only transient provider failures
 - permanent token errors deactivate token
 - disabled/misconfigured provider deliveries are marked `SKIPPED` and acknowledged (no backlog buildup)

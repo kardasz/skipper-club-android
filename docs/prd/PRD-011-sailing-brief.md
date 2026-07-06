@@ -2,14 +2,14 @@
 
 ## Product Overview
 
-**Feature**: Region-based Sailing Brief  
+**Feature**: Coordinate-based Sailing Brief  
 **Version**: MVP (v6.6.0)  
 **Status**: Implemented  
 **Release Date**: 2026-02-11
 
 ## Goal
 
-Deliver pre-generated sailing briefs for selected regions three times per day using AI with web search, providing sailors with up-to-date local sailing conditions, navigation tips, and practical information.
+Deliver pre-generated sailing briefs for technical brief areas three times per day using AI with web search. The mobile app selects the relevant brief from the user's current coordinates, giving sailors up-to-date local sailing conditions, navigation tips, and practical information without a region picker.
 
 ## Scope
 
@@ -24,7 +24,7 @@ Deliver pre-generated sailing briefs for selected regions three times per day us
 - ✅ BullMQ worker with retry and DLQ
 - ✅ Hourly distributed cron scheduler
 - ✅ CLI command for manual generation
-- ✅ Initial rollout: HR (Croatia), GR (Greece)
+- ✅ Initial rollout: configured technical brief areas
 - ✅ Immutable historical versioning
 - ✅ Timezone-aware scheduling with DST support
 
@@ -33,7 +33,7 @@ Deliver pre-generated sailing briefs for selected regions three times per day us
 - ❌ Personalization per user
 - ❌ Integration with internal post data
 - ❌ Push notifications on new brief
-- ❌ Granular sub-region briefs
+- ❌ Granular sub-area briefs
 - ❌ User feedback/ratings
 
 ## Technical Decisions
@@ -45,20 +45,20 @@ Deliver pre-generated sailing briefs for selected regions three times per day us
 | **OpenAI Responses API**    | Supports structured output + web search in single call |
 | **Web search enabled**      | Ensures current, real-time sailing conditions          |
 | **3 time slots/day**        | Balance between freshness and generation cost          |
-| **Region-level only**       | Simpler MVP; sub-region expansion deferred             |
+| **Area-level only**         | Simpler MVP; sub-area expansion deferred               |
 | **Immutable history**       | Audit trail, version comparison, rollback capability   |
 | **JWT authentication**      | Consistent with app security model                     |
 | **Admin-only regeneration** | Quality control, prevent abuse                         |
 
 ### Data Model Decisions
 
-| Decision                     | Rationale                                             |
-| ---------------------------- | ----------------------------------------------------- |
-| **PostgreSQL storage**       | Relational data, complex queries, region FK integrity |
-| **9 content fields**         | Granular sections for UI flexibility                  |
-| **Markdown format**          | Rich formatting, easy rendering                       |
-| **Version incrementing**     | Per-slot versioning allows multiple regenerations     |
-| **expires_at informational** | Always serve latest, expiry is UI hint only           |
+| Decision                     | Rationale                                                 |
+| ---------------------------- | --------------------------------------------------------- |
+| **PostgreSQL storage**       | Relational data, complex queries, brief area FK integrity |
+| **9 content fields**         | Granular sections for UI flexibility                      |
+| **Markdown format**          | Rich formatting, easy rendering                           |
+| **Version incrementing**     | Per-slot versioning allows multiple regenerations         |
+| **expires_at informational** | Always serve latest, expiry is UI hint only               |
 
 ### Architecture Decisions
 
@@ -74,9 +74,9 @@ Deliver pre-generated sailing briefs for selected regions three times per day us
 
 ### As a Sailor
 
-> "I want to check current sailing conditions for my region before heading out, so I can plan my route safely."
+> "I want to check current sailing conditions for my current area before heading out, so I can plan my route safely."
 
-**Solution**: `GET /v1/sailing-briefs?regionCode=HR` returns latest brief with weather, routes, and safety tips.
+**Solution**: `GET /v1/sailing-briefs?lat=43.5081&lng=16.4402` resolves the matching technical brief area and returns the latest brief with weather, routes, and safety tips.
 
 ### As an Admin
 
@@ -88,22 +88,22 @@ Deliver pre-generated sailing briefs for selected regions three times per day us
 
 > "I want to manually trigger sailing brief generation for testing or to fill gaps from scheduler downtime."
 
-**Solution**: CLI command `sailing-brief:generate-now` enqueues generation for all enabled regions.
+**Solution**: CLI command `sailing-brief:generate-now` enqueues generation for all enabled technical brief areas.
 
 ## Requirements
 
 ### Functional Requirements
 
-| ID   | Requirement                                  | Status |
-| ---- | -------------------------------------------- | ------ |
-| FR-1 | Generate briefs 3× daily for enabled regions | ✅     |
-| FR-2 | Support EN/PL languages independently        | ✅     |
-| FR-3 | Consumer endpoint returns latest brief       | ✅     |
-| FR-4 | Admin can view historical briefs             | ✅     |
-| FR-5 | Admin can regenerate with custom prompt      | ✅     |
-| FR-6 | CLI command for manual generation            | ✅     |
-| FR-7 | Include safety disclaimer in all briefs      | ✅     |
-| FR-8 | Timezone-aware slot detection                | ✅     |
+| ID   | Requirement                                                | Status |
+| ---- | ---------------------------------------------------------- | ------ |
+| FR-1 | Generate briefs 3× daily for enabled technical brief areas | ✅     |
+| FR-2 | Support EN/PL languages independently                      | ✅     |
+| FR-3 | Consumer endpoint returns latest brief                     | ✅     |
+| FR-4 | Admin can view historical briefs                           | ✅     |
+| FR-5 | Admin can regenerate with custom prompt                    | ✅     |
+| FR-6 | CLI command for manual generation                          | ✅     |
+| FR-7 | Include safety disclaimer in all briefs                    | ✅     |
+| FR-8 | Timezone-aware slot detection                              | ✅     |
 
 ### Non-Functional Requirements
 
@@ -126,7 +126,7 @@ Deliver pre-generated sailing briefs for selected regions three times per day us
 **Request**:
 
 ```http
-GET /v1/sailing-briefs?regionCode=HR
+GET /v1/sailing-briefs?lat=43.5081&lng=16.4402
 Accept-Language: pl,en;q=0.9
 ```
 
@@ -135,31 +135,35 @@ Accept-Language: pl,en;q=0.9
 ```json
 {
   "id": "018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b2e",
-  "regionCode": "HR",
+  "area": {
+    "id": "018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b2f",
+    "code": "HR-DALMATIA-CENTRAL-03",
+    "name": "Central Dalmatia Chart 03"
+  },
   "language": "pl",
   "timeSlot": "morning",
   "localDate": "2026-02-11",
   "generatedAt": "2026-02-11T05:01:23Z",
   "expiresAt": "2026-02-11T12:00:00+01:00",
-  "version": 1,
-  "generationSource": "auto",
-  "shortDescription": "Doskonałe warunki żeglarskie...",
-  "fullDescription": "...",
-  "weather": "...",
-  "berth": "...",
-  "route": "...",
-  "tips": "...",
-  "marina": "...",
-  "food": "...",
-  "place": "..."
+  "content": {
+    "shortDescription": "Doskonałe warunki żeglarskie...",
+    "fullDescription": "...",
+    "weather": "...",
+    "berth": "...",
+    "route": "...",
+    "tips": "...",
+    "marina": "...",
+    "food": "...",
+    "place": "..."
+  }
 }
 ```
 
 **Errors**:
 
-- `422`: Missing/invalid `regionCode` parameter
+- `422`: Missing/invalid `lat` or `lng` parameters
 - `401`: Missing/invalid JWT
-- `404`: No brief available for provided `regionCode` (including unknown/disabled regions)
+- `404`: No brief available for the resolved technical brief area
 
 ### GET /v1/sailing-briefs/list
 
@@ -168,7 +172,7 @@ Accept-Language: pl,en;q=0.9
 
 **Query Parameters**:
 
-- `regionCode` (optional)
+- `areaCode` (optional)
 - `timeSlot` (optional)
 - `generationSource` (optional)
 - `limit` (default 20, max 100)
@@ -198,7 +202,7 @@ Accept-Language: pl,en;q=0.9
 
 ```json
 {
-  "regionCodes": ["HR", "GR"],
+  "areaCodes": ["HR-DALMATIA-CENTRAL-03", "GR-IONIAN-01"],
   "prompt": "Focus on family-friendly activities"
 }
 ```
@@ -208,17 +212,26 @@ Accept-Language: pl,en;q=0.9
 ```json
 {
   "jobs": [
-    { "regionCode": "HR", "language": "en", "timeSlot": "morning" },
-    { "regionCode": "HR", "language": "pl", "timeSlot": "morning" },
-    { "regionCode": "GR", "language": "en", "timeSlot": "noon" },
-    { "regionCode": "GR", "language": "pl", "timeSlot": "noon" }
+    {
+      "areaCode": "HR-DALMATIA-CENTRAL-03",
+      "language": "en",
+      "timeSlot": "morning"
+    },
+    {
+      "areaCode": "HR-DALMATIA-CENTRAL-03",
+      "language": "pl",
+      "timeSlot": "morning"
+    },
+    { "areaCode": "GR-IONIAN-01", "language": "en", "timeSlot": "noon" },
+    { "areaCode": "GR-IONIAN-01", "language": "pl", "timeSlot": "noon" }
   ]
 }
 ```
 
 **Errors**:
 
-- `400`: Invalid region codes or disabled regions
+- `400`: Invalid area codes, disabled areas, or coordinates outside enabled
+  areas
 - `401`: Missing/invalid JWT
 - `403`: Non-admin user
 
@@ -226,15 +239,15 @@ Accept-Language: pl,en;q=0.9
 
 ### Phase 1: MVP (Current)
 
-**Regions**: HR (Croatia), GR (Greece)  
-**Languages**: EN, PL  
+**Brief areas**: Croatia and Greece technical sailing areas
+**Languages**: EN, PL
 **Generation**: Scheduled only (auto)
 
 ### Phase 2: Expansion (Future)
 
-- Add more Mediterranean regions (IT, ES, FR)
-- Add Baltic Sea regions (PL, DE, SE, DK)
-- Enable manual admin regeneration for all regions
+- Add more Mediterranean technical brief areas (IT, ES, FR)
+- Add Baltic Sea technical brief areas (PL, DE, SE, DK)
+- Enable manual admin regeneration for all enabled areas
 
 ### Phase 3: Integration (Future)
 

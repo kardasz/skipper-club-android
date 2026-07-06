@@ -294,9 +294,11 @@ Registration requires the **exact email address** from the invitation. This prev
 
 ### Rate Limiting
 
-| Layer  | Limit             | Purpose             |
-| ------ | ----------------- | ------------------- |
-| Per IP | 5 requests/minute | Prevent enumeration |
+| Layer                                | Limit             | Purpose             |
+| ------------------------------------ | ----------------- | ------------------- |
+| Per IP, `POST /invitations/register` | 5 requests/minute | Prevent enumeration |
+
+This throttle applies only to the public registration endpoint; `POST /invitations` (organizer-initiated send) has no endpoint-specific rate limit beyond the application's global default.
 
 ### CAPTCHA Protection
 
@@ -327,7 +329,7 @@ Each invitation tracks failed verification attempts. After reaching the maximum 
 
 - `INVITATION_MAX_ATTEMPTS`: Maximum failed attempts (default: 5)
 
-> **Note:** Invalid codes do not increment the attempts counter because lookup is performed by code hash — an invalid code results in no invitation record being found. Protection against brute-force code guessing relies on rate limiting and the entropy of the invitation code (8 characters from a 30-character alphabet, ~39 bits of entropy).
+> **Note:** Invalid codes do not increment the attempts counter because lookup is performed by code hash — an invalid code results in no invitation record being found. Protection against brute-force code guessing relies on rate limiting and the entropy of the invitation code (8 characters from a 32-character alphabet, ~40 bits of entropy).
 
 > **Security:** Blocked invitations return the same generic error response as invalid invitations to prevent information leakage.
 
