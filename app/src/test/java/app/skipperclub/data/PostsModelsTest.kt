@@ -71,7 +71,7 @@ class PostsModelsTest {
                   "id": "post-3",
                   "contentKeys": ["alert"],
                   "status": "published",
-                  "user": {"id": "u3", "name": "Marek"},
+                  "user": null,
                   "content": {
                     "text": "Submerged obstruction",
                     "alert": {"category": "obstruction", "severity": "warning", "source": "navtex"}
@@ -124,6 +124,8 @@ class PostsModelsTest {
         assertEquals(AlertCategory.Obstruction, alert.alert?.category)
         assertEquals(AlertSeverity.Warning, alert.alert?.severity)
         assertTrue(alert.isSystemGenerated)
+        // system-generated (imported alert) posts are author-less since API v8.1.0
+        assertNull(alert.user)
         assertNotNull(alert.validityVotes)
         assertEquals(ValidityVoteType.Confirm, alert.validityVotes?.userVote)
         assertEquals("2025-12-01T16:00:00Z", alert.expiresAt)

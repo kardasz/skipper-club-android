@@ -6,6 +6,9 @@
     <string name="post_kind_media">Zdjęcia</string>
     <string name="post_kind_note">Notatka</string>
 
+    <!-- Author label shown on system-generated posts (imported alerts), which have no user. -->
+    <string name="post_system_author_name">SkipperClub Alerts</string>
+
     <!-- Feed filter: "Show" content filter + full-text search. -->
     <string name="posts_filter_section_show">Pokaż</string>
     <string name="posts_filter_contains_alerts">Ostrzeżenia</string>

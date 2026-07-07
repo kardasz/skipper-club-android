@@ -189,7 +189,8 @@ data class PostPermissions(
 
 data class Post(
     val id: String,
-    val user: PostUser,
+    /** Post author. `null` on system-generated posts (imported alerts); see [isSystemGenerated]. */
+    val user: PostUser?,
     val contentKeys: Set<PostContentKey>,
     val status: PostStatus,
     val content: PostContent,
@@ -541,7 +542,7 @@ internal data class PostPermissionsDto(
 @Serializable
 internal data class PostDto(
     val id: String,
-    val user: PostUserDto,
+    val user: PostUserDto? = null,
     val contentKeys: List<String> = emptyList(),
     val status: String = "published",
     val content: PostContentDto = PostContentDto(),
@@ -568,7 +569,7 @@ internal data class PostDto(
         val postStatus = PostStatus.fromWire(status) ?: return null
         return Post(
             id = id,
-            user = user.toDomain(),
+            user = user?.toDomain(),
             contentKeys = contentKeys.mapNotNull { PostContentKey.fromWire(it) }.toSet(),
             status = postStatus,
             content = content.toDomain(),

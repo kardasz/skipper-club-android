@@ -130,7 +130,7 @@ class MapItemsApiTest {
         assertTrue(attributes.hasMedia)
         assertEquals(false, attributes.hasAlert)
         assertNull(attributes.alertCategory)
-        assertEquals("Jan K.", attributes.author.displayName)
+        assertEquals("Jan K.", attributes.author?.displayName)
         assertEquals("2030-01-01T12:00:00Z", attributes.publishedAt)
         assertNull(attributes.expiresAt)
         assertEquals(4, attributes.commentsCount)
@@ -175,8 +175,44 @@ class MapItemsApiTest {
         assertTrue(attributes.hasAlert)
         assertEquals(false, attributes.hasMedia)
         assertEquals(AlertCategory.Weather, attributes.alertCategory)
-        assertEquals("Jan Kowalski", attributes.author.displayName)
+        assertEquals("Jan Kowalski", attributes.author?.displayName)
         assertEquals("2030-01-02T12:00:00Z", attributes.expiresAt)
+    }
+
+    @Test
+    fun decodeResponseMapsSystemGeneratedPostAttributesWithNullAuthor() {
+        val decoded = MapItemsApi.decodeResponse(
+            """
+                {
+                  "data": [
+                    {
+                      "kind": "item",
+                      "type": "post",
+                      "id": "019eac4a-3e2d-7c11-8761-f9d85d6e6420",
+                      "name": "Navigational warning",
+                      "coordinates": { "lat": 54.49, "lng": 18.55 },
+                      "geometry": { "type": "Point", "coordinates": [18.55, 54.49] },
+                      "attributes": {
+                        "contentKeys": ["alert"],
+                        "alertCategory": "navigation_warning",
+                        "status": "published",
+                        "author": null,
+                        "publishedAt": "2030-01-01T12:00:00Z",
+                        "expiresAt": null,
+                        "commentsCount": 0,
+                        "bookmarked": false
+                      }
+                    }
+                  ],
+                  "meta": { "hasMoreDetail": false }
+                }
+            """.trimIndent(),
+        )
+
+        val entry = decoded.entries.single()
+        val attributes = entry.attributes as MapEntryAttributes.Post
+        assertEquals(MapEntryType.Post, entry.type)
+        assertNull(attributes.author)
     }
 
     @Test

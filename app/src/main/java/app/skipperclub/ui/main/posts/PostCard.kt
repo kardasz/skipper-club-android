@@ -142,10 +142,11 @@ private fun PostHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        PostUserAvatar(user = post.user, modifier = Modifier.size(40.dp))
+        val author = post.user ?: PostUser(id = "", name = stringResource(R.string.post_system_author_name))
+        PostUserAvatar(user = author, modifier = Modifier.size(40.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = post.user.name,
+                text = author.name,
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

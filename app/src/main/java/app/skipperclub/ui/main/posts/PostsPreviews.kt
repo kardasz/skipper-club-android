@@ -15,6 +15,7 @@ import app.skipperclub.data.PostMedia
 import app.skipperclub.data.PostPermissions
 import app.skipperclub.data.PostRoute
 import app.skipperclub.data.PostRouteStop
+import app.skipperclub.data.PostSource
 import app.skipperclub.data.PostStatus
 import app.skipperclub.data.PostUser
 import app.skipperclub.data.ReactionSummary
@@ -139,6 +140,26 @@ internal val previewAlertPost = Post(
     updatedAt = "2025-12-05T17:30:00Z",
 )
 
+/** Imported alert — system-generated, so `user` is `null` (API v8.1.0). */
+internal val previewSystemAlertPost = Post(
+    id = "p4",
+    user = null,
+    contentKeys = setOf(PostContentKey.Alert),
+    status = PostStatus.Published,
+    content = PostContent(
+        text = "Radio navigational warning: buoy off station near the harbour entrance.",
+        alert = PostAlert(category = AlertCategory.NavigationWarning, severity = AlertSeverity.Warning),
+    ),
+    location = PostLocation(name = "Gdańsk Bay"),
+    source = PostSource(type = "alert", id = "navtex-2"),
+    commentsCount = 0,
+    reactions = ReactionSummary(),
+    permissions = PostPermissions(),
+    publishedAt = "2025-12-05T08:05:00Z",
+    createdAt = "2025-12-05T08:05:00Z",
+    updatedAt = "2025-12-05T08:05:00Z",
+)
+
 internal val previewPosts = listOf(previewNotePost, previewPhotoPost, previewRoutePost, previewAlertPost)
 
 private val previewActions = PostCardActions(
@@ -254,6 +275,15 @@ private fun PostCardRoutePreview() {
 private fun PostCardAlertPreviewPl() {
     SkipperClubTheme {
         PostCard(post = previewAlertPost, nowMillis = previewNow, actions = previewActions)
+    }
+}
+
+/** Author-less system post (imported alert, `user == null` since API v8.1.0). */
+@Preview(showBackground = true, widthDp = 360, locale = "en")
+@Composable
+private fun PostCardSystemAlertPreview() {
+    SkipperClubTheme {
+        PostCard(post = previewSystemAlertPost, nowMillis = previewNow, actions = previewActions)
     }
 }
 
