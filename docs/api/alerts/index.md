@@ -57,7 +57,7 @@ linked post:
 
 - `posts.source_type = "alert"`
 - `posts.source_id = alerts.id`
-- `posts.user_id =` the seeded system user "SkipperClub Alerts"
+- `posts.user_id = NULL` — alert posts have no author
 - `content.text = alerts.content`
 - `content.alert` contains the public source projection
 - `location.point = alerts.anchor`

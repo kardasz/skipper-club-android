@@ -106,11 +106,7 @@ queries and status filters.
   "id": "019dfd19-ddd8-7d23-a1f4-06b96c16a36d",
   "contentKeys": ["alert"],
   "status": "published",
-  "user": {
-    "id": "019dfd19-0000-7000-8000-000000000001",
-    "name": "SkipperClub Alerts",
-    "avatarUrl": null
-  },
+  "user": null,
   "content": {
     "text": "Radio navigational warning...",
     "alert": {
@@ -159,9 +155,10 @@ queries and status filters.
 ```
 
 `validityVotes` is present only for alert posts. `source` is present only for
-system-generated posts, currently imported official alerts. `permissions`
-reflects what the requesting user may do with this specific post (management
-actions are always `false` on system-authored posts).
+system-generated posts, currently imported official alerts, which have no
+author — their `user` is `null`. `permissions` reflects what the requesting
+user may do with this specific post (management actions are always `false` on
+system-generated posts).
 
 ## Update
 
@@ -188,7 +185,7 @@ an alert upsert, the sync creates or updates one public post with:
 - `source.type = "alert"`
 - `source.id = alerts.id`
 - `content.alert` populated from the public source-attributes projection
-- system author "SkipperClub Alerts"
+- no author (`user_id` is `NULL`, and `user` is `null` in responses)
 
 The sync is idempotent by `(source_type, source_id)`. Known cancellations
 resolve the linked post.

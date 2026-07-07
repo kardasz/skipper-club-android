@@ -220,12 +220,12 @@ When a friend request is sent, the recipient receives a notification:
 
 ### Errors
 
-| Status | Type                                    | Description                                                                    |
-| ------ | --------------------------------------- | ------------------------------------------------------------------------------ |
-| 404    | `/errors/target-user-not-found`         | Target user doesn't exist, or is the reserved "SkipperClub Alerts" system user |
-| 422    | `/errors/cannot-friend-yourself`        | Cannot send request to yourself                                                |
-| 422    | `/errors/users-already-friends`         | Already friends with this user                                                 |
-| 422    | `/errors/friend-request-already-exists` | Request already exists (in either direction)                                   |
+| Status | Type                                    | Description                                  |
+| ------ | --------------------------------------- | -------------------------------------------- |
+| 404    | `/errors/target-user-not-found`         | Target user doesn't exist                    |
+| 422    | `/errors/cannot-friend-yourself`        | Cannot send request to yourself              |
+| 422    | `/errors/users-already-friends`         | Already friends with this user               |
+| 422    | `/errors/friend-request-already-exists` | Request already exists (in either direction) |
 
 ---
 

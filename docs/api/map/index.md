@@ -52,11 +52,7 @@ Posts are projected using the representative point and optional area:
     "contentKeys": ["alert"],
     "alertCategory": "navigation_warning",
     "status": "published",
-    "author": {
-      "id": "019dfd19-0000-7000-8000-000000000001",
-      "displayName": "SkipperClub Alerts",
-      "avatarUrl": null
-    },
+    "author": null,
     "publishedAt": "2026-06-17T08:05:00.000Z",
     "expiresAt": "2026-07-17T08:05:00.000Z",
     "mediaPreview": null,

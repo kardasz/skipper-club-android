@@ -315,10 +315,10 @@ things share the "alert" name:
 
 - **Ingested source alerts** (`alerts` table) — official navigation warnings,
   NAVTEX/Notice-to-Mariners feeds, etc., imported by the HHI RNW pipeline.
-  Each import is synced into a system-authored post
-  (`posts.source_type = 'alert'`, `posts.user_id` = the seeded system user
-  "SkipperClub Alerts"). Nobody, including admins, can edit or delete these
-  posts through the regular endpoints.
+  Each import is synced into a system-generated post
+  (`posts.source_type = 'alert'`, `posts.user_id = NULL` — these posts have no
+  author). Nobody, including admins, can edit or delete these posts through the
+  regular endpoints.
 - **User-created alert posts** — any signed-in user creates one via
   `POST /v1/posts` with `content.alert` (`category` and optional
   `severity`), the same way as any other post. There is no separate alert

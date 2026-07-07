@@ -8548,7 +8548,12 @@ components:
           type: string
           format: uuid
         user:
-          $ref: '#/components/schemas/User'
+          description: >-
+            Post author. `null` on system-generated posts (e.g. imported
+            alerts), which have no author.
+          anyOf:
+            - $ref: '#/components/schemas/User'
+            - type: 'null'
         contentKeys:
           type: array
           items:
@@ -9030,7 +9035,12 @@ components:
         status:
           $ref: '#/components/schemas/PostStatus'
         author:
-          $ref: '#/components/schemas/MapUserProjection'
+          description: >-
+            Post author. `null` on system-generated posts (e.g. imported
+            alerts), which have no author.
+          anyOf:
+            - $ref: '#/components/schemas/MapUserProjection'
+            - type: 'null'
         publishedAt:
           type: string
           format: date-time
