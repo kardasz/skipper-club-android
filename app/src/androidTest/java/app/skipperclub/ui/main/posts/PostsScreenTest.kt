@@ -11,8 +11,10 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performTextInput
 import app.skipperclub.R
+import app.skipperclub.data.GeocodedLocation
 import app.skipperclub.data.Post
 import app.skipperclub.data.PostContainsFilter
+import app.skipperclub.data.PostCoordinates
 import app.skipperclub.data.ReactionType
 import app.skipperclub.data.ValidityVoteType
 import app.skipperclub.ui.main.posts.wizard.PostWizard
@@ -240,6 +242,56 @@ class PostsScreenTest {
         compose.onNodeWithTag("wizard_text").performTextInput("Anchored safely for the night")
         compose.onNodeWithTag("wizard_publish").assertIsEnabled()
         assertTrue(wizardState.text.isNotBlank())
+    }
+
+    @Test
+    fun wizardRouteSheetSavesRouteAsInlineCard() {
+        val scope = CoroutineScope(Dispatchers.Main + Job())
+        val wizardState = PostWizardState(
+            scope = scope,
+            accessToken = { null },
+        )
+        wizardState.addStop(
+            GeocodedLocation(
+                name = "Gdynia",
+                formattedAddress = "Gdynia, Polska",
+                coordinates = PostCoordinates(54.52, 18.55),
+            ),
+        )
+        compose.setContent {
+            SkipperClubTheme {
+                PostWizard(state = wizardState, onClose = {})
+            }
+        }
+
+        // The route only becomes a post attachment once saved from the sheet.
+        compose.onNodeWithTag("wizard_route_card").assertDoesNotExist()
+        compose.onNodeWithTag("wizard_action_route").performClick()
+        compose.onNodeWithTag("wizard_route_save").performClick()
+
+        compose.onNodeWithTag("wizard_route_card").assertExists()
+        assertTrue(wizardState.routeEnabled)
+    }
+
+    @Test
+    fun editingAlertPostShowsBadgeAndBlocksRoute() {
+        val scope = CoroutineScope(Dispatchers.Main + Job())
+        val alertPost = previewPosts.first { it.content.alert != null }
+        val wizardState = PostWizardState(
+            scope = scope,
+            accessToken = { null },
+            editingPost = alertPost,
+        )
+        compose.setContent {
+            SkipperClubTheme {
+                PostWizard(state = wizardState, onClose = {})
+            }
+        }
+
+        // Alerts are managed by the map flow: the edited alert stays as a
+        // read-only badge and the route action is unavailable.
+        compose.onNodeWithTag("wizard_alert_badge").assertExists()
+        compose.onNodeWithTag("wizard_action_route").assertIsNotEnabled()
     }
 
     private fun text(id: Int): String = compose.activity.getString(id)

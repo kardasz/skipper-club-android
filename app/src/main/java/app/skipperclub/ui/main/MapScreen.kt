@@ -140,12 +140,24 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 @Composable
-fun MapScreen(modifier: Modifier = Modifier) {
-    MapScreenContent(modifier = modifier)
+fun MapScreen(
+    modifier: Modifier = Modifier,
+    startAlertPicking: Boolean = false,
+    onAlertPickingStarted: () -> Unit = {},
+) {
+    MapScreenContent(
+        modifier = modifier,
+        startAlertPicking = startAlertPicking,
+        onAlertPickingStarted = onAlertPickingStarted,
+    )
 }
 
 @Composable
-private fun MapScreenContent(modifier: Modifier = Modifier) {
+private fun MapScreenContent(
+    modifier: Modifier = Modifier,
+    startAlertPicking: Boolean = false,
+    onAlertPickingStarted: () -> Unit = {},
+) {
     if (LocalInspectionMode.current) {
         MapPreviewSurface(modifier = modifier)
         return
@@ -199,6 +211,15 @@ private fun MapScreenContent(modifier: Modifier = Modifier) {
     var checkInState by remember { mutableStateOf<CheckInUiState>(CheckInUiState.Idle) }
     var alertState by remember { mutableStateOf<AlertUiState>(AlertUiState.Idle) }
     var menuExpanded by remember { mutableStateOf(false) }
+
+    // Entry from the feed's "Create → Navigation alert" option: jump straight
+    // into the aim-on-the-map flow instead of waiting for the map's own menu.
+    LaunchedEffect(startAlertPicking) {
+        if (startAlertPicking && checkInState is CheckInUiState.Idle) {
+            alertState = AlertUiState.PickingLocation
+            onAlertPickingStarted()
+        }
+    }
     val isActive = checkInState is CheckInUiState.Active
     val isAlertPicking = alertState is AlertUiState.PickingLocation
     var isMapLoaded by remember { mutableStateOf(false) }

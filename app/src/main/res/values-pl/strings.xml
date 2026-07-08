@@ -185,6 +185,11 @@
 
 
     <string name="posts_create">Nowy post</string>
+    <string name="posts_create_sheet_title">Utwórz</string>
+    <string name="posts_create_option_post">Post</string>
+    <string name="posts_create_option_post_desc">Podziel się rejsem, zdjęciami lub trasą</string>
+    <string name="posts_create_option_alert">Ostrzeżenie nawigacyjne</string>
+    <string name="posts_create_option_alert_desc">Wskaż punkt na mapie i ostrzeż innych żeglarzy</string>
     <string name="posts_filter">Filtry</string>
     <string name="posts_empty_title">Brak postów</string>
     <string name="posts_empty_subtitle">Podziel się czymś z klubem jako pierwszy.</string>

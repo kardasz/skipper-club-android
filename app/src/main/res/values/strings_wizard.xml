@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Post wizard (API v8.0.0 single-form). New strings only; shared wizard strings live in strings.xml. -->
+    <!-- Post composer. New strings only; shared wizard strings live in strings.xml. -->
     <string name="wizard_title_create">New post</string>
     <string name="wizard_title_edit">Edit post</string>
 
@@ -8,16 +8,29 @@
     <string name="wizard_text_label">What\'s on your mind?</string>
     <string name="wizard_error_text_required">Add some text to your post</string>
 
-    <!-- Optional-section toggles -->
+    <!-- Action bar -->
     <string name="wizard_add_route">Add route</string>
-    <string name="wizard_add_route_desc">Share a sailing itinerary with stops</string>
-    <string name="wizard_add_alert">Add alert</string>
-    <string name="wizard_add_alert_desc">Warn others about a hazard or notice</string>
+    <string name="wizard_action_tags">Tag sailors</string>
 
-    <!-- Alert sub-form -->
-    <string name="wizard_alert_category_label">Category</string>
-    <string name="wizard_error_alert_category_required">Choose an alert category</string>
-    <string name="wizard_alert_severity_label">Severity</string>
-    <string name="wizard_alert_severity_none">None</string>
+    <!-- Route sheet + route card -->
+    <string name="wizard_route_sheet_title">Cruise route</string>
+    <string name="wizard_route_save">Save route</string>
+    <string name="wizard_route_remove">Remove route</string>
+    <string name="wizard_route_edit">Edit route</string>
+    <string name="wizard_route_length_nm">%1$s NM</string>
+    <plurals name="wizard_route_stops_count">
+        <item quantity="one">%d stop</item>
+        <item quantity="other">%d stops</item>
+    </plurals>
+    <plurals name="wizard_route_days_count">
+        <item quantity="one">%d day</item>
+        <item quantity="other">%d days</item>
+    </plurals>
+
+    <!-- Sheets -->
+    <string name="wizard_sheet_done">Done</string>
+
+    <!-- Editing an alert post (alerts are created in the map's dedicated flow) -->
+    <string name="wizard_alert_preserved">The alert details will stay unchanged.</string>
     <string name="wizard_error_alert_location_required">Alerts need a location on the map</string>
 </resources>

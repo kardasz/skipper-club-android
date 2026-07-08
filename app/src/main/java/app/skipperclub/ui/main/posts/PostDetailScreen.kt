@@ -75,7 +75,8 @@ fun PostDetailScreen(
         )
     }
     val state by controller.state.collectAsState()
-    val currentUserId = SessionStore.session.collectAsState().value?.user?.id
+    val sessionUser = SessionStore.session.collectAsState().value?.user
+    val currentUserId = sessionUser?.id
     val notificationHostState = rememberInAppNotificationHostState()
 
     val nowMillis by produceState(initialValue = System.currentTimeMillis()) {
@@ -365,6 +366,7 @@ fun PostDetailScreen(
             PostWizard(
                 state = editState,
                 onClose = { editingPost = null },
+                user = sessionUser,
             )
         }
     }

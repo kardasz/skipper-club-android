@@ -86,6 +86,9 @@ private fun MainScreenContent(
     var showProfile by rememberSaveable { mutableStateOf(value = false) }
     var showSettings by rememberSaveable { mutableStateOf(value = false) }
     var reviewsCruiseId by rememberSaveable { mutableStateOf<String?>(value = null) }
+    // Set when the feed's "Create → Navigation alert" option is picked; the map
+    // consumes it by entering the aim-on-the-map alert flow.
+    var pendingAlertPicking by rememberSaveable { mutableStateOf(value = false) }
 
     // Open the reviews center when a `…/cruises/{id}/reviews` deep link arrives.
     androidx.compose.runtime.LaunchedEffect(pendingReviewsCruiseId) {
@@ -100,9 +103,17 @@ private fun MainScreenContent(
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             when (current) {
-                MainDestination.POSTS -> PostsScreen()
+                MainDestination.POSTS -> PostsScreen(
+                    onCreateAlert = {
+                        pendingAlertPicking = true
+                        onSelect(MainDestination.MAP)
+                    },
+                )
                 MainDestination.CRUISES -> CruisesScreen()
-                MainDestination.MAP -> MapScreen()
+                MainDestination.MAP -> MapScreen(
+                    startAlertPicking = pendingAlertPicking,
+                    onAlertPickingStarted = { pendingAlertPicking = false },
+                )
                 MainDestination.MESSAGES -> MessagesScreen()
                 MainDestination.MENU -> MenuScreen()
             }

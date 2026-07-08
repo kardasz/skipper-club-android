@@ -179,6 +179,11 @@
 
 
     <string name="posts_create">New post</string>
+    <string name="posts_create_sheet_title">Create</string>
+    <string name="posts_create_option_post">Post</string>
+    <string name="posts_create_option_post_desc">Share a cruise, photos or a route</string>
+    <string name="posts_create_option_alert">Navigation alert</string>
+    <string name="posts_create_option_alert_desc">Aim on the map and warn other sailors</string>
     <string name="posts_filter">Filters</string>
     <string name="posts_empty_title">No posts yet</string>
     <string name="posts_empty_subtitle">Be the first to share something with the club.</string>

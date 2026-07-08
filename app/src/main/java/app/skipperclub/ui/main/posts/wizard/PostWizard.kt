@@ -32,19 +32,27 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.skipperclub.R
+import app.skipperclub.data.SessionUser
 
 /**
- * Full-screen post creation / edit form. Since API v8.0.0 there is no post-type
- * chooser: one scrolling form covers every post (text, location, optional route
- * OR alert, media, tags). State lives in [PostWizardState]; the section bodies
- * live in `PostWizardStepViews.kt`.
+ * Full-screen post composer (create / edit). Content comes first: a borderless
+ * text field with the attachments the user added rendered inline (location
+ * chip, media strip, route card, tag chips), and an icon action bar above the
+ * keyboard that opens pickers / bottom sheets. Alerts are not created here —
+ * they have their own map-anchored flow; editing an alert post preserves the
+ * alert payload and shows it as a read-only badge.
+ *
+ * State lives in [PostWizardState]; the composer body, the action bar and the
+ * bottom sheets live in `PostWizardStepViews.kt`.
  */
 @Composable
 fun PostWizard(
     state: PostWizardState,
     onClose: () -> Unit,
+    user: SessionUser? = null,
 ) {
     var showDiscardDialog by remember { mutableStateOf(false) }
+    val sheets = remember { WizardSheets() }
 
     val requestClose: () -> Unit = {
         if (state.hasUserInput) {
@@ -79,14 +87,16 @@ fun PostWizard(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(scrollState)
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
                 ) {
-                    WizardForm(state)
+                    WizardComposer(state = state, sheets = sheets, user = user)
                 }
             }
-            WizardBottomBar(state = state)
+            WizardActionBar(state = state, sheets = sheets)
         }
     }
+
+    WizardSheetHost(state = state, sheets = sheets)
 
     if (showDiscardDialog) {
         AlertDialog(
@@ -120,7 +130,7 @@ private fun WizardTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 4.dp, end = 20.dp, top = 4.dp),
+            .padding(start = 4.dp, end = 16.dp, top = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onCloseRequest, modifier = Modifier.testTag("wizard_close")) {
@@ -136,16 +146,6 @@ private fun WizardTopBar(
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.weight(1f),
         )
-    }
-}
-
-@Composable
-private fun WizardBottomBar(state: PostWizardState) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-    ) {
         val publishLabel = when {
             state.isPublishing && state.isEditing -> R.string.wizard_saving
             state.isPublishing -> R.string.wizard_publishing
@@ -155,9 +155,7 @@ private fun WizardBottomBar(state: PostWizardState) {
         Button(
             onClick = { state.publish() },
             enabled = state.canPublish,
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("wizard_publish"),
+            modifier = Modifier.testTag("wizard_publish"),
         ) {
             Text(text = stringResource(publishLabel))
         }

@@ -1,6 +1,7 @@
 package app.skipperclub.ui.main.posts
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -16,6 +18,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Bookmarks
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material3.Badge
@@ -25,7 +29,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -41,6 +48,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -64,7 +72,10 @@ private val FeedNavigationInset = 132.dp
 private val FeedBottomInset = 20.dp
 
 @Composable
-fun PostsScreen(modifier: Modifier = Modifier) {
+fun PostsScreen(
+    modifier: Modifier = Modifier,
+    onCreateAlert: () -> Unit = {},
+) {
     val scope = rememberCoroutineScope()
     val controller = remember(scope) {
         PostsFeedController(
@@ -74,7 +85,8 @@ fun PostsScreen(modifier: Modifier = Modifier) {
     }
     val state by controller.state.collectAsState()
     val notificationHostState = rememberInAppNotificationHostState()
-    val currentUserId = SessionStore.session.collectAsState().value?.user?.id
+    val sessionUser = SessionStore.session.collectAsState().value?.user
+    val currentUserId = sessionUser?.id
 
     val nowMillis by produceState(initialValue = System.currentTimeMillis()) {
         while (true) {
@@ -134,6 +146,7 @@ fun PostsScreen(modifier: Modifier = Modifier) {
     val overlay = rememberPostOverlayState()
     var showFilters by remember { mutableStateOf(false) }
     var showBookmarks by remember { mutableStateOf(false) }
+    var showCreateChooser by remember { mutableStateOf(false) }
     var showWizard by rememberSaveable { mutableStateOf(false) }
 
     val cardActions = remember(controller, overlay) { postCardActions(controller, overlay) }
@@ -145,7 +158,7 @@ fun PostsScreen(modifier: Modifier = Modifier) {
             cardActions = cardActions,
             onOpenFilters = { showFilters = true },
             onOpenBookmarks = { showBookmarks = true },
-            onCreate = { showWizard = true },
+            onCreate = { showCreateChooser = true },
             onRefresh = controller::refresh,
             onLoadMore = controller::loadMore,
             onRetry = controller::refresh,
@@ -194,6 +207,20 @@ fun PostsScreen(modifier: Modifier = Modifier) {
         )
     }
 
+    if (showCreateChooser) {
+        CreatePostChooserSheet(
+            onCreatePost = {
+                showCreateChooser = false
+                showWizard = true
+            },
+            onCreateAlert = {
+                showCreateChooser = false
+                onCreateAlert()
+            },
+            onDismiss = { showCreateChooser = false },
+        )
+    }
+
     if (showWizard) {
         val wizardState = remember {
             PostWizardState(
@@ -234,6 +261,75 @@ fun PostsScreen(modifier: Modifier = Modifier) {
             PostWizard(
                 state = wizardState,
                 onClose = { showWizard = false },
+                user = sessionUser,
+            )
+        }
+    }
+}
+
+/** "Create" chooser: a regular post opens the composer, an alert goes to the map flow. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CreatePostChooserSheet(
+    onCreatePost: () -> Unit,
+    onCreateAlert: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 20.dp)
+                .navigationBarsPadding(),
+        ) {
+            Text(
+                text = stringResource(R.string.posts_create_sheet_title),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+            ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                leadingContent = {
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                },
+                headlineContent = { Text(stringResource(R.string.posts_create_option_post)) },
+                supportingContent = {
+                    Text(
+                        text = stringResource(R.string.posts_create_option_post_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onCreatePost)
+                    .testTag("create_option_post"),
+            )
+            ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                leadingContent = {
+                    Icon(
+                        imageVector = Icons.Filled.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.tertiary,
+                    )
+                },
+                headlineContent = { Text(stringResource(R.string.posts_create_option_alert)) },
+                supportingContent = {
+                    Text(
+                        text = stringResource(R.string.posts_create_option_alert_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onCreateAlert)
+                    .testTag("create_option_alert"),
             )
         }
     }

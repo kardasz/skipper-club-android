@@ -4,9 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import app.skipperclub.data.AlertCategory
 import app.skipperclub.data.AlertInputDto
-import app.skipperclub.data.AlertSeverity
 import app.skipperclub.data.CoordinatesDto
 import app.skipperclub.data.CreatePostRequest
 import app.skipperclub.data.FriendUser
@@ -39,7 +37,8 @@ const val POST_TAGGED_USERS_MAX_COUNT = 20
 enum class PostWizardError {
     TextRequired,
     StopsRequired,
-    AlertCategoryRequired,
+
+    /** Only reachable when editing an alert post: its location must stay set. */
     AlertLocationRequired,
 }
 
@@ -64,10 +63,13 @@ data class WizardMedia(
 )
 
 /**
- * State holder for the post creation / edit form. Since API v8.0.0 there is a
- * single form (no post-type chooser): required [text], an optional [locationName]
- * anchor, and two mutually exclusive optional sections — a route ([routeEnabled])
- * or an alert ([alertEnabled]) — plus media and tagged users.
+ * State holder for the post composer: required [text], an optional [locationName]
+ * anchor, an optional route ([routeEnabled]) plus media and tagged users.
+ *
+ * Alerts are NOT created here — navigation alerts have their own map-anchored
+ * flow (`ui/main/alert`). When an existing alert post is edited, its alert
+ * payload is preserved verbatim via [editingAlert] and the route section is
+ * unavailable (route and alert are mutually exclusive on the API).
  *
  * Pure Kotlin + Compose snapshot state (no Android types) so validation and
  * request building are unit-testable on the JVM with a fake [PostsGateway].
@@ -98,10 +100,20 @@ class PostWizardState(
     var isSearchingLocation by mutableStateOf(false)
         private set
 
-    // --- Route (optional, mutually exclusive with alert) ---
+    // --- Route (optional, unavailable when editing an alert post) ---
     var routeEnabled by mutableStateOf(editingPost?.content?.route != null)
         private set
     val stops = mutableStateListOf<PostRouteStop>()
+
+    // Stop search has its own query so adding a stop can't clobber the post's
+    // location anchor (they used to share one field).
+    var stopQuery by mutableStateOf("")
+        private set
+    var stopResults by mutableStateOf<List<GeocodedLocation>>(emptyList())
+        private set
+    var isSearchingStops by mutableStateOf(false)
+        private set
+
     var durationDaysText by mutableStateOf(editingPost?.content?.route?.durationDays?.toString().orEmpty())
         private set
     var lengthNmText by mutableStateOf(
@@ -111,13 +123,16 @@ class PostWizardState(
     )
         private set
 
-    // --- Alert (optional, mutually exclusive with route) ---
-    var alertEnabled by mutableStateOf(editingPost?.content?.alert != null)
-        private set
-    var alertCategory by mutableStateOf(editingPost?.content?.alert?.category)
-        private set
-    var alertSeverity by mutableStateOf(editingPost?.content?.alert?.severity)
-        private set
+    // --- Alert (edit pass-through only; creation lives in the map alert flow) ---
+
+    /**
+     * Alert payload of the post being edited, preserved verbatim on update.
+     * Non-null only when editing an existing alert post; the composer shows it
+     * as a read-only badge and disables the route section.
+     */
+    val editingAlert: AlertInputDto? = editingPost?.content?.alert?.let {
+        AlertInputDto(category = it.category, severity = it.severity)
+    }
 
     // --- Media ---
     val media = mutableStateListOf<WizardMedia>()
@@ -165,6 +180,7 @@ class PostWizardState(
     val events: SharedFlow<PostWizardEvent> = _events.asSharedFlow()
 
     private var locationSearchJob: Job? = null
+    private var stopSearchJob: Job? = null
     private var tagSearchJob: Job? = null
 
     fun updateText(value: String) {
@@ -214,42 +230,57 @@ class PostWizardState(
         locationResults = emptyList()
     }
 
-    // --- Route / Alert exclusivity ---
+    // --- Route ---
 
     fun updateRouteEnabled(enabled: Boolean) {
+        if (enabled && editingAlert != null) return
         routeEnabled = enabled
-        if (enabled) {
-            alertEnabled = false
-            visibleErrors = visibleErrors - PostWizardError.AlertCategoryRequired - PostWizardError.AlertLocationRequired
-        } else {
+        if (!enabled) {
             visibleErrors = visibleErrors - PostWizardError.StopsRequired
         }
     }
 
-    fun updateAlertEnabled(enabled: Boolean) {
-        alertEnabled = enabled
-        if (enabled) {
-            routeEnabled = false
-            visibleErrors = visibleErrors - PostWizardError.StopsRequired
-        } else {
-            visibleErrors = visibleErrors - PostWizardError.AlertCategoryRequired - PostWizardError.AlertLocationRequired
-        }
-    }
-
-    fun selectAlertCategory(category: AlertCategory) {
-        alertCategory = category
-        visibleErrors = visibleErrors - PostWizardError.AlertCategoryRequired
-    }
-
-    fun selectAlertSeverity(severity: AlertSeverity?) {
-        alertSeverity = severity
+    /** Drops the route attachment entirely (stops and summary fields). */
+    fun removeRoute() {
+        routeEnabled = false
+        stops.clear()
+        durationDaysText = ""
+        lengthNmText = ""
+        visibleErrors = visibleErrors - PostWizardError.StopsRequired
     }
 
     // --- Route stops ---
 
+    fun updateStopQuery(value: String) {
+        stopQuery = value
+        stopSearchJob?.cancel()
+        if (value.trim().length < 3) {
+            stopResults = emptyList()
+            isSearchingStops = false
+            return
+        }
+        isSearchingStops = true
+        stopSearchJob = scope.launch {
+            delay(locationSearchDebounceMillis)
+            val token = runCatching { accessToken() }.getOrNull() ?: run {
+                isSearchingStops = false
+                _events.tryEmit(PostWizardEvent.SessionExpired)
+                return@launch
+            }
+            try {
+                stopResults = gateway.searchLocations(token, value.trim())
+            } catch (_: Exception) {
+                stopResults = emptyList()
+            }
+            isSearchingStops = false
+        }
+    }
+
     fun addStop(location: GeocodedLocation) {
         if (stops.size >= POST_ROUTE_STOPS_MAX_COUNT) return
         stops.add(PostRouteStop(name = location.displayName, coordinates = location.coordinates))
+        stopQuery = ""
+        stopResults = emptyList()
         visibleErrors = visibleErrors - PostWizardError.StopsRequired
     }
 
@@ -363,21 +394,18 @@ class PostWizardState(
     fun validate(): Set<PostWizardError> = buildSet {
         if (text.isBlank() || text.length > POST_TEXT_MAX_LENGTH) add(PostWizardError.TextRequired)
         if (routeEnabled && stops.isEmpty()) add(PostWizardError.StopsRequired)
-        if (alertEnabled) {
-            if (alertCategory == null) add(PostWizardError.AlertCategoryRequired)
-            if (coordinates == null) add(PostWizardError.AlertLocationRequired)
-        }
+        if (editingAlert != null && coordinates == null) add(PostWizardError.AlertLocationRequired)
     }
 
     val canPublish: Boolean
         get() = !isPublishing && !isUploadingMedia && validate().isEmpty()
 
     val hasUserInput: Boolean
-        get() = text.isNotBlank() || locationName != null || routeEnabled || alertEnabled ||
+        get() = text.isNotBlank() || locationName != null || routeEnabled ||
             stops.isNotEmpty() || media.isNotEmpty() || taggedUsers.isNotEmpty()
 
     private fun buildContent(): PostContentInputDto {
-        val route = if (routeEnabled && !alertEnabled) {
+        val route = if (routeEnabled && editingAlert == null) {
             RouteInputDto(
                 stops = stops.map { RouteStopDto.from(it) },
                 durationDays = durationDaysText.toIntOrNull(),
@@ -386,13 +414,7 @@ class PostWizardState(
         } else {
             null
         }
-        val category = alertCategory
-        val alert = if (alertEnabled && !routeEnabled && category != null) {
-            AlertInputDto(category = category, severity = alertSeverity)
-        } else {
-            null
-        }
-        return PostContentInputDto(text = text.trim(), route = route, alert = alert)
+        return PostContentInputDto(text = text.trim(), route = route, alert = editingAlert)
     }
 
     private fun buildLocation(): PostLocationInputDto? {
@@ -406,8 +428,7 @@ class PostWizardState(
         )
     }
 
-    internal fun buildRequest(): CreatePostRequest? {
-        if (routeEnabled && alertEnabled) return null
+    internal fun buildRequest(): CreatePostRequest {
         return CreatePostRequest(
             content = buildContent(),
             location = buildLocation(),
@@ -416,8 +437,7 @@ class PostWizardState(
         )
     }
 
-    internal fun buildUpdateRequest(): UpdatePostRequest? {
-        if (routeEnabled && alertEnabled) return null
+    internal fun buildUpdateRequest(): UpdatePostRequest {
         return UpdatePostRequest(
             content = buildContent(),
             location = buildLocation(),
@@ -436,12 +456,11 @@ class PostWizardState(
         visibleErrors = emptySet()
         val editId = editingPostId
         if (editId != null) {
-            val updateRequest = buildUpdateRequest() ?: return
             isPublishing = true
-            _events.tryEmit(PostWizardEvent.Updated(editId, updateRequest))
+            _events.tryEmit(PostWizardEvent.Updated(editId, buildUpdateRequest()))
             return
         }
-        val request = buildRequest() ?: return
+        val request = buildRequest()
         isPublishing = true
         scope.launch {
             val token = runCatching { accessToken() }.getOrNull() ?: run {

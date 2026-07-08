@@ -68,6 +68,7 @@ fun PostOverlays(
     notificationHostState: InAppNotificationHostState,
 ) {
     val scope = rememberCoroutineScope()
+    val sessionUser = SessionStore.session.collectAsState().value?.user
     val errorAuthMessage = stringResource(R.string.posts_error_auth)
     val commentsErrorMessage = stringResource(R.string.comments_error_generic)
     val mediaUploadFailedMessage = stringResource(R.string.wizard_media_failed)
@@ -203,6 +204,7 @@ fun PostOverlays(
             PostWizard(
                 state = editState,
                 onClose = { overlay.editingPost = null },
+                user = sessionUser,
             )
         }
     }
