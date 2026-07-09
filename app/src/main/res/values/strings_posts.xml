@@ -18,4 +18,32 @@
     <string name="posts_filter_section_search">Search</string>
     <string name="posts_filter_search_hint">Search posts…</string>
     <string name="posts_filter_sort_published">Recent</string>
+
+    <!-- Feed top bar: search + "Near me" distance filter. -->
+    <string name="posts_search">Search</string>
+    <string name="posts_search_close">Close search</string>
+    <string name="posts_search_clear">Clear search</string>
+    <string name="posts_near_me">Near me</string>
+
+    <!-- Alert card: collapsed by default; details reveal behind "more". -->
+    <string name="post_show_more">…more</string>
+    <string name="post_show_less">Less</string>
+    <string name="post_alert_reported">Reported</string>
+    <string name="post_alert_expires_label">Expires</string>
+    <string name="post_alert_source">Source</string>
+
+    <!-- "Near me" bottom sheet: radius (nautical miles) + device location. -->
+    <string name="near_me_title">Near me</string>
+    <string name="near_me_subtitle">Show posts and alerts within a chosen radius of your position.</string>
+    <string name="near_me_radius_label">Radius</string>
+    <string name="near_me_radius_value">%1$d NM</string>
+    <string name="near_me_my_location">My location</string>
+    <string name="near_me_grant">Use my location</string>
+    <string name="near_me_permission_note">Your location is used only to filter the feed. Your position is not stored.</string>
+    <string name="near_me_permission_denied">Location access is off. Turn it on to filter by distance.</string>
+    <string name="near_me_locating">Getting your location…</string>
+    <string name="near_me_failed">Could not get your location. Try again.</string>
+    <string name="near_me_retry">Try again</string>
+    <string name="near_me_apply">Show within %1$d NM</string>
+    <string name="near_me_clear">Clear distance filter</string>
 </resources>

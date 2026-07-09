@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performTextInput
@@ -57,7 +58,6 @@ class PostsScreenTest {
                     state = PostsFeedUiState(posts = previewPosts, hasLoadedOnce = true),
                     nowMillis = nowMillis,
                     cardActions = actions(),
-                    onOpenFilters = {},
                     onOpenBookmarks = {},
                     onCreate = {},
                     onRefresh = {},
@@ -67,11 +67,12 @@ class PostsScreenTest {
             }
         }
 
-        // Feed renders multiple posts from different authors (note, photo, route, alert).
-        compose.onNodeWithText("Anna Nowak").assertExists()
+        // Feed renders community posts (by their text) and the alert card by its area.
+        compose.onNodeWithText("Anyone sailing", substring = true).assertExists()
+        // The alert card leads with its area, not the author (approved redesign).
         compose.onNodeWithTag("posts_list")
-            .performScrollToNode(hasText("Marek Wiśniewski"))
-        compose.onNodeWithText("Marek Wiśniewski").assertExists()
+            .performScrollToNode(hasText("Hvar Town Quay"))
+        compose.onNodeWithText("Hvar Town Quay").assertExists()
     }
 
     @Test
@@ -82,7 +83,6 @@ class PostsScreenTest {
                     state = PostsFeedUiState(hasLoadedOnce = true),
                     nowMillis = nowMillis,
                     cardActions = actions(),
-                    onOpenFilters = {},
                     onOpenBookmarks = {},
                     onCreate = {},
                     onRefresh = {},
@@ -111,8 +111,8 @@ class PostsScreenTest {
             }
         }
 
-        // photo post shows the heart reaction chip with count 10
-        compose.onNodeWithText("10").performClick()
+        // photo post shows the reaction pill with the total count (10 hearts + 5 anchors)
+        compose.onNodeWithText("15").performClick()
 
         assertEquals(previewPhotoPost.id, toggled?.first?.id)
         assertEquals(ReactionType.Heart, toggled?.second)
@@ -172,9 +172,32 @@ class PostsScreenTest {
             }
         }
 
-        compose.onNodeWithText("${text(R.string.post_validity_invalid)} · 0").performClick()
+        // The confidence vote lives behind "more" and shows no counts (redesign).
+        compose.onNodeWithTag("alert_more_toggle").performClick()
+        compose.onNodeWithTag("alert_vote_invalid").performClick()
 
         assertEquals(ValidityVoteType.ReportInvalid, vote)
+    }
+
+    @Test
+    fun alertCardHidesDetailsUntilExpanded() {
+        val post = previewAlertPost.copy(
+            validityVotes = app.skipperclub.data.VoteSummary(confirmCount = 1, invalidCount = 0, userVote = null),
+        )
+        compose.setContent {
+            SkipperClubTheme {
+                PostCard(post = post, nowMillis = nowMillis, actions = actions())
+            }
+        }
+
+        // Collapsed: no reported/expiry details and no confidence vote on the card face.
+        compose.onNodeWithTag("alert_vote_confirm").assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.post_alert_reported)).assertDoesNotExist()
+
+        // Expanding reveals the details block and the count-less vote.
+        compose.onNodeWithTag("alert_more_toggle").performClick()
+        compose.onNodeWithTag("alert_vote_confirm").assertExists()
+        compose.onNodeWithText(text(R.string.post_alert_reported)).assertExists()
     }
 
     @Test
@@ -218,7 +241,7 @@ class PostsScreenTest {
 
         compose.onNodeWithTag("filter_contains_${PostContainsFilter.Alert.wireValue}").performClick()
         compose.onNodeWithText(text(R.string.filter_order_asc)).performClick()
-        compose.onNodeWithTag("filter_apply").performClick()
+        compose.onNodeWithTag("filter_apply").performScrollTo().performClick()
 
         assertEquals(setOf(PostContainsFilter.Alert), applied?.contains)
         assertEquals(app.skipperclub.data.SortOrder.Asc, applied?.order)

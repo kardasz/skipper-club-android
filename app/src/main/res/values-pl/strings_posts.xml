@@ -18,4 +18,32 @@
     <string name="posts_filter_section_search">Szukaj</string>
     <string name="posts_filter_search_hint">Szukaj wpisów…</string>
     <string name="posts_filter_sort_published">Najnowsze</string>
+
+    <!-- Feed top bar: search + "Near me" distance filter. -->
+    <string name="posts_search">Szukaj</string>
+    <string name="posts_search_close">Zamknij wyszukiwanie</string>
+    <string name="posts_search_clear">Wyczyść wyszukiwanie</string>
+    <string name="posts_near_me">Blisko mnie</string>
+
+    <!-- Alert card: collapsed by default; details reveal behind "more". -->
+    <string name="post_show_more">…więcej</string>
+    <string name="post_show_less">Mniej</string>
+    <string name="post_alert_reported">Zgłoszono</string>
+    <string name="post_alert_expires_label">Wygasa</string>
+    <string name="post_alert_source">Źródło</string>
+
+    <!-- "Near me" bottom sheet: radius (nautical miles) + device location. -->
+    <string name="near_me_title">Blisko mnie</string>
+    <string name="near_me_subtitle">Pokaż wpisy i ostrzeżenia w wybranym promieniu od Twojej pozycji.</string>
+    <string name="near_me_radius_label">Promień</string>
+    <string name="near_me_radius_value">%1$d Mm</string>
+    <string name="near_me_my_location">Moja lokalizacja</string>
+    <string name="near_me_grant">Użyj mojej lokalizacji</string>
+    <string name="near_me_permission_note">Lokalizacja służy tylko do filtrowania listy. Twoja pozycja nie jest zapisywana.</string>
+    <string name="near_me_permission_denied">Dostęp do lokalizacji jest wyłączony. Włącz go, aby filtrować po odległości.</string>
+    <string name="near_me_locating">Pobieranie lokalizacji…</string>
+    <string name="near_me_failed">Nie udało się pobrać lokalizacji. Spróbuj ponownie.</string>
+    <string name="near_me_retry">Spróbuj ponownie</string>
+    <string name="near_me_apply">Pokaż w promieniu %1$d Mm</string>
+    <string name="near_me_clear">Wyczyść filtr odległości</string>
 </resources>

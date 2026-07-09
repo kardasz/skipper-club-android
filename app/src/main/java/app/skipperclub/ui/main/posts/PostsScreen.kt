@@ -16,14 +16,17 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Bookmarks
-import androidx.compose.material.icons.outlined.FilterList
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
+import androidx.compose.material.icons.outlined.NearMe
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,8 +34,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -48,10 +53,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -144,10 +153,12 @@ fun PostsScreen(
     }
 
     val overlay = rememberPostOverlayState()
-    var showFilters by remember { mutableStateOf(false) }
+    var showNearMe by remember { mutableStateOf(false) }
     var showBookmarks by remember { mutableStateOf(false) }
     var showCreateChooser by remember { mutableStateOf(false) }
     var showWizard by rememberSaveable { mutableStateOf(false) }
+    var searchActive by rememberSaveable { mutableStateOf(false) }
+    var searchText by rememberSaveable { mutableStateOf("") }
 
     val cardActions = remember(controller, overlay) { postCardActions(controller, overlay) }
 
@@ -156,7 +167,25 @@ fun PostsScreen(
             state = state,
             nowMillis = nowMillis,
             cardActions = cardActions,
-            onOpenFilters = { showFilters = true },
+            searchActive = searchActive,
+            searchQuery = searchText,
+            nearMeActive = state.filters.isNearMeActive,
+            onOpenSearch = {
+                searchText = state.filters.query.orEmpty()
+                searchActive = true
+            },
+            onSearchQueryChange = { searchText = it },
+            onSearchSubmit = {
+                controller.applyFilters(state.filters.copy(query = searchText.ifBlank { null }))
+            },
+            onCloseSearch = {
+                searchActive = false
+                searchText = ""
+                if (state.filters.query != null) {
+                    controller.applyFilters(state.filters.copy(query = null))
+                }
+            },
+            onOpenNearMe = { showNearMe = true },
             onOpenBookmarks = { showBookmarks = true },
             onCreate = { showCreateChooser = true },
             onRefresh = controller::refresh,
@@ -191,19 +220,19 @@ fun PostsScreen(
         }
     }
 
-    if (showFilters) {
-        PostFilterSheet(
-            filters = state.filters,
-            currentUserId = currentUserId,
-            onSearchLocations = { query ->
-                val token = SessionStore.validSession()?.accessToken
-                if (token == null) emptyList() else RealPostsGateway.searchLocations(token, query)
+    if (showNearMe) {
+        NearMeSheet(
+            initialRadiusNm = state.filters.nearMeRadiusNm ?: NearMeDefaultNm,
+            isActive = state.filters.isNearMeActive,
+            onApply = { center, radiusNm, label ->
+                showNearMe = false
+                controller.applyFilters(state.filters.withNearMe(center, radiusNm, label))
             },
-            onApply = { filters ->
-                showFilters = false
-                controller.applyFilters(filters)
+            onClear = {
+                showNearMe = false
+                controller.applyFilters(state.filters.clearNearMe())
             },
-            onDismiss = { showFilters = false },
+            onDismiss = { showNearMe = false },
         )
     }
 
@@ -341,13 +370,20 @@ internal fun PostsScreenContent(
     state: PostsFeedUiState,
     nowMillis: Long,
     cardActions: PostCardActions,
-    onOpenFilters: () -> Unit,
     onOpenBookmarks: () -> Unit,
     onCreate: () -> Unit,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    searchActive: Boolean = false,
+    searchQuery: String = "",
+    nearMeActive: Boolean = false,
+    onOpenSearch: () -> Unit = {},
+    onSearchQueryChange: (String) -> Unit = {},
+    onSearchSubmit: () -> Unit = {},
+    onCloseSearch: () -> Unit = {},
+    onOpenNearMe: () -> Unit = {},
 ) {
     val listState = rememberLazyListState()
     val shouldLoadMore by remember(state.hasMore) {
@@ -366,51 +402,66 @@ internal fun PostsScreenContent(
             .background(MaterialTheme.colorScheme.background),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.nav_posts),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
+            if (searchActive) {
+                PostsSearchBar(
+                    query = searchQuery,
+                    onQueryChange = onSearchQueryChange,
+                    onSubmit = onSearchSubmit,
+                    onClose = onCloseSearch,
                 )
-                IconButton(
-                    onClick = onCreate,
-                    modifier = Modifier.testTag("posts_create"),
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Add,
-                        contentDescription = stringResource(R.string.posts_create),
+                    Text(
+                        text = stringResource(R.string.nav_posts),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
                     )
-                }
-                IconButton(
-                    onClick = onOpenBookmarks,
-                    modifier = Modifier.testTag("posts_bookmarks"),
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Bookmarks,
-                        contentDescription = stringResource(R.string.bookmarks_open),
-                    )
-                }
-                BadgedBox(
-                    badge = {
-                        if (state.filters.activeCount > 0) {
-                            Badge { Text(state.filters.activeCount.toString()) }
-                        }
-                    },
-                ) {
                     IconButton(
-                        onClick = onOpenFilters,
-                        modifier = Modifier.testTag("posts_filters"),
+                        onClick = onOpenSearch,
+                        modifier = Modifier.testTag("posts_search"),
                     ) {
                         Icon(
-                            imageVector = Icons.Outlined.FilterList,
-                            contentDescription = stringResource(R.string.posts_filter),
+                            imageVector = Icons.Outlined.Search,
+                            contentDescription = stringResource(R.string.posts_search),
+                        )
+                    }
+                    IconButton(
+                        onClick = onOpenNearMe,
+                        modifier = Modifier.testTag("posts_near_me"),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.NearMe,
+                            contentDescription = stringResource(R.string.posts_near_me),
+                            tint = if (nearMeActive) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                LocalContentColor.current
+                            },
+                        )
+                    }
+                    IconButton(
+                        onClick = onOpenBookmarks,
+                        modifier = Modifier.testTag("posts_bookmarks"),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Bookmarks,
+                            contentDescription = stringResource(R.string.bookmarks_open),
+                        )
+                    }
+                    IconButton(
+                        onClick = onCreate,
+                        modifier = Modifier.testTag("posts_create"),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = stringResource(R.string.posts_create),
                         )
                     }
                 }
@@ -482,6 +533,70 @@ internal fun PostsScreenContent(
                 }
             }
         }
+    }
+}
+
+/** Expanding search field that replaces the title bar; applies the feed's `q` filter. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PostsSearchBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val focusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(start = 4.dp, end = 12.dp, top = 8.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(
+            onClick = {
+                keyboard?.hide()
+                onClose()
+            },
+            modifier = Modifier.testTag("posts_search_close"),
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = stringResource(R.string.posts_search_close),
+            )
+        }
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            singleLine = true,
+            placeholder = { Text(stringResource(R.string.posts_filter_search_hint)) },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(
+                        onClick = { onQueryChange("") },
+                        modifier = Modifier.testTag("posts_search_clear"),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.posts_search_clear),
+                        )
+                    }
+                }
+            },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(
+                onSearch = {
+                    keyboard?.hide()
+                    onSubmit()
+                },
+            ),
+            modifier = Modifier
+                .weight(1f)
+                .focusRequester(focusRequester)
+                .testTag("posts_search_field"),
+        )
     }
 }
 
