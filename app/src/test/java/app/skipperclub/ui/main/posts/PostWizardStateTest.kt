@@ -139,6 +139,23 @@ class PostWizardStateTest {
         assertNull(location.area)
     }
 
+    @Test
+    fun mapAdjustmentReplacesPointAndKeepsSelectedLocationName() {
+        val state = wizard()
+        state.updateText("Anchored here")
+        state.selectLocation(geocoded("Gdynia", 54.5189, 18.5305))
+
+        state.updateLocationCoordinates(PostCoordinates(lat = 54.5132, lng = 18.5498))
+
+        assertEquals("Gdynia", state.locationName)
+        assertEquals("Gdynia", state.locationQuery)
+        val location = state.buildRequest().location!!
+        assertEquals("Gdynia", location.name)
+        val point = location.point!!
+        assertEquals(54.5132, point.lat, 0.0)
+        assertEquals(18.5498, point.lng, 0.0)
+    }
+
     // --- Route section ---
 
     @Test

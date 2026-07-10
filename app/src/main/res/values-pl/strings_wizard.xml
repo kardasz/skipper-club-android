@@ -33,6 +33,13 @@
 
     <!-- Arkusze -->
     <string name="wizard_sheet_done">Gotowe</string>
+    <string name="wizard_location_map">Doprecyzuj punkt na mapie</string>
+    <string name="wizard_location_map_title">Dokładna lokalizacja</string>
+    <string name="wizard_location_map_hint">Przesuń mapę, aby precyzyjnie ustawić punkt.</string>
+    <string name="wizard_location_map_confirm">Użyj tego punktu</string>
+    <string name="wizard_location_map_cancel">Zamknij mapę</string>
+    <string name="wizard_location_map_content_description">Mapa wyboru lokalizacji posta</string>
+    <string name="wizard_location_map_pin">Wybrana lokalizacja posta</string>
 
     <!-- Edycja posta z ostrzeżeniem (ostrzeżenia tworzy się w osobnym kreatorze na mapie) -->
     <string name="wizard_alert_preserved">Szczegóły ostrzeżenia pozostaną bez zmian.</string>

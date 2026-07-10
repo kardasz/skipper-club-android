@@ -316,6 +316,31 @@ class PostsScreenTest {
     }
 
     @Test
+    fun selectedPostLocationOffersPreciseMapPicker() {
+        val scope = CoroutineScope(Dispatchers.Main + Job())
+        val wizardState = PostWizardState(
+            scope = scope,
+            accessToken = { null },
+        )
+        wizardState.selectLocation(
+            GeocodedLocation(
+                name = "Gdynia",
+                formattedAddress = "Gdynia, Polska",
+                coordinates = PostCoordinates(54.52, 18.55),
+            ),
+        )
+        compose.setContent {
+            SkipperClubTheme {
+                PostWizard(state = wizardState, onClose = {})
+            }
+        }
+
+        compose.onNodeWithTag("wizard_location_map").assertExists().performClick()
+        compose.onNodeWithTag("post_location_map_picker").assertExists()
+        compose.onNodeWithTag("post_location_map_confirm").assertExists()
+    }
+
+    @Test
     fun editingAlertPostShowsBadgeAndBlocksRoute() {
         val scope = CoroutineScope(Dispatchers.Main + Job())
         val alertPost = previewPosts.first { it.content.alert != null }

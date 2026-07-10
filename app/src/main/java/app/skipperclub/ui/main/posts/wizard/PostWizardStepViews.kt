@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.BrokenImage
+import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -81,6 +82,7 @@ import kotlinx.coroutines.launch
 /** Visibility of the composer's bottom sheets + transient media-picker feedback. */
 internal class WizardSheets {
     var location by mutableStateOf(false)
+    var locationMap by mutableStateOf(false)
     var route by mutableStateOf(false)
     var tags by mutableStateOf(false)
     var mediaOversizeRejected by mutableStateOf(false)
@@ -108,8 +110,16 @@ internal fun WizardComposer(
             }
         }
         WizardTextField(state)
-        if (state.locationName != null || PostWizardError.AlertLocationRequired in state.visibleErrors) {
-            WizardLocationChip(state = state, onEdit = { sheets.location = true })
+        if (
+            state.locationName != null ||
+            state.coordinates != null ||
+            PostWizardError.AlertLocationRequired in state.visibleErrors
+        ) {
+            WizardLocationChip(
+                state = state,
+                onEdit = { sheets.location = true },
+                onOpenMap = { sheets.locationMap = true },
+            )
         }
         if (state.media.isNotEmpty() || sheets.mediaOversizeRejected) {
             WizardMediaStrip(state = state, sheets = sheets)
@@ -163,6 +173,7 @@ private fun WizardTextField(state: PostWizardState) {
 private fun WizardLocationChip(
     state: PostWizardState,
     onEdit: () -> Unit,
+    onOpenMap: () -> Unit,
 ) {
     Column {
         state.locationName?.let { name ->
@@ -179,13 +190,32 @@ private fun WizardLocationChip(
                     )
                 },
                 trailingIcon = {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = stringResource(R.string.wizard_location_clear),
-                        modifier = Modifier
-                            .size(16.dp)
-                            .clickable { state.clearLocation() },
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (state.coordinates != null) {
+                            IconButton(
+                                onClick = onOpenMap,
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .testTag("wizard_location_map"),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Map,
+                                    contentDescription = stringResource(R.string.wizard_location_map),
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = state::clearLocation,
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.wizard_location_clear),
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
                 },
                 modifier = Modifier.testTag("wizard_location_chip"),
             )
@@ -497,7 +527,7 @@ internal fun WizardActionBar(
                     )
                 },
                 onClick = { sheets.location = true },
-                active = state.locationName != null,
+                active = state.locationName != null || state.coordinates != null,
                 testTag = "wizard_action_location",
             )
             WizardActionIcon(
@@ -583,7 +613,24 @@ internal fun WizardSheetHost(
 ) {
     if (sheets.location) {
         WizardSheet(onDismiss = { sheets.location = false }) {
-            WizardLocationSheetContent(state = state, onDone = { sheets.location = false })
+            WizardLocationSheetContent(
+                state = state,
+                onOpenMap = { sheets.locationMap = true },
+                onDone = { sheets.location = false },
+            )
+        }
+    }
+    if (sheets.locationMap) {
+        state.coordinates?.let { coordinates ->
+            PostLocationMapPicker(
+                initialCoordinates = coordinates,
+                locationName = state.locationName,
+                onConfirm = { refinedCoordinates ->
+                    state.updateLocationCoordinates(refinedCoordinates)
+                    sheets.locationMap = false
+                },
+                onDismiss = { sheets.locationMap = false },
+            )
         }
     }
     if (sheets.route) {
@@ -623,6 +670,7 @@ private fun WizardSheet(
 @Composable
 private fun WizardLocationSheetContent(
     state: PostWizardState,
+    onOpenMap: () -> Unit,
     onDone: () -> Unit,
 ) {
     Text(
@@ -636,17 +684,30 @@ private fun WizardLocationSheetContent(
         placeholder = { Text(stringResource(R.string.wizard_location_hint)) },
         singleLine = true,
         trailingIcon = {
-            when {
-                state.isSearchingLocation -> CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp,
-                )
-
-                state.locationQuery.isNotEmpty() -> IconButton(onClick = state::clearLocation) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = stringResource(R.string.wizard_location_clear),
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (state.isSearchingLocation) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
                     )
+                } else if (state.coordinates != null) {
+                    IconButton(
+                        onClick = onOpenMap,
+                        modifier = Modifier.testTag("wizard_location_sheet_map"),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Map,
+                            contentDescription = stringResource(R.string.wizard_location_map),
+                        )
+                    }
+                }
+                if (state.locationQuery.isNotEmpty() || state.coordinates != null) {
+                    IconButton(onClick = state::clearLocation) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.wizard_location_clear),
+                        )
+                    }
                 }
             }
         },
@@ -673,6 +734,19 @@ private fun WizardLocationSheetContent(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+            },
+            trailingContent = {
+                IconButton(
+                    onClick = {
+                        state.selectLocation(result)
+                        onOpenMap()
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Map,
+                        contentDescription = stringResource(R.string.wizard_location_map),
+                    )
+                }
             },
             modifier = Modifier
                 .fillMaxWidth()

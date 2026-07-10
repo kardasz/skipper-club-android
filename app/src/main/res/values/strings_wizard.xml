@@ -29,6 +29,13 @@
 
     <!-- Sheets -->
     <string name="wizard_sheet_done">Done</string>
+    <string name="wizard_location_map">Adjust point on map</string>
+    <string name="wizard_location_map_title">Precise location</string>
+    <string name="wizard_location_map_hint">Move the map to position the point precisely.</string>
+    <string name="wizard_location_map_confirm">Use this point</string>
+    <string name="wizard_location_map_cancel">Close map</string>
+    <string name="wizard_location_map_content_description">Map for selecting the post location</string>
+    <string name="wizard_location_map_pin">Selected post location</string>
 
     <!-- Editing an alert post (alerts are created in the map's dedicated flow) -->
     <string name="wizard_alert_preserved">The alert details will stay unchanged.</string>

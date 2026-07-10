@@ -223,6 +223,12 @@ class PostWizardState(
         visibleErrors = visibleErrors - PostWizardError.AlertLocationRequired
     }
 
+    /** Refines the chosen place without changing its human-readable label. */
+    fun updateLocationCoordinates(value: PostCoordinates) {
+        coordinates = value
+        visibleErrors = visibleErrors - PostWizardError.AlertLocationRequired
+    }
+
     fun clearLocation() {
         locationName = null
         coordinates = null
