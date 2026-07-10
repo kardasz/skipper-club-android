@@ -14,4 +14,11 @@
     <string name="alert_post_error_auth">Your session has expired. Please sign in again to add an alert.</string>
     <string name="alert_post_error_rate_limited">Too many requests. Please wait a moment and try again.</string>
     <string name="alert_post_error_generic">Couldn\'t add the alert. Please try again.</string>
+
+    <!-- Shared controls displayed on every map. -->
+    <string name="map_navigation_zoom_in">Zoom in</string>
+    <string name="map_navigation_zoom_out">Zoom out</string>
+    <string name="map_navigation_my_location">Go to my location</string>
+    <string name="map_navigation_permission_denied">Location permission is required to show your position.</string>
+    <string name="map_navigation_location_unavailable">Couldn\'t determine your location. Check GPS and try again.</string>
 </resources>

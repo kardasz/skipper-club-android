@@ -14,4 +14,11 @@
     <string name="alert_post_error_auth">Twoja sesja wygasła. Zaloguj się ponownie, aby dodać ostrzeżenie.</string>
     <string name="alert_post_error_rate_limited">Zbyt wiele żądań. Odczekaj chwilę i spróbuj ponownie.</string>
     <string name="alert_post_error_generic">Nie udało się dodać ostrzeżenia. Spróbuj ponownie.</string>
+
+    <!-- Wspólne kontrolki wyświetlane na każdej mapie. -->
+    <string name="map_navigation_zoom_in">Przybliż mapę</string>
+    <string name="map_navigation_zoom_out">Oddal mapę</string>
+    <string name="map_navigation_my_location">Przejdź do mojej lokalizacji</string>
+    <string name="map_navigation_permission_denied">Aby pokazać Twoją pozycję, potrzebny jest dostęp do lokalizacji.</string>
+    <string name="map_navigation_location_unavailable">Nie udało się ustalić Twojej lokalizacji. Sprawdź GPS i spróbuj ponownie.</string>
 </resources>

@@ -337,6 +337,9 @@ class PostsScreenTest {
 
         compose.onNodeWithTag("wizard_location_map").assertExists().performClick()
         compose.onNodeWithTag("post_location_map_picker").assertExists()
+        compose.onNodeWithTag("map_zoom_in").assertExists()
+        compose.onNodeWithTag("map_zoom_out").assertExists()
+        compose.onNodeWithTag("map_my_location").assertExists()
         compose.onNodeWithTag("post_location_map_confirm").assertExists()
     }
 

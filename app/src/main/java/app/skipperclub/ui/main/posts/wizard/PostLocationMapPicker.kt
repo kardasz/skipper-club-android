@@ -22,10 +22,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +44,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.skipperclub.R
 import app.skipperclub.data.PostCoordinates
+import app.skipperclub.ui.main.MapNavigationControls
 import app.skipperclub.ui.theme.SkipperClubTheme
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
@@ -48,6 +52,7 @@ import com.google.maps.android.compose.ComposeMapColorScheme
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.rememberCameraPositionState
+import kotlinx.coroutines.launch
 
 private const val LocationPickerZoom = 16f
 
@@ -94,9 +99,17 @@ private fun PostLocationMapPickerContent(
             compassEnabled = true,
             mapToolbarEnabled = false,
             myLocationButtonEnabled = false,
+            rotationGesturesEnabled = true,
+            scrollGesturesEnabled = true,
+            tiltGesturesEnabled = true,
+            zoomGesturesEnabled = true,
             zoomControlsEnabled = false,
         )
     }
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val permissionErrorMessage = stringResource(R.string.map_navigation_permission_denied)
+    val locationErrorMessage = stringResource(R.string.map_navigation_location_unavailable)
 
     Surface(
         modifier = Modifier
@@ -122,6 +135,28 @@ private fun PostLocationMapPickerContent(
             }
 
             PostLocationMapTarget(modifier = Modifier.fillMaxSize())
+
+            MapNavigationControls(
+                cameraPositionState = cameraPositionState,
+                onPermissionDenied = {
+                    scope.launch { snackbarHostState.showSnackbar(permissionErrorMessage) }
+                },
+                onLocationUnavailable = {
+                    scope.launch { snackbarHostState.showSnackbar(locationErrorMessage) }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .safeDrawingPadding()
+                    .padding(end = 16.dp, bottom = 80.dp),
+            )
+
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .safeDrawingPadding()
+                    .padding(horizontal = 16.dp, vertical = 80.dp),
+            )
 
             Column(
                 modifier = Modifier

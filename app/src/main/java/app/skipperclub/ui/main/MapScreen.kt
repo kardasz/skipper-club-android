@@ -169,6 +169,8 @@ private fun MapScreenContent(
 
     val permissionErrorMessage = stringResource(R.string.map_check_in_error_permission)
     val locationErrorMessage = stringResource(R.string.map_check_in_error_location)
+    val navigationPermissionErrorMessage = stringResource(R.string.map_navigation_permission_denied)
+    val navigationLocationErrorMessage = stringResource(R.string.map_navigation_location_unavailable)
     val networkErrorMessage = stringResource(R.string.map_check_in_error_network)
     val authErrorMessage = stringResource(R.string.map_check_in_error_auth)
     val genericErrorMessage = stringResource(R.string.map_check_in_error_generic)
@@ -201,6 +203,10 @@ private fun MapScreenContent(
             compassEnabled = true,
             mapToolbarEnabled = false,
             myLocationButtonEnabled = false,
+            rotationGesturesEnabled = true,
+            scrollGesturesEnabled = true,
+            tiltGesturesEnabled = true,
+            zoomGesturesEnabled = true,
             zoomControlsEnabled = false,
         )
     }
@@ -456,6 +462,26 @@ private fun MapScreenContent(
                 }
             }
         }
+
+        MapNavigationControls(
+            cameraPositionState = cameraPositionState,
+            onPermissionDenied = {
+                notificationHostState.show(
+                    navigationPermissionErrorMessage,
+                    InAppNotificationType.Error,
+                )
+            },
+            onLocationUnavailable = {
+                notificationHostState.show(
+                    navigationLocationErrorMessage,
+                    InAppNotificationType.Error,
+                )
+            },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 20.dp)
+                .padding(bottom = BottomBarMapPadding + 100.dp),
+        )
 
         if (checkInState is CheckInUiState.Idle && alertState is AlertUiState.Idle) {
             MapAddMenu(
