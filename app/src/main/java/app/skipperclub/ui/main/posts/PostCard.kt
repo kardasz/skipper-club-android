@@ -63,6 +63,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -78,6 +81,7 @@ import app.skipperclub.data.PostUser
 import app.skipperclub.data.ReactionType
 import app.skipperclub.data.ValidityVoteType
 import app.skipperclub.ui.main.alert.labelRes
+import app.skipperclub.ui.theme.extended
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
@@ -516,7 +520,7 @@ private fun AlertValidityVote(
                 icon = Icons.Filled.CheckCircle,
                 selected = votes.userVote == ValidityVoteType.Confirm,
                 enabled = canVote,
-                selectedColor = MaterialTheme.colorScheme.primary,
+                selectedColor = MaterialTheme.extended.success,
                 onClick = { actions.onCastVote(post, ValidityVoteType.Confirm) },
                 modifier = Modifier
                     .weight(1f)
@@ -550,17 +554,23 @@ private fun VoteButton(
     val border = if (selected) selectedColor else MaterialTheme.colorScheme.outline
     val content = if (selected) selectedColor else MaterialTheme.colorScheme.onSurface
     Surface(
-        onClick = onClick,
-        enabled = enabled,
         shape = RoundedCornerShape(12.dp),
         color = if (selected) selectedColor.copy(alpha = 0.1f) else Color.Transparent,
         contentColor = content,
         border = BorderStroke(if (selected) 1.4.dp else 1.dp, border),
-        modifier = modifier,
+        modifier = modifier
+            .clickable(
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .semantics { this.selected = selected },
     ) {
         Row(
-            modifier = Modifier.padding(vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(18.dp))

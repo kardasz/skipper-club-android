@@ -3,6 +3,8 @@ package app.skipperclub.ui.main.posts
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -198,6 +200,23 @@ class PostsScreenTest {
         compose.onNodeWithTag("alert_more_toggle").performClick()
         compose.onNodeWithTag("alert_vote_confirm").assertExists()
         compose.onNodeWithText(text(R.string.post_alert_reported)).assertExists()
+    }
+
+    @Test
+    fun completedValidityVoteKeepsItsSelectedStateWhileVotingIsDisabled() {
+        compose.setContent {
+            SkipperClubTheme {
+                PostCard(post = previewAlertPost, nowMillis = nowMillis, actions = actions())
+            }
+        }
+
+        compose.onNodeWithTag("alert_more_toggle").performClick()
+        compose.onNodeWithTag("alert_vote_confirm")
+            .assertIsNotEnabled()
+            .assertIsSelected()
+        compose.onNodeWithTag("alert_vote_invalid")
+            .assertIsNotEnabled()
+            .assertIsNotSelected()
     }
 
     @Test

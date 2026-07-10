@@ -26,7 +26,7 @@
     <string name="posts_near_me">Blisko mnie</string>
 
     <!-- Alert card: collapsed by default; details reveal behind "more". -->
-    <string name="post_show_more">…więcej</string>
+    <string name="post_show_more">Więcej</string>
     <string name="post_show_less">Mniej</string>
     <string name="post_alert_reported">Zgłoszono</string>
     <string name="post_alert_expires_label">Wygasa</string>
