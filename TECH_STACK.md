@@ -118,7 +118,7 @@ The app is currently a **single `:app` module**. The target structure mirrors th
   :core:ui                 ← shared Composables that depend on data types (avatars, error banners)
   :core:domain             ← cross-feature use cases
   :core:data               ← repository implementations
-  :core:network            ← OkHttp/Retrofit client, interceptors, Turnstile, Socket.IO
+  :core:network            ← OkHttp/Retrofit client, interceptors, Turnstile, WebSocket
   :core:datastore          ← DataStore wiring + Tink-backed encryption
   :core:model              ← shared data classes (network DTOs live in :core:network)
   :core:testing            ← test fakes, fixtures, Compose test rules
@@ -126,7 +126,7 @@ The app is currently a **single `:app` module**. The target structure mirrors th
   :feature:auth            ← login, OTP, password, invitation registration (existing screens)
   :feature:cruises         ← cruise list, detail, create, manage participants
   :feature:posts           ← social feed, post detail, composer
-  :feature:messages        ← chat list, conversation, Socket.IO presence
+  :feature:messages        ← chat list, conversation, WebSocket presence
   :feature:notifications   ← in-app center + push handling
   :feature:friends
   :feature:reviews
@@ -164,9 +164,11 @@ The raw-OkHttp approach is fine for four auth endpoints. Migrate to Retrofit whe
 
 ### WebSocket / real-time
 
-The server exposes Socket.IO namespaces (`/chat`, `/notifications`) per [`docs/api/asyncapi.yaml`](./docs/api/asyncapi.yaml). Use:
+The server exposes a single plain RFC 6455 WebSocket endpoint (`/v1/ws/chat`, no Socket.IO) per [`docs/api/asyncapi.yaml`](./docs/api/asyncapi.yaml) and [`docs/api/messages/websocket.md`](./docs/api/messages/websocket.md). Chat events and `notification:new` share one connection — there is no separate notifications namespace. Use:
 
-- `io.socket:socket.io-client` (official Java client) wrapped behind a `RealtimeClient` interface in `:core:network`.
+- **OkHttp's `WebSocket`** (`OkHttpClient.newWebSocket`, already on the classpath — no extra dependency) wrapped behind the `ChatRealtimeClient` interface in `data/ChatRealtimeClient.kt`; move it into `:core:network` when that module lands.
+- Frames are a JSON envelope (`{"event":"...","data":{...}}`); auth is `Authorization: Bearer <token>` on the upgrade request.
+- The client owns reconnection: bounded exponential backoff with jitter (capped at 30s), re-fetching a fresh token via `SessionStore.validSession()` before every (re)connect attempt, and re-sending `chat:join` for tracked rooms after each reconnect. See [`docs/api/messages/socketio-to-websocket-migration.md`](./docs/api/messages/socketio-to-websocket-migration.md) for the full rollout checklist.
 - Lifecycle binding: connect on first subscriber, disconnect on idle, scope to the user session in `SessionStore`.
 - Expose events as `Flow<…>` so ViewModels can `collect` without callback plumbing.
 

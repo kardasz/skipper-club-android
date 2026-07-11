@@ -10,7 +10,7 @@ If you are operating as Claude Code, prefer the more detailed [`CLAUDE.md`](./CL
 
 - **What:** native Android client for SkipperClub — a sailing social network + crew-recruitment platform.
 - **Status:** early development. Only the authentication surface is implemented (login, OTP, password sign-in, invitation-based registration). The rest of the product surface is specified in [`docs/prd/`](./docs/prd/) but not yet built.
-- **API:** REST (OpenAPI 3.1, [`docs/api/openapi.yaml`](./docs/api/openapi.yaml)) at `https://api.skipperclub.app/v1` + Socket.IO namespaces for chat / notifications (AsyncAPI 3.0, [`docs/api/asyncapi.yaml`](./docs/api/asyncapi.yaml)).
+- **API:** REST (OpenAPI 3.1, [`docs/api/openapi.yaml`](./docs/api/openapi.yaml)) at `https://api.skipperclub.app/v1` + a plain WebSocket endpoint for chat / notifications (AsyncAPI 3.0, [`docs/api/asyncapi.yaml`](./docs/api/asyncapi.yaml)).
 - **Languages shipped:** English (default), Polish (`values-pl/`).
 
 For the full picture read [`TECH_STACK.md`](./TECH_STACK.md).
@@ -33,7 +33,7 @@ All versions are declared in `gradle/libs.versions.toml`. Do not hardcode versio
 | Repos allowed     | `google()` + `mavenCentral()` only (`FAIL_ON_PROJECT_REPOS`)                        |
 | Annotation procs  | **KSP** only — no kapt                                                              |
 
-**Target stack (not yet wired up):** Hilt for DI, Jetpack Navigation 3 for routing, DataStore + Google Tink for secure persistence, Coil 3 for image loading, Roborazzi for screenshot tests, `io.socket:socket.io-client` for real-time. Choose these names when you introduce the corresponding capability. See [`TECH_STACK.md`](./TECH_STACK.md) §3–§9 for the rationale.
+**Target stack (not yet wired up):** Hilt for DI, Jetpack Navigation 3 for routing, DataStore + Google Tink for secure persistence, Coil 3 for image loading, Roborazzi for screenshot tests. Real-time uses OkHttp's `WebSocket` against the plain `/v1/ws/chat` endpoint (see `data/ChatRealtimeClient.kt`). Choose these names when you introduce the corresponding capability. See [`TECH_STACK.md`](./TECH_STACK.md) §3–§9 for the rationale.
 
 ---
 

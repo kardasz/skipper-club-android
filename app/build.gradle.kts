@@ -140,10 +140,6 @@ dependencies {
     implementation(libs.maps.compose)
     implementation(libs.play.services.location)
     implementation(libs.places)
-    implementation(libs.socketio.client) {
-        // Android ships org.json in the platform; the transitive JVM copy only conflicts.
-        exclude(group = "org.json", module = "json")
-    }
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(platform(libs.androidx.compose.bom))

@@ -9,7 +9,7 @@ For API work, use [`docs/api/openapi.yaml`](./docs/api/openapi.yaml) as the cont
 
 ## What this app is
 
-Native Android client for **SkipperClub** — a sailing-focused social network + crew-recruitment platform. The backend exposes a REST API (OpenAPI 3.1 at [`docs/api/openapi.yaml`](./docs/api/openapi.yaml)) and Socket.IO namespaces for chat + notifications (AsyncAPI 3.0 at [`docs/api/asyncapi.yaml`](./docs/api/asyncapi.yaml)).
+Native Android client for **SkipperClub** — a sailing-focused social network + crew-recruitment platform. The backend exposes a REST API (OpenAPI 3.1 at [`docs/api/openapi.yaml`](./docs/api/openapi.yaml)) and a plain RFC 6455 WebSocket endpoint for chat + notifications (AsyncAPI 3.0 at [`docs/api/asyncapi.yaml`](./docs/api/asyncapi.yaml); no Socket.IO — see [`docs/api/messages/socketio-to-websocket-migration.md`](./docs/api/messages/socketio-to-websocket-migration.md)).
 
 Today the app implements the **authentication surface only**:
 
@@ -36,7 +36,7 @@ Use these versions when adding dependencies. **All versions live in `gradle/libs
 - Edge-to-edge is on (`enableEdgeToEdge()` in `MainActivity`)
 - Dynamic color is **off by default** — brand palette wins
 
-When you reach for a library that isn't already in `libs.versions.toml`, check [`TECH_STACK.md`](./TECH_STACK.md) first — the **target** stack (Hilt, Retrofit, Navigation 3, Coil 3, DataStore + Tink, Roborazzi, Socket.IO client) is named there. Match those choices unless there's a reason not to.
+When you reach for a library that isn't already in `libs.versions.toml`, check [`TECH_STACK.md`](./TECH_STACK.md) first — the **target** stack (Hilt, Retrofit, Navigation 3, Coil 3, DataStore + Tink, Roborazzi, OkHttp `WebSocket` for real-time) is named there. Match those choices unless there's a reason not to.
 
 ---
 

@@ -57,7 +57,7 @@ import app.skipperclub.data.ChatRealtimeEvent
 import app.skipperclub.data.ChatType
 import app.skipperclub.data.ChatsError
 import app.skipperclub.data.SessionStore
-import app.skipperclub.data.SocketIoChatRealtimeClient
+import app.skipperclub.data.WebSocketChatRealtimeClient
 import app.skipperclub.ui.notification.InAppNotificationHost
 import app.skipperclub.ui.notification.InAppNotificationType
 import app.skipperclub.ui.notification.rememberInAppNotificationHostState
@@ -123,7 +123,7 @@ fun ChatConversationScreen(
     }
     // Live messages arrive over the shared socket (connected by MessagesScreen);
     // this screen only joins/leaves its chat room and re-joins after reconnects.
-    val realtime = remember { SocketIoChatRealtimeClient }
+    val realtime = remember { WebSocketChatRealtimeClient }
     val realtimeConnected by realtime.isConnected.collectAsState()
     DisposableEffect(realtime, chatId) {
         realtime.joinChat(chatId)

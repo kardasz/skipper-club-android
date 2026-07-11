@@ -19,7 +19,6 @@ media3 = "1.10.1"
 mapsCompose = "8.3.0"
 playServicesLocation = "21.3.0"
 places = "5.0.0"
-socketio = "2.1.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -53,7 +52,6 @@ androidx-media3-ui = { group = "androidx.media3", name = "media3-ui", version.re
 maps-compose = { group = "com.google.maps.android", name = "maps-compose", version.ref = "mapsCompose" }
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 places = { group = "com.google.android.libraries.places", name = "places", version.ref = "places" }
-socketio-client = { group = "io.socket", name = "socket.io-client", version.ref = "socketio" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

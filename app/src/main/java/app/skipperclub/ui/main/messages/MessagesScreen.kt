@@ -73,7 +73,7 @@ import app.skipperclub.data.ChatType
 import app.skipperclub.data.ChatUser
 import app.skipperclub.data.ChatsError
 import app.skipperclub.data.SessionStore
-import app.skipperclub.data.SocketIoChatRealtimeClient
+import app.skipperclub.data.WebSocketChatRealtimeClient
 import app.skipperclub.ui.notification.InAppNotificationHost
 import app.skipperclub.ui.notification.InAppNotificationType
 import app.skipperclub.ui.notification.rememberInAppNotificationHostState
@@ -139,10 +139,10 @@ fun MessagesScreen(modifier: Modifier = Modifier) {
 
     // The socket lives while the Messages tab is visible; the conversation
     // dialog below only joins/leaves its chat room on this shared connection.
-    val realtime = remember { SocketIoChatRealtimeClient }
+    val realtime = remember { WebSocketChatRealtimeClient }
     val currentOpenChatId by rememberUpdatedState(openChatId)
     LaunchedEffect(realtime) {
-        SessionStore.validSession()?.accessToken?.let { realtime.connect(it) }
+        realtime.connect { SessionStore.validSession()?.accessToken }
     }
     DisposableEffect(realtime) {
         onDispose { realtime.disconnect() }

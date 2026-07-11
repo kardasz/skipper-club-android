@@ -33,9 +33,9 @@ sealed interface ChatConversationEvent {
 }
 
 /**
- * State holder for a single conversation: paginated history, sending and the
- * REST poll that stands in for the WebSocket channel until the Socket.IO client
- * lands (TECH_STACK.md §10). Newest messages are fetched descending and kept
+ * State holder for a single conversation: paginated history, sending, and
+ * [refreshNewMessages] as the REST fallback while the WebSocket realtime
+ * channel is disconnected. Newest messages are fetched descending and kept
  * ascending in [ChatConversationUiState.messages].
  */
 class ChatConversationController(
