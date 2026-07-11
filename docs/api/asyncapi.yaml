@@ -4,9 +4,48 @@ info:
   version: 1.0.0
   description: |
     Real-time WebSocket API for the Skipper Club sailing social platform.
-    Provides live chat messaging, typing indicators, and presence tracking
-    for all types of conversations including private chats, group chats, 
-    and cruise-related communications.
+    Provides live chat messaging, typing indicators, presence tracking and
+    real-time notifications for all types of conversations including private
+    chats, group chats, and cruise-related communications.
+
+    The transport is a plain RFC 6455 WebSocket (not Socket.IO). Every wire
+    message is a JSON text frame shaped as
+    {"event":"<message name>","data":<documented message payload>}.
+    Component payload schemas below describe the `data` member of that envelope.
+
+    ## Connection lifecycle
+
+    - One connection serves chat and notifications; every authenticated
+      connection automatically joins its personal room (user:{userId}).
+    - The server sends a protocol-level Ping every 30 seconds and closes
+      connections that do not answer with a Pong within 10 seconds. Standard
+      WebSocket clients answer pings automatically; no application code is
+      needed.
+    - Presence is connection-scoped: a user becomes online when their first
+      connection is established and offline when their last connection closes.
+      presence:update is delivered only to users sharing at least one chat
+      with the affected user.
+    - The server does not reconnect for you: clients must implement bounded
+      exponential backoff with jitter and re-send chat:join for the chats they
+      are viewing after every reconnect.
+
+    ## Close codes
+
+    - 1008 (policy violation, reason "unauthorized") — the token presented at
+      the upgrade was missing or invalid. Obtain a fresh token before
+      reconnecting.
+    - 4401 (application-defined, reason "token expired") — the access token
+      that authenticated this connection reached its expiry mid-connection.
+      Refresh the token and reconnect.
+    - 1009 (message too big) — an inbound frame exceeded 32 KiB.
+
+    ## Rate limiting
+
+    - The HTTP upgrade counts against the same global per-IP limit as the
+      REST API (429 with problem+json when exceeded).
+    - Inbound frames are limited per connection to 10 events/second with a
+      burst of 20. Frames over the limit are dropped; each violation streak
+      produces one `error` event with the message "Rate limit exceeded".
   contact:
     name: Skipper Club API Team
     email: api@skipperclub.com
@@ -15,224 +54,217 @@ info:
     url: https://opensource.org/licenses/MIT
 
 servers:
-  chatDevelopment:
-    host: localhost:3000
-    protocol: socketio
-    description: Development server for chat
-    pathname: /chat
+  development:
+    host: localhost:8080
+    protocol: ws
+    description: Development WebSocket server
+    pathname: /v1/ws/chat
 
-  chatStaging:
+  production:
     host: api.skipperclub.app
-    protocol: socketio
-    description: Staging server for chat
-    pathname: /chat
-
-  notificationsDevelopment:
-    host: localhost:3000
-    protocol: socketio
-    description: Development server for notifications
-    pathname: /notifications
-
-  notificationsStaging:
-    host: api.skipperclub.app
-    protocol: socketio
-    description: Staging server for notifications
-    pathname: /notifications
+    protocol: wss
+    description: Production WebSocket server (TLS only)
+    pathname: /v1/ws/chat
 
 channels:
   notifications:
-    address: /notifications
-    description: WebSocket namespace for real-time notifications. Users automatically join their personal room on connection.
+    address: /v1/ws/chat
+    description: Real-time notifications share the authenticated WebSocket connection. Users automatically join their personal room on connection.
     messages:
       notificationNew:
-        $ref: '#/components/messages/NotificationNew'
+        $ref: "#/components/messages/NotificationNew"
 
   chat:
-    address: /chat
+    address: /v1/ws/chat
     description: |
-      Main WebSocket namespace for chat operations. Users automatically join their personal room 
+      WebSocket channel for chat operations. Users automatically join their personal room
       (user:{userId}) on connection to receive message notifications from all their chats.
     messages:
       chatJoin:
-        $ref: '#/components/messages/ChatJoin'
+        $ref: "#/components/messages/ChatJoin"
       chatLeave:
-        $ref: '#/components/messages/ChatLeave'
+        $ref: "#/components/messages/ChatLeave"
       messageSend:
-        $ref: '#/components/messages/MessageSend'
+        $ref: "#/components/messages/MessageSend"
       messageRead:
-        $ref: '#/components/messages/MessageRead'
+        $ref: "#/components/messages/MessageRead"
       chatTyping:
-        $ref: '#/components/messages/ChatTyping'
+        $ref: "#/components/messages/ChatTyping"
       messageNew:
-        $ref: '#/components/messages/MessageNew'
+        $ref: "#/components/messages/MessageNew"
       messageReceived:
-        $ref: '#/components/messages/MessageReceived'
+        $ref: "#/components/messages/MessageReceived"
       messageSent:
-        $ref: '#/components/messages/MessageSent'
+        $ref: "#/components/messages/MessageSent"
       messageReadReceipt:
-        $ref: '#/components/messages/MessageReadReceipt'
+        $ref: "#/components/messages/MessageReadReceipt"
       messageReadConfirmed:
-        $ref: '#/components/messages/MessageReadConfirmed'
+        $ref: "#/components/messages/MessageReadConfirmed"
       chatTypingIndicator:
-        $ref: '#/components/messages/ChatTypingIndicator'
+        $ref: "#/components/messages/ChatTypingIndicator"
       chatTypingSent:
-        $ref: '#/components/messages/ChatTypingSent'
+        $ref: "#/components/messages/ChatTypingSent"
       presenceUpdate:
-        $ref: '#/components/messages/PresenceUpdate'
+        $ref: "#/components/messages/PresenceUpdate"
       chatJoined:
-        $ref: '#/components/messages/ChatJoined'
+        $ref: "#/components/messages/ChatJoined"
       chatLeft:
-        $ref: '#/components/messages/ChatLeft'
+        $ref: "#/components/messages/ChatLeft"
       error:
-        $ref: '#/components/messages/Error'
+        $ref: "#/components/messages/Error"
 
 operations:
   receiveNotification:
     action: receive
     channel:
-      $ref: '#/channels/notifications'
+      $ref: "#/channels/notifications"
     summary: Receive new notifications
     description: |
-      Receive real-time notifications when events occur. Users automatically join their personal 
-      notification room (user:{userId}) upon WebSocket connection. The server emits notification:new 
+      Receive real-time notifications when events occur. Users automatically join their personal
+      notification room (user:{userId}) upon WebSocket connection. The server emits notification:new
       events to the user's room when notifications are created.
     messages:
-      - $ref: '#/channels/notifications/messages/notificationNew'
+      - $ref: "#/channels/notifications/messages/notificationNew"
 
   joinChat:
     action: send
     channel:
-      $ref: '#/channels/chat'
+      $ref: "#/channels/chat"
     summary: Join a chat room
     description: Subscribe to real-time updates for a specific chat
     messages:
-      - $ref: '#/channels/chat/messages/chatJoin'
+      - $ref: "#/channels/chat/messages/chatJoin"
     reply:
       channel:
-        $ref: '#/channels/chat'
+        $ref: "#/channels/chat"
       messages:
-        - $ref: '#/channels/chat/messages/chatJoined'
-        - $ref: '#/channels/chat/messages/error'
+        - $ref: "#/channels/chat/messages/chatJoined"
+        - $ref: "#/channels/chat/messages/error"
 
   leaveChat:
     action: send
     channel:
-      $ref: '#/channels/chat'
+      $ref: "#/channels/chat"
     summary: Leave a chat room
     description: Unsubscribe from real-time updates for a specific chat
     messages:
-      - $ref: '#/channels/chat/messages/chatLeave'
+      - $ref: "#/channels/chat/messages/chatLeave"
     reply:
       channel:
-        $ref: '#/channels/chat'
+        $ref: "#/channels/chat"
       messages:
-        - $ref: '#/channels/chat/messages/chatLeft'
-        - $ref: '#/channels/chat/messages/error'
+        - $ref: "#/channels/chat/messages/chatLeft"
+        - $ref: "#/channels/chat/messages/error"
 
   sendMessage:
     action: send
     channel:
-      $ref: '#/channels/chat'
+      $ref: "#/channels/chat"
     summary: Send a message to a chat
     description: Send a new message to all participants in a chat room. Returns message:sent confirmation and broadcasts message:new to all participants.
     messages:
-      - $ref: '#/channels/chat/messages/messageSend'
+      - $ref: "#/channels/chat/messages/messageSend"
     reply:
       channel:
-        $ref: '#/channels/chat'
+        $ref: "#/channels/chat"
       messages:
-        - $ref: '#/channels/chat/messages/messageSent'
-        - $ref: '#/channels/chat/messages/error'
+        - $ref: "#/channels/chat/messages/messageSent"
+        - $ref: "#/channels/chat/messages/error"
 
   markMessageRead:
     action: send
     channel:
-      $ref: '#/channels/chat'
+      $ref: "#/channels/chat"
     summary: Mark message as read
     description: Mark a specific message as read by the current user. Returns message:read:confirmed and broadcasts read receipt to participants.
     messages:
-      - $ref: '#/channels/chat/messages/messageRead'
+      - $ref: "#/channels/chat/messages/messageRead"
     reply:
       channel:
-        $ref: '#/channels/chat'
+        $ref: "#/channels/chat"
       messages:
-        - $ref: '#/channels/chat/messages/messageReadConfirmed'
-        - $ref: '#/channels/chat/messages/error'
+        - $ref: "#/channels/chat/messages/messageReadConfirmed"
+        - $ref: "#/channels/chat/messages/error"
 
   sendTypingIndicator:
     action: send
     channel:
-      $ref: '#/channels/chat'
+      $ref: "#/channels/chat"
     summary: Send typing indicator
     description: Broadcast typing status to other chat participants. Returns chat:typing:sent confirmation and broadcasts to other participants.
     messages:
-      - $ref: '#/channels/chat/messages/chatTyping'
+      - $ref: "#/channels/chat/messages/chatTyping"
     reply:
       channel:
-        $ref: '#/channels/chat'
+        $ref: "#/channels/chat"
       messages:
-        - $ref: '#/channels/chat/messages/chatTypingSent'
-        - $ref: '#/channels/chat/messages/error'
+        - $ref: "#/channels/chat/messages/chatTypingSent"
+        - $ref: "#/channels/chat/messages/error"
 
   receiveMessage:
     action: receive
     channel:
-      $ref: '#/channels/chat'
+      $ref: "#/channels/chat"
     summary: Receive new messages
     description: |
-      Receive real-time messages from chat participants. This event is emitted to users 
+      Receive real-time messages from chat participants. This event is emitted to users
       who are actively in the chat room (have joined via chat:join).
     messages:
-      - $ref: '#/channels/chat/messages/messageNew'
+      - $ref: "#/channels/chat/messages/messageNew"
 
   receiveMessageNotification:
     action: receive
     channel:
-      $ref: '#/channels/chat'
+      $ref: "#/channels/chat"
     summary: Receive message notifications
     description: |
-      Receive notifications about new messages from any chat the user participates in. 
-      This event is automatically emitted to the user's personal room (user:{userId}) 
-      when a message is sent to any chat they're part of, regardless of whether they're 
+      Receive notifications about new messages from any chat the user participates in.
+      This event is automatically emitted to the user's personal room (user:{userId})
+      when a message is sent to any chat they're part of, regardless of whether they're
       actively in that chat room. Use this for badge counts and notification bells.
     messages:
-      - $ref: '#/channels/chat/messages/messageReceived'
+      - $ref: "#/channels/chat/messages/messageReceived"
 
   receiveReadReceipt:
     action: receive
     channel:
-      $ref: '#/channels/chat'
+      $ref: "#/channels/chat"
     summary: Receive read receipts
     description: Receive notifications when messages are read by other users
     messages:
-      - $ref: '#/channels/chat/messages/messageReadReceipt'
+      - $ref: "#/channels/chat/messages/messageReadReceipt"
 
   receiveTypingIndicator:
     action: receive
     channel:
-      $ref: '#/channels/chat'
+      $ref: "#/channels/chat"
     summary: Receive typing indicators
     description: Receive typing status updates from other chat participants
     messages:
-      - $ref: '#/channels/chat/messages/chatTypingIndicator'
+      - $ref: "#/channels/chat/messages/chatTypingIndicator"
 
   receivePresenceUpdate:
     action: receive
     channel:
-      $ref: '#/channels/chat'
+      $ref: "#/channels/chat"
     summary: Receive presence updates
-    description: Receive online/offline status updates for users
+    description: |
+      Receive online/offline status updates for users. Presence is
+      connection-scoped: isOnline becomes true when a user's first WebSocket
+      connection is established (across all their devices) and false when
+      their last connection closes. The update is delivered only to users
+      sharing at least one chat with the affected user.
     messages:
-      - $ref: '#/channels/chat/messages/presenceUpdate'
+      - $ref: "#/channels/chat/messages/presenceUpdate"
 
   receiveError:
     action: receive
     channel:
-      $ref: '#/channels/chat'
+      $ref: "#/channels/chat"
     summary: Receive error messages
     description: Receive error notifications for failed operations
     messages:
-      - $ref: '#/channels/chat/messages/error'
+      - $ref: "#/channels/chat/messages/error"
 
 components:
   messages:
@@ -241,11 +273,11 @@ components:
       title: New Notification
       summary: Real-time notification event sent when a notification is created
       description: |
-        Emitted to the user's personal room when a new notification is generated. 
+        Emitted to the user's personal room when a new notification is generated.
         The payload matches the notification object returned by the REST API.
       contentType: application/json
       payload:
-        $ref: '#/components/schemas/NotificationPayload'
+        $ref: "#/components/schemas/NotificationPayload"
 
     ChatJoin:
       name: chat:join
@@ -253,7 +285,7 @@ components:
       summary: Request to join a chat room
       contentType: application/json
       payload:
-        $ref: '#/components/schemas/ChatJoinPayload'
+        $ref: "#/components/schemas/ChatJoinPayload"
 
     ChatLeave:
       name: chat:leave
@@ -261,7 +293,7 @@ components:
       summary: Request to leave a chat room
       contentType: application/json
       payload:
-        $ref: '#/components/schemas/ChatLeavePayload'
+        $ref: "#/components/schemas/ChatLeavePayload"
 
     MessageSend:
       name: message:send
@@ -269,7 +301,7 @@ components:
       summary: Send a message to a chat
       contentType: application/json
       payload:
-        $ref: '#/components/schemas/MessageSendPayload'
+        $ref: "#/components/schemas/MessageSendPayload"
 
     MessageRead:
       name: message:read
@@ -277,7 +309,7 @@ components:
       summary: Mark a message as read
       contentType: application/json
       payload:
-        $ref: '#/components/schemas/MessageReadPayload'
+        $ref: "#/components/schemas/MessageReadPayload"
 
     ChatTyping:
       name: chat:typing
@@ -285,31 +317,31 @@ components:
       summary: Send typing status to chat participants
       contentType: application/json
       payload:
-        $ref: '#/components/schemas/ChatTypingPayload'
+        $ref: "#/components/schemas/ChatTypingPayload"
 
     MessageNew:
       name: message:new
       title: New Message
       summary: Receive a new message in real-time
       description: |
-        Emitted to all users in the chat room when a message is sent. 
+        Emitted to all users in the chat room when a message is sent.
         Requires active chat room membership (via chat:join).
       contentType: application/json
       payload:
-        $ref: '#/components/schemas/MessageNewPayload'
+        $ref: "#/components/schemas/MessageNewPayload"
 
     MessageReceived:
       name: message:received
       title: Message Received Notification
       summary: Receive notification about a new message
       description: |
-        Emitted to each participant's personal room (user:{userId}) when a message is sent 
-        to any chat they're part of. This event is sent regardless of whether the user is 
-        actively in the chat room. Use this for badge counts, notification bells, and global 
+        Emitted to each participant's personal room (user:{userId}) when a message is sent
+        to any chat they're part of. This event is sent regardless of whether the user is
+        actively in the chat room. Use this for badge counts, notification bells, and global
         message notifications. The payload is identical to message:new.
       contentType: application/json
       payload:
-        $ref: '#/components/schemas/MessageNewPayload'
+        $ref: "#/components/schemas/MessageNewPayload"
 
     MessageSent:
       name: message:sent
@@ -317,7 +349,7 @@ components:
       summary: Confirmation that message was successfully sent
       contentType: application/json
       payload:
-        $ref: '#/components/schemas/EmptyPayload'
+        $ref: "#/components/schemas/EmptyPayload"
 
     MessageReadReceipt:
       name: message:read
@@ -325,7 +357,7 @@ components:
       summary: Receive read receipt for a message
       contentType: application/json
       payload:
-        $ref: '#/components/schemas/MessageReadReceiptPayload'
+        $ref: "#/components/schemas/MessageReadReceiptPayload"
 
     MessageReadConfirmed:
       name: message:read:confirmed
@@ -333,7 +365,7 @@ components:
       summary: Confirmation that message was successfully marked as read
       contentType: application/json
       payload:
-        $ref: '#/components/schemas/EmptyPayload'
+        $ref: "#/components/schemas/EmptyPayload"
 
     ChatTypingIndicator:
       name: chat:typing
@@ -341,7 +373,7 @@ components:
       summary: Receive typing status from other users
       contentType: application/json
       payload:
-        $ref: '#/components/schemas/ChatTypingIndicatorPayload'
+        $ref: "#/components/schemas/ChatTypingIndicatorPayload"
 
     ChatTypingSent:
       name: chat:typing:sent
@@ -349,15 +381,19 @@ components:
       summary: Confirmation that typing indicator was successfully sent
       contentType: application/json
       payload:
-        $ref: '#/components/schemas/EmptyPayload'
+        $ref: "#/components/schemas/EmptyPayload"
 
     PresenceUpdate:
       name: presence:update
       title: Presence Update
       summary: Receive user online/offline status updates
+      description: |
+        Connection-scoped presence: emitted with isOnline=true when a user's
+        first connection is established and isOnline=false when their last
+        connection closes, delivered only to that user's chat co-participants.
       contentType: application/json
       payload:
-        $ref: '#/components/schemas/PresenceUpdatePayload'
+        $ref: "#/components/schemas/PresenceUpdatePayload"
 
     ChatJoined:
       name: chat:joined
@@ -365,7 +401,7 @@ components:
       summary: Confirmation of successful chat join
       contentType: application/json
       payload:
-        $ref: '#/components/schemas/ChatJoinedPayload'
+        $ref: "#/components/schemas/ChatJoinedPayload"
 
     ChatLeft:
       name: chat:left
@@ -373,7 +409,7 @@ components:
       summary: Confirmation of successful chat leave
       contentType: application/json
       payload:
-        $ref: '#/components/schemas/ChatLeftPayload'
+        $ref: "#/components/schemas/ChatLeftPayload"
 
     Error:
       name: error
@@ -381,7 +417,7 @@ components:
       summary: Error message for failed operations
       contentType: application/json
       payload:
-        $ref: '#/components/schemas/ErrorPayload'
+        $ref: "#/components/schemas/ErrorPayload"
 
   schemas:
     EmptyPayload:
@@ -501,7 +537,7 @@ components:
           description: Message last updated timestamp
           example: "2025-01-29T12:00:00.000Z"
         user:
-          $ref: '#/components/schemas/MessageUser'
+          $ref: "#/components/schemas/MessageUser"
 
     MessageUser:
       type: object
@@ -750,8 +786,15 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: |
-        JWT token for WebSocket authentication. 
-        Can be provided via:
-        - Socket.IO auth object: { auth: { token: 'jwt-token' } }
-        - Authorization header: { extraHeaders: { Authorization: 'Bearer jwt-token' } }
-        - Query parameter: { query: { token: 'jwt-token' } }
+        Short-lived JWT access token (the same one the REST API uses) for
+        WebSocket authentication. Can be provided via:
+        - HTTP upgrade header: Authorization: Bearer <jwt-token> — preferred
+          for native clients that can set upgrade headers.
+        - Query parameter: ?token=<jwt-token> — for browser WebSocket clients,
+          which cannot set arbitrary upgrade headers. Never log URLs carrying
+          this parameter.
+
+        A missing or invalid token closes the connection with 1008
+        ("unauthorized"). When the access token expires while the connection
+        is open, the server closes it with 4401 ("token expired"); refresh
+        the token and reconnect.

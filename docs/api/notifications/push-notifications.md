@@ -25,11 +25,10 @@ Push delivery is also gated by user notification settings.
 
 Push does not replace existing notification behavior. Current semantics stay unchanged:
 
-1. Domain listener creates `notifications` row in Postgres.
-2. Listener emits WebSocket `notification:new` immediately.
-3. Listener publishes `NotificationCreatedEvent(notificationId)`.
-4. `PushNotificationListener` enqueues BullMQ job on `push` queue (`jobId = notificationId`).
-5. Worker loads notification and recipient tokens, localizes payload, sends via APNs/FCM (when enabled and configured), saves per-token result in `push_delivery_logs`.
+1. A domain event is mapped to a notification draft.
+2. The notification row and River `push` job are inserted in one PostgreSQL transaction.
+3. After commit, the service emits WebSocket `notification:new` to the recipient's personal room.
+4. The River worker checks `pushNotificationsEnabled`, loads active recipient tokens, localizes the payload, sends through APNs/FCM, and saves per-token results in `push_delivery_logs`.
 
 Push is asynchronous and best-effort. Push failures never fail originating business commands.
 
@@ -413,7 +412,7 @@ PUSH_FCM_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY----
 Queues:
 
 - `push`
-- `push-dlq`
+- failed jobs enter River's `discarded` state after their attempts are exhausted
 
 Job payload:
 
@@ -433,12 +432,14 @@ Retry policy:
 Run API + worker locally:
 
 ```bash
-npm run start:all:dev
+make run
+# in another terminal
+go run ./cmd/worker -queues push
 ```
 
 Worker entrypoint:
 
-- `src/worker-push-notifications.ts` (push notification worker)
+- `cmd/worker` with the `push` River queue
 
 ## Error Monitoring and Security
 
@@ -449,5 +450,5 @@ Worker entrypoint:
 ## Related Docs
 
 - [Notifications](./index.md)
-- [OpenAPI](../openapi.yaml)
+- [OpenAPI](../../api/openapi.yaml)
 - [Sentry Integration](../technical/sentry.md)

@@ -13,7 +13,7 @@ There is **no history**: each user has at most one row. There is **no delete** e
 | `PUT`  | `/v1/check-ins` | Create or replace the caller’s latest check-in. |
 | `GET`  | `/v1/check-ins` | List active check-ins near a search center.     |
 
-Full schemas and examples: [`openapi.yaml`](../openapi.yaml) (paths `/check-ins`).
+Full schemas and examples: [`api/openapi.yaml`](../../api/openapi.yaml) (paths `/check-ins`).
 
 ### Example: upsert
 
@@ -54,7 +54,7 @@ By default, **any authenticated user** can list nearby active check-ins. The **c
 ## Geocoding behavior
 
 - If `locationName` is sent (non-empty after trim), reverse geocoding is **skipped** and the provided label is stored; `google_place_id` and `location_types` are cleared.
-- If `locationName` is omitted, the server calls the configured geocoder (`GeocoderModule` / Google Maps) with `Accept-Language` for localized labels.
+- If `locationName` is omitted, the server calls the configured Google Maps geocoder adapter with `Accept-Language` for localized labels.
 - Result selection prefers place types useful for sailing context (`marina`, `harbor`, `port`, `point_of_interest`, `establishment`) when present, then falls back to the first formatted address.
 - If geocoding fails or is not configured, coordinates are still saved and `locationName` may be `null` (writes remain usable).
 

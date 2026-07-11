@@ -4,7 +4,7 @@ This document describes user-facing notification settings in SkipperClub: what u
 
 ## Overview
 
-Notification settings let each user decide whether they want to receive:
+Notification settings store whether each user wants to receive:
 
 - notification emails
 - mobile push notifications (iOS/Android)
@@ -16,16 +16,20 @@ For this reason, settings endpoints are placed under the profile namespace (`/pr
 
 ### What users can control
 
-| Channel                                  | Controlled by Settings | Notes                                                                                                     |
-| ---------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------- |
-| In-app (WebSocket + notification center) | No                     | Always delivered and visible in the in-app notification center.                                           |
-| Push (APNs/FCM)                          | Yes                    | Controlled by `pushNotificationsEnabled`.                                                                 |
-| Notification email                       | Yes                    | Controlled by `emailNotificationsEnabled`.                                                                |
-| Transactional email                      | No                     | Always sent for critical account flows (for example login codes, invitations, account lifecycle actions). |
+| Channel                                  | Controlled by Settings   | Notes                                                                                                                              |
+| ---------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| In-app (WebSocket + notification center) | No                       | Always delivered and visible in the in-app notification center.                                                                    |
+| Push (APNs/FCM)                          | Yes                      | Controlled by `pushNotificationsEnabled`.                                                                                          |
+| Notification email                       | Yes (review events only) | `emailNotificationsEnabled` gates the review-progression/publication emails; other in-app social events are not mirrored by email. |
+| Transactional email                      | No                       | Always sent for critical account flows (for example login codes, invitations, account lifecycle actions).                          |
 
 ### Current scope
 
 - Preferences are global per channel (email/push).
+- `pushNotificationsEnabled` affects every push-delivered notification.
+- `emailNotificationsEnabled` affects only the review-related notification
+  events (a review received, a review published, a review reminder) — email
+  is not a blanket mirror of every in-app/push event, per PRD-005 §4.3.
 - Per-event preferences are not available in public API yet.
 
 ## API Endpoints
@@ -75,10 +79,10 @@ The endpoint uses full replacement semantics:
 
 ### Request Body
 
-| Field                       | Type    | Required | Description                           |
-| --------------------------- | ------- | -------- | ------------------------------------- |
-| `emailNotificationsEnabled` | boolean | Yes      | Enables/disables notification emails. |
-| `pushNotificationsEnabled`  | boolean | Yes      | Enables/disables push notifications.  |
+| Field                       | Type    | Required | Description                                                                        |
+| --------------------------- | ------- | -------- | ---------------------------------------------------------------------------------- |
+| `emailNotificationsEnabled` | boolean | Yes      | Enables/disables review-related notification emails (received/published/reminder). |
+| `pushNotificationsEnabled`  | boolean | Yes      | Enables/disables push notifications.                                               |
 
 ### Example Request
 
@@ -107,7 +111,7 @@ Set both flags to `false`. The user still receives:
 - in-app notification records
 - real-time `notification:new` events over WebSocket
 
-### User wants push, but no notification emails
+### User records push-only intent
 
 Set:
 
@@ -118,9 +122,15 @@ Set:
 
 Set both flags to `true`.
 
+The current Go service honors both values: push for every push-delivered
+notification, and email for the review-progression/publication/reminder
+notifications. Other in-app social/cruise notifications remain email-exempt
+by design (PRD-005 §4.3), regardless of `emailNotificationsEnabled`.
+
 ## Related
 
 - [Notifications](./index.md) — Notification center API and event coverage
 - [Push Notifications](./push-notifications.md) — Mobile token management and push behavior
 - [Users](../users/index.md) — Profile endpoints and account settings
-- [OpenAPI Specification](../openapi.yaml) — Source API contract
+- [Implementation Status](../technical/notification-settings.md) — Current persistence and delivery behavior
+- [OpenAPI Specification](../../api/openapi.yaml) — Source API contract

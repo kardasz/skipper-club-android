@@ -242,4 +242,4 @@ Client teams should verify the following after updating:
 
 - [Cruise Lifecycle](./lifecycle.md) -- Create, update, and delete cruise documentation
 - [AI Draft](./ai-draft.md) -- AI-generated cruise drafts with port coordinates
-- [OpenAPI Specification](../openapi.yaml) -- Full API schema reference
+- [OpenAPI Specification](../../api/openapi.yaml) -- Full API schema reference

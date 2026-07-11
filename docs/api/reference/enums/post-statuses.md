@@ -35,7 +35,7 @@ flowchart LR
 Only `published` posts can be edited:
 
 ```typescript
-const NON_EDITABLE_STATUSES = ['archived', 'expired', 'resolved', 'deleted'];
+const NON_EDITABLE_STATUSES = ["archived", "expired", "resolved", "deleted"];
 ```
 
 ### Inaccessible Statuses
@@ -43,7 +43,7 @@ const NON_EDITABLE_STATUSES = ['archived', 'expired', 'resolved', 'deleted'];
 Deleted posts are inaccessible to everyone:
 
 ```typescript
-const INACCESSIBLE_STATUSES = ['deleted'];
+const INACCESSIBLE_STATUSES = ["deleted"];
 ```
 
 ### Author-Only Statuses
@@ -51,7 +51,7 @@ const INACCESSIBLE_STATUSES = ['deleted'];
 These statuses are only visible to the post author:
 
 ```typescript
-const AUTHOR_ONLY_STATUSES = ['archived', 'expired', 'resolved'];
+const AUTHOR_ONLY_STATUSES = ["archived", "expired", "resolved"];
 ```
 
 ## Allowed Transitions

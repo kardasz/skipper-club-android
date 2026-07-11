@@ -33,36 +33,43 @@ The group chat is the main communication channel for cruise participants.
 ```mermaid
 flowchart TD
     subgraph Creation["Chat Creation"]
-        A["POST /cruises"]:::trigger --> B[CreateCruiseHandler]:::state
-        B --> C[Save Cruise to DB]:::state
-        C --> D[Publish CruiseCreatedEvent]:::notify
-        D --> E[CruiseChatEventsHandler]:::state
-        E --> F["Create CRUISE_GROUP Chat in PostgreSQL"]:::success
-        F --> G[Organizer added as participant]:::success
+        A["POST /cruises"]:::trigger --> B["Cruises service saves cruise"]:::state
+        B --> C["Best-effort EnsureGroupChat"]:::state
+        C --> D["Create CRUISE_GROUP chat and add organizer"]:::success
     end
 
     subgraph ParticipantJoin["Participant Joins"]
-        H[Participant state → ACCEPTED]:::trigger --> I[Publish CruiseParticipantJoinedEvent]:::notify
-        I --> J[CruiseChatEventsHandler]:::state
-        J --> K[Add user to chat participants]:::success
+        E[Participant state → ACCEPTED]:::trigger --> F["Commit state and accepted count"]:::state
+        F --> G["Best-effort AddGroupChatMember"]:::success
     end
 
     subgraph ParticipantLeave["Participant Leaves"]
-        L["Participant removed/left"]:::trigger --> M[Publish CruiseParticipantLeftEvent]:::notify
-        M --> N[CruiseChatEventsHandler]:::state
-        N --> O{Is Organizer?}:::decision
-        O -->|Yes| P[Do nothing - organizer stays]:::state
-        O -->|No| Q[Remove user from chat participants]:::negative
-        Q --> R[Messages remain in chat]:::state
+        H["Accepted participant removed/leaves"]:::trigger --> I["Commit state and accepted count"]:::state
+        I --> J["Best-effort RemoveGroupChatMember"]:::negative
+        J --> K[Messages remain in chat]:::state
     end
 
     classDef trigger fill:#3B82F6,stroke:#1E40AF,color:#FFFFFF
     classDef state fill:#6B7280,stroke:#374151,color:#FFFFFF
     classDef decision fill:#8B5CF6,stroke:#5B21B6,color:#FFFFFF
     classDef success fill:#10B981,stroke:#047857,color:#FFFFFF
-    classDef notify fill:#10B981,stroke:#047857,color:#FFFFFF
     classDef negative fill:#F59E0B,stroke:#B45309,color:#000000
 ```
+
+Chat synchronization runs synchronously after the cruise transaction commits,
+but is best-effort: a chat failure is logged and does not roll back the cruise or
+participant change. A transient failure there can leave permanent drift — a
+missing chat, a missing accepted participant, or a leftover ex-participant —
+with no automatic retry.
+
+`cli cruises sync-chats` repairs that drift: it walks every cruise and calls
+`Service.ReconcileChatMembership`, which loads the group chat's current
+members (creating the chat first if it's missing entirely), diffs them
+against the organizer + accepted participants, and issues the same idempotent
+`Ensure`/`Add`/`RemoveGroupChatMember` calls the write paths use to close the
+gap. It is safe to re-run at any time — an already-consistent cruise reports
+no changes — mirroring `alerts sync-posts`'s reconciliation for the
+alert↔post projection.
 
 ### Access Rules
 
@@ -451,7 +458,8 @@ When a participant is removed from the group chat:
 
 ## Data Model
 
-Chats are stored in PostgreSQL (TypeORM entities in `src/database/entities/`):
+Chats are stored in PostgreSQL and accessed with hand-written `pgx` queries in
+`internal/messages/repo_pg.go`:
 
 | Table                | Purpose                                                                                   |
 | -------------------- | ----------------------------------------------------------------------------------------- |
@@ -464,7 +472,7 @@ Chats are stored in PostgreSQL (TypeORM entities in `src/database/entities/`):
 ```typescript
 interface Chat {
   id: string; // UUID v7
-  type: 'CRUISE_GROUP' | 'CRUISE_QNA' | 'ONE_TO_ONE' | 'GROUP';
+  type: "CRUISE_GROUP" | "CRUISE_QNA" | "ONE_TO_ONE" | "GROUP";
   name: string | null; // e.g., "Cruise Title - Group Chat"
   relatedCruiseId: string | null; // Links chat to cruise
   lastMessageId: string | null; // References chat_messages

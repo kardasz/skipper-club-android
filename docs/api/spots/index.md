@@ -115,4 +115,4 @@ For **map rendering** (viewport-scoped queries with optional clustering), use th
 | `GET`    | `/v1/spot-change-requests` | User/Admin | List change requests               |
 | `PATCH`  | `/v1/spot-change-requests` | User/Admin | Batch approve/reject/cancel        |
 
-See [`docs/openapi.yaml`](../openapi.yaml) for the full specification.
+See [`api/openapi.yaml`](../../api/openapi.yaml) for the full specification.

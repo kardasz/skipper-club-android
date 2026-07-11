@@ -276,15 +276,15 @@ Content-Type: image/jpeg
 ```javascript
 async function uploadToPresignedUrl(uploadUrl, file) {
   const response = await fetch(uploadUrl, {
-    method: 'PUT',
+    method: "PUT",
     headers: {
-      'Content-Type': file.type,
+      "Content-Type": file.type,
     },
     body: file,
   });
 
   if (!response.ok) {
-    throw new Error('Upload failed');
+    throw new Error("Upload failed");
   }
 
   return true;

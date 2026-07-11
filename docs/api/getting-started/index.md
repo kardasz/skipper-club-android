@@ -229,4 +229,4 @@ See [Error Handling](./errors.md) for complete error documentation.
 - [Authentication](./authentication.md) — Complete auth flow documentation
 - [Error Handling](./errors.md) — RFC 7807 error format details
 - [Key Concepts](../overview/concepts.md) — Learn about cruises, participants, reviews
-- [OpenAPI Specification](../openapi.yaml) — Full API reference
+- [OpenAPI Specification](../../api/openapi.yaml) — Full API reference

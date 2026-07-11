@@ -247,8 +247,8 @@ Responses:
 
 ### Security Considerations
 
-- Tokens have ~256 bits of entropy (32 random bytes); only their `sha256` is persisted, and verification uses `timingSafeEqual` against a dummy buffer when no challenge exists (constant-time, hides "does the email exist" from timing oracles).
-- The verification handler holds a `pessimistic_write` row lock across `findOne` → code compare → `attempts++` / `usedAt` so two concurrent verify requests cannot both observe an unused challenge. Password reset uses a two-transaction pattern: tx#1 locks + verifies (no bcrypt under lock); bcrypt runs unlocked; tx#2 re-acquires the lock and applies the password change atomically with session revocation, guarding against double-use via a second `usedAt IS NULL` check.
+- Tokens have ~256 bits of entropy (32 random bytes); only their SHA-256 hash is persisted, and verification performs a constant-time comparison against a dummy hash when no challenge exists (hiding "does the email exist" from timing oracles).
+- The Go service locks the challenge row while checking the token and attempts. Password reset uses a two-transaction pattern: the first transaction verifies under lock; bcrypt runs without holding a database lock; the second transaction re-locks and atomically consumes the challenge, changes the password, and revokes sessions.
 - Per-challenge `maxAttempts` is stored on the `auth_challenges` row at creation time (5 for password reset) and consulted during verification — there is no config override that can drift from the persisted value.
 - Each successful reset revokes **every** existing session for the user and triggers an `AuthPasswordChangedEmail` notification (sent best-effort; reset succeeds even if the email queue is unavailable).
 - Failed attempts are tracked in two independent Redis counters: per IP+email (10 failures within `PASSWORD_RESET_LOCKOUT_MINUTES`, default 15) **and** globally per email (20 failures within `PASSWORD_RESET_EMAIL_LOCKOUT_MINUTES`, default 60). The global per-email counter defends against attackers rotating IPs.
@@ -535,4 +535,4 @@ For testing purposes, Cloudflare provides test keys that always pass or always f
 - [Getting Started: Authentication](../getting-started/authentication.md) — Login, refresh, logout flows
 - [Getting Started: Errors](../getting-started/errors.md) — RFC 7807 error format
 - [Users Module](../users/index.md) — User profile management
-- [OpenAPI Specification](../openapi.yaml) — Full API reference
+- [OpenAPI Specification](../../api/openapi.yaml) — Full API reference

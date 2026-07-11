@@ -298,16 +298,11 @@ Content-Type: application/json
 
 When `POST /cruises/{cruiseId}/participants` is called, the initial state is determined by:
 
-| Condition                                                 | Initial State                          |
-| --------------------------------------------------------- | -------------------------------------- |
-| `userId` = current user                                   | `pending` (user is requesting to join) |
-| `userId` ≠ current user AND current user is organizer     | `invited` (organizer is inviting)      |
-| `userId` ≠ current user AND current user is not organizer | Error: Not authorized                  |
-
-> **Known gap**: `CreateCruiseParticipantHandler` does not currently enforce
-> the last row above — a non-organizer can create a `pending` participant
-> record for an arbitrary `userId`. This is tracked as a bug to fix in code,
-> not a documentation error; the table describes the intended behavior.
+| Condition                                                 | Initial State                                          |
+| --------------------------------------------------------- | ------------------------------------------------------ |
+| `userId` = current user                                   | `pending` (user is requesting to join)                 |
+| `userId` ≠ current user AND current user is organizer     | `invited` (organizer is inviting)                      |
+| `userId` ≠ current user AND current user is not organizer | Error: Not authorized (`participant-access-forbidden`) |
 
 ---
 

@@ -151,18 +151,18 @@ Notifications related to the blind review system. Reviews are hidden until both 
 
 ### Trigger → Notification
 
-| Trigger                           | Recipient        | Notification                                      |
-| --------------------------------- | ---------------- | ------------------------------------------------- |
-| Cruise arrival + 1 day (cron job) | Each participant | "Review your fellow crew members"                 |
-| User A reviews User B             | User B           | "Someone reviewed you - leave a review to see it" |
-| Both users submit reviews         | Both users       | "Your review is now published"                    |
+| Trigger                                            | Recipient                                       | Notification                                      |
+| -------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------- |
+| Next daily maintenance run after cruise completion | Each accepted participant still missing reviews | "Review your fellow crew members"                 |
+| User A reviews User B                              | User B                                          | "Someone reviewed you - leave a review to see it" |
+| Both users submit reviews                          | Both users                                      | "Your review is now published"                    |
 
 ### Blind Review Flow
 
 ```mermaid
 flowchart TB
     subgraph reminderFlow [Review Reminder]
-        R1[Cruise ends]:::trigger --> R2[Cron job next day at 09:00 UTC]:::trigger
+        R1[Cruise ends]:::trigger --> R2[River maintenance run; 24h interval]:::trigger
         R2 --> R3{Reviewed everyone?}:::decision
         R3 -->|No| R4[CRUISE_REVIEW_REMINDER notification]:::notify
         R3 -->|Yes| R5[Skip]:::skip

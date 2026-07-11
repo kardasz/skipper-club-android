@@ -296,13 +296,10 @@ Content-Type: application/json
 PATCH /profile
 ```
 
-Partial update of profile. Only include fields you want to change.
-
-> **Known bug:** `PATCH` and `PUT` both use the same `UpdateProfileDto`,
-> where `name` is required (not `@IsOptional`). A PATCH request that omits
-> `name` — like the example below — currently fails validation. Treat `name`
-> as required on PATCH until this is fixed with a dedicated partial-update
-> DTO.
+Partial update of profile. Only include fields you want to change — every
+field, including `name`, is optional on PATCH; omitted fields keep their
+current value. Fields that are present are validated with the same rules as
+`PUT /profile` (see [Validation Rules](#validation-rules) above).
 
 ### Example Request
 
@@ -313,14 +310,13 @@ Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "name": "Jan Kowalski",
   "bio": "Updated bio text"
 }
 ```
 
 ### Response
 
-**200 OK** — Returns updated profile object.
+**200 OK** — Returns updated profile object, with all other fields unchanged.
 
 ---
 

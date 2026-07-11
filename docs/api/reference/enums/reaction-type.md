@@ -118,7 +118,7 @@ All non-accessible posts return 404 for reaction operations.
 
 ## Validation
 
-Invalid reaction types are validated via DTO `@IsEnum` decorator and return 422 ValidationProblem:
+Invalid reaction types are rejected by generated parameter binding/feature validation and return a 422 ValidationProblem:
 
 ```json
 {

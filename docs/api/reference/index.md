@@ -39,5 +39,5 @@ These documents are optimized for:
 ## Related
 
 - [API Documentation](../index.md) — Full API documentation
-- [OpenAPI Specification](../openapi.yaml) — REST API contract
-- [AsyncAPI Specification](../asyncapi.yaml) — WebSocket events contract
+- [OpenAPI Specification](../../api/openapi.yaml) — REST API contract
+- [AsyncAPI Specification](../../api/asyncapi.yaml) — WebSocket events contract

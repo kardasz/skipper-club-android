@@ -129,13 +129,13 @@ All errors follow RFC 7807 Problem Details format:
 
 ### Error Types
 
-| Type                               | Status | Description                                                                                                                                                                                                                                                                                                                                                |
-| ---------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/errors/no-audio-provided`        | 400    | No audio file in request                                                                                                                                                                                                                                                                                                                                   |
-| `/errors/unsupported-audio-format` | 400    | File format not supported                                                                                                                                                                                                                                                                                                                                  |
-| `/errors/audio-file-too-large`     | 413    | File exceeds 20MB limit — **note:** Multer's own `limits.fileSize` (also set to 20MB) rejects oversized files before this custom exception's validation runs, and no global `MulterError` filter is registered, so this RFC 7807 body may not actually be reachable for this specific trigger; verify against a real oversized upload before relying on it |
-| `/errors/transcription-failed`     | 502    | Transcription service error                                                                                                                                                                                                                                                                                                                                |
-| `/errors/authentication-required`  | 401    | Missing authentication                                                                                                                                                                                                                                                                                                                                     |
+| Type                               | Status | Description                                                                                                       |
+| ---------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------- |
+| `/errors/no-audio-provided`        | 400    | No audio file in request                                                                                          |
+| `/errors/unsupported-audio-format` | 400    | File format not supported                                                                                         |
+| `/errors/audio-file-too-large`     | 413    | File exceeds the 20 MB limit; the Go handler reads at most one byte past the cap and returns this RFC 7807 error. |
+| `/errors/transcription-failed`     | 502    | Transcription service error                                                                                       |
+| `/errors/authentication-required`  | 401    | Missing authentication                                                                                            |
 
 ### Example Error Responses
 

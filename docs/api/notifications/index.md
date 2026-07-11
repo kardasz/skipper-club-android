@@ -11,7 +11,9 @@ Notifications inform users about relevant activities across the platform. They a
 - Friend requests
 - Review publications
 
-**Key principle**: Users never receive notifications for their own actions.
+Self-directed social events are filtered at their feature source (for example,
+reacting to or commenting on your own post does not notify you). Exact recipient
+rules for cruise lifecycle events are event-specific.
 
 For mobile push implementation details (APNs/FCM setup, queue/worker flow, token lifecycle, endpoint usage), see:
 
@@ -35,9 +37,9 @@ For mobile push implementation details (APNs/FCM setup, queue/worker flow, token
 
 ## WebSocket Events
 
-| Namespace        | Event              | Direction       | Description              |
-| ---------------- | ------------------ | --------------- | ------------------------ |
-| `/notifications` | `notification:new` | Server → Client | New notification created |
+| Endpoint      | Event              | Direction       | Description                                          |
+| ------------- | ------------------ | --------------- | ---------------------------------------------------- |
+| `/v1/ws/chat` | `notification:new` | Server → Client | New notification created in an `{event,data}` frame. |
 
 ---
 
@@ -48,7 +50,9 @@ Notification delivery preferences are managed as account settings on profile end
 - `GET /v1/profile/notification-settings`
 - `PUT /v1/profile/notification-settings`
 
-These preferences control email and push channels only. In-app/WebSocket notifications are always delivered.
+In-app/WebSocket notifications are always delivered. The push flag is enforced
+by the push worker. The e-mail flag is persisted but notification e-mail
+delivery is not currently wired; see the [implementation status](../technical/notification-settings.md).
 
 For full business behavior and endpoint examples, see [Notification Settings](./notification-settings.md).
 
@@ -607,54 +611,54 @@ function renderNotification(notification) {
   const { eventType, relationId, metadata } = notification;
 
   switch (eventType) {
-    case 'CRUISE_INVITATION_SENT':
+    case "CRUISE_INVITATION_SENT":
       return `${getUsername(relationId)} invited you to "${metadata.cruiseTitle}"`;
 
-    case 'CRUISE_REQUEST_PENDING':
+    case "CRUISE_REQUEST_PENDING":
       return `${getUsername(relationId)} requested to join "${metadata.cruiseTitle}"`;
 
-    case 'CRUISE_REQUEST_ACCEPTED':
+    case "CRUISE_REQUEST_ACCEPTED":
       return `Your request to join "${metadata.cruiseTitle}" was accepted`;
 
-    case 'CRUISE_INVITATION_ACCEPTED':
+    case "CRUISE_INVITATION_ACCEPTED":
       return `${getUsername(relationId)} accepted your invitation to "${metadata.cruiseTitle}"`;
 
-    case 'CRUISE_PARTICIPANT_JOINED':
+    case "CRUISE_PARTICIPANT_JOINED":
       return `${getUsername(relationId)} joined "${metadata.cruiseTitle}"`;
 
-    case 'CRUISE_REQUEST_REJECTED':
+    case "CRUISE_REQUEST_REJECTED":
       return `Your request to join "${metadata.cruiseTitle}" was declined`;
 
-    case 'CRUISE_PARTICIPANT_LEFT':
+    case "CRUISE_PARTICIPANT_LEFT":
       return `${getUsername(relationId)} left "${metadata.cruiseTitle}"`;
 
-    case 'CRUISE_PARTICIPANT_REMOVED':
+    case "CRUISE_PARTICIPANT_REMOVED":
       return `You've been removed from "${metadata.cruiseTitle}"`;
 
-    case 'CRUISE_REVIEW_REMINDER':
+    case "CRUISE_REVIEW_REMINDER":
       return `Your cruise "${metadata.cruiseTitle}" has ended. Review your crew!`;
 
-    case 'POST_REACTED':
+    case "POST_REACTED":
       return `${getUsername(relationId)} reacted ${metadata.reactionType} to your post`;
 
-    case 'POST_COMMENTED':
+    case "POST_COMMENTED":
       const excerpt = metadata.commentText?.substring(0, 50);
       return `${getUsername(relationId)} commented: "${excerpt}..."`;
 
-    case 'FRIEND_REQUEST_SENT':
+    case "FRIEND_REQUEST_SENT":
       return `${getUsername(relationId)} sent you a friend request`;
 
-    case 'FRIEND_REQUEST_ACCEPTED':
+    case "FRIEND_REQUEST_ACCEPTED":
       return `${getUsername(relationId)} accepted your friend request`;
 
-    case 'REVIEW_PENDING_RECEIVED':
+    case "REVIEW_PENDING_RECEIVED":
       return `${getUsername(relationId)} reviewed you - leave a review to see it`;
 
-    case 'REVIEW_PUBLISHED':
+    case "REVIEW_PUBLISHED":
       return `Your review from "${metadata.cruiseTitle}" is now published`;
 
     default:
-      return 'New notification';
+      return "New notification";
   }
 }
 ```
@@ -664,13 +668,13 @@ function renderNotification(notification) {
 ```javascript
 // Get only cruise-related notifications
 const cruiseNotifications = await fetch(
-  '/v1/notifications?sourceType=CRUISE&limit=10',
+  "/v1/notifications?sourceType=CRUISE&limit=10",
   { headers: { Authorization: `Bearer ${token}` } },
 ).then((r) => r.json());
 
 // Get pending cruise invitations
 const invitations = cruiseNotifications.notifications.filter(
-  (n) => n.eventType === 'CRUISE_INVITATION_SENT' && n.status === 'UNREAD',
+  (n) => n.eventType === "CRUISE_INVITATION_SENT" && n.status === "UNREAD",
 );
 ```
 
@@ -682,25 +686,20 @@ The notification system supports real-time delivery via WebSocket. When a notifi
 
 ### Connection
 
-Connect to the `/notifications` WebSocket namespace:
+Notifications share the same plain WebSocket endpoint as chat. No subscription
+event is needed because authentication automatically joins the personal room:
 
 ```javascript
-import { io } from 'socket.io-client';
-
-const socket = io('https://api.skipperclub.app/notifications', {
-  auth: {
-    token: 'your-jwt-token',
-  },
-});
+const socket = new WebSocket(
+  `wss://api.skipperclub.app/v1/ws/chat?token=${encodeURIComponent(token)}`,
+);
 ```
 
 ### Authentication
 
-JWT token can be provided via:
-
-- Socket.IO auth object: `{ auth: { token: 'jwt-token' } }`
-- Authorization header: `{ extraHeaders: { Authorization: 'Bearer jwt-token' } }`
-- Query parameter: `{ query: { token: 'jwt-token' } }`
+JWT can be provided in the HTTP upgrade `Authorization: Bearer ...` header or
+as the `token` query parameter. Browser-native `WebSocket` requires the query
+form; mobile/native clients should prefer the header when supported.
 
 Upon successful connection, the user automatically joins their personal room (`user:{userId}`).
 
@@ -732,8 +731,11 @@ The server emits `notification:new` to the user's room when a new notification i
 
 ```javascript
 // Listen for new notifications
-socket.on('notification:new', (notification) => {
-  console.log('New notification:', notification);
+socket.addEventListener("message", ({ data }) => {
+  const frame = JSON.parse(data);
+  if (frame.event !== "notification:new") return;
+  const notification = frame.data;
+  console.log("New notification:", notification);
 
   // Update unread count
   updateUnreadBadge();
@@ -742,9 +744,8 @@ socket.on('notification:new', (notification) => {
   showToast(renderNotification(notification));
 });
 
-// Handle connection errors
-socket.on('connect_error', (error) => {
-  console.error('Connection failed:', error);
+socket.addEventListener("error", (error) => {
+  console.error("Connection failed:", error);
 });
 ```
 
@@ -754,11 +755,10 @@ socket.on('connect_error', (error) => {
 
 Push delivery is asynchronous and best-effort. Existing notification semantics are unchanged:
 
-1. Domain listener persists row in `notifications`
-2. WebSocket `notification:new` is emitted immediately
-3. `NotificationCreatedEvent` is published
-4. Push listener enqueues `push` queue job with `jobId = notificationId`
-5. Worker sends alert push via APNs (iOS) or FCM HTTP v1 (Android) only for enabled+configured provider
+1. A domain event is mapped to a notification draft.
+2. The `notifications` row and River `push` job are committed in one PostgreSQL transaction.
+3. `notification:new` is broadcast after commit to the recipient's personal WebSocket room.
+4. The River worker sends through APNs or FCM only when global push and the provider are enabled.
 
 ### Token Endpoints
 
@@ -859,7 +859,7 @@ All errors follow RFC 7807 format:
 ## Best Practices
 
 1. **Efficient Loading** — Use pagination and filter by status to reduce data transfer
-2. **Real-time Updates** — Use WebSocket `/notifications` namespace for instant notification delivery
+2. **Real-time Updates** — Use WebSocket `/v1/ws/chat` for instant notification delivery
 3. **Unread Count** — Use `GET /notifications/unread-count` for badge displays instead of fetching all notifications
 4. **Bulk Operations** — Use `all: true` sparingly; it processes all user notifications
 5. **Error Handling** — Handle 404 gracefully; notification may have been deleted

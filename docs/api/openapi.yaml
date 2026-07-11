@@ -3136,6 +3136,10 @@ paths:
       tags:
         - users
       summary: Partially update own profile
+      description: >
+        Only the fields present in the request body are changed; omitted
+        fields keep their current value. Fields that are present are still
+        validated against the same rules as PUT.
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
@@ -3143,7 +3147,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UserUpdate'
+              $ref: '#/components/schemas/UserPartialUpdate'
       responses:
         '200':
           description: Updated user profile
@@ -3162,15 +3166,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidationProblem'
               examples:
-                missingName:
-                  value:
-                    type: /errors/validation
-                    title: Validation Failed
-                    status: 422
-                    detail: The request contains invalid data
-                    violations:
-                      - propertyPath: name
-                        message: name should not be empty
                 invalidCountry:
                   value:
                     type: /errors/validation
@@ -10774,6 +10769,102 @@ components:
       type: object
       required:
         - name
+      properties:
+        bio:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Short biography or description of the user
+          example: Sailing enthusiast and Baltic Sea explorer
+        city:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Optional. User's city.
+          example: Gdańsk
+        country:
+          type: string
+          pattern: ^[A-Z]{2}$
+          minLength: 2
+          maxLength: 2
+          description: ISO 3166-1 alpha-2 country code
+          example: PL
+        facebookUrl:
+          type: string
+          format: uri
+          maxLength: 200
+          pattern: ^https?://(www\.)?(facebook\.com|fb\.com)/.+$
+          description: Facebook profile URL
+          example: https://facebook.com/jan.skipper
+        instagramUsername:
+          type: string
+          maxLength: 100
+          pattern: ^@[a-zA-Z0-9_.]{1,30}$
+          description: Instagram username with @ prefix
+          example: '@jan_skipper'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Full name of the user
+          example: Jan Kowalski
+        sailingExperience:
+          type: string
+          enum:
+            - beginner
+            - intermediate
+            - advanced
+            - professional
+        tiktokUsername:
+          type: string
+          maxLength: 100
+          pattern: ^@[a-zA-Z0-9_.]{1,24}$
+          description: TikTok username with @ prefix
+          example: '@jan_skipper'
+        whatsappNumber:
+          type: string
+          maxLength: 20
+          pattern: ^\+[1-9]\d{1,14}$
+          description: WhatsApp phone number in international format
+          example: '+48123456789'
+        sailingLicenses:
+          type: string
+          maxLength: 150
+          description: User's sailing licenses and certifications
+          example: RYA Yachtmaster Offshore
+        yearsOfExperience:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Years of sailing experience
+          example: 10
+        languagesSpoken:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            pattern: ^[a-z]{2}$
+            minLength: 2
+            maxLength: 2
+          description: Languages spoken by the user (ISO 639-1 codes)
+          example:
+            - pl
+            - en
+            - de
+        preferredVoyageStyles:
+          type: array
+          items:
+            type: string
+          description: User's preferred sailing/voyage styles
+          example:
+            - coastal
+            - offshore
+            - racing
+    UserPartialUpdate:
+      type: object
+      description: |
+        Partial update schema for PATCH /profile.
+        Omitted fields are not modified.
       properties:
         bio:
           type: string

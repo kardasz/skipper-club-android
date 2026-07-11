@@ -411,11 +411,11 @@ When invite-only mode is enabled:
 
 ## Data Cleanup
 
-A daily cron job (`InvitationsScheduler`) automatically deletes old expired invitations:
+A River maintenance job automatically deletes old expired invitations:
 
 | Aspect       | Details                                                                   |
 | ------------ | ------------------------------------------------------------------------- |
-| **Schedule** | Daily at 3:00 AM                                                          |
+| **Schedule** | Every 24 hours from River periodic scheduling (not wall-clock aligned)    |
 | **Target**   | Invitations expired for > 30 days (configurable)                          |
 | **Excluded** | Accepted invitations (preserved for inviter-invitee relationship)         |
 | **Method**   | Batch deletion (100 records per batch) to avoid long-running transactions |
@@ -428,4 +428,4 @@ The cleanup job logs the number of deleted invitations for monitoring.
 - [Authentication](../authentication/index.md) - JWT tokens and session management
 - [Email](../email/index.md) - Queue-based email delivery
 - [Getting Started: Errors](../getting-started/errors.md) - RFC 7807 error format
-- [OpenAPI Specification](../openapi.yaml) - Full API reference
+- [OpenAPI Specification](../../api/openapi.yaml) - Full API reference

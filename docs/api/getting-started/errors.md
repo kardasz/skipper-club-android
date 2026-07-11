@@ -357,4 +357,4 @@ If the requested language is not supported, English is used as fallback.
 
 - [Authentication](./authentication.md) — Token management and refresh flow
 - [Quick Start](./index.md) — Make your first API call
-- [OpenAPI Specification](../openapi.yaml) — Full API reference
+- [OpenAPI Specification](../../api/openapi.yaml) — Full API reference

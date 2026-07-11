@@ -484,4 +484,4 @@ async function authenticatedRequest(url: string, options: RequestInit) {
 
 - [Error Handling](./errors.md) — RFC 7807 error format details
 - [Quick Start](./index.md) — Make your first API call
-- [OpenAPI Specification](../openapi.yaml) — Full API reference
+- [OpenAPI Specification](../../api/openapi.yaml) — Full API reference

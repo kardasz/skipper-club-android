@@ -117,12 +117,12 @@ To submit a review:
 
 ## Notifications
 
-| Event                             | Recipient        | Notification                                                                  |
-| --------------------------------- | ---------------- | ----------------------------------------------------------------------------- |
-| Cruise arrival + 1 day (cron job) | Each participant | `CRUISE_REVIEW_REMINDER` — "Review your fellow crew members"                  |
-| User A reviews User B             | User B           | `REVIEW_PENDING_RECEIVED` — "Someone reviewed you - leave a review to see it" |
-| Both reviews submitted            | User A           | `REVIEW_PUBLISHED` — "Your review is now published"                           |
-| Both reviews submitted            | User B           | `REVIEW_PUBLISHED` — "Your review is now published"                           |
+| Event                                              | Recipient                                       | Notification                                                                  |
+| -------------------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------- |
+| Next daily maintenance run after cruise completion | Each accepted participant still missing reviews | `CRUISE_REVIEW_REMINDER` — "Review your fellow crew members"                  |
+| User A reviews User B                              | User B                                          | `REVIEW_PENDING_RECEIVED` — "Someone reviewed you - leave a review to see it" |
+| Both reviews submitted                             | User A                                          | `REVIEW_PUBLISHED` — "Your review is now published"                           |
+| Both reviews submitted                             | User B                                          | `REVIEW_PUBLISHED` — "Your review is now published"                           |
 
 ## Error Scenarios
 
@@ -168,7 +168,7 @@ interface ReviewResponse {
     average: number; // Calculated at runtime, not stored
   };
   comment: string; // 100-1000 characters
-  status: 'pending' | 'published';
+  status: "pending" | "published";
   createdAt: string;
   updatedAt: string;
 }

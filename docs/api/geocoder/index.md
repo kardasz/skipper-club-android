@@ -579,5 +579,5 @@ Error messages support localization via `Accept-Language` header:
 ## Related
 
 - [Posts](../posts/index.md) — Use geocoder to populate `locationName` and `coordinates` when creating posts
-- [OpenAPI Specification](../openapi.yaml) — Machine-readable API contract
+- [OpenAPI Specification](../../api/openapi.yaml) — Machine-readable API contract
 - [Error Handling](../getting-started/errors.md) — RFC 7807 error format details

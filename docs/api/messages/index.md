@@ -19,6 +19,7 @@ SkipperClub's messaging system enables users to communicate through various chat
 
 - [Chats REST API](./chats.md) — Chat management, messages, read status
 - [WebSocket Events](./websocket.md) — Real-time messaging and presence
+- [Socket.IO to WebSocket Migration](./socketio-to-websocket-migration.md) — Client migration guide (web, Android, iOS)
 
 ## Chat Types
 
@@ -177,18 +178,22 @@ Content-Type: application/json
 ### Connect via WebSocket
 
 ```javascript
-import { io } from 'socket.io-client';
+const socket = new WebSocket(
+  `wss://api.skipperclub.app/v1/ws/chat?token=${encodeURIComponent(token)}`,
+);
 
-const socket = io('https://api.skipperclub.app/chat', {
-  auth: { token: 'your-jwt-token' },
+socket.addEventListener("open", () => {
+  socket.send(
+    JSON.stringify({
+      event: "chat:join",
+      data: { chatId: "018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b99" },
+    }),
+  );
 });
 
-socket.on('connect', () => {
-  socket.emit('chat:join', { chatId: '018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b99' });
-});
-
-socket.on('message:new', (message) => {
-  console.log('New message:', message);
+socket.addEventListener("message", ({ data }) => {
+  const frame = JSON.parse(data);
+  if (frame.event === "message:new") console.log(frame.data);
 });
 ```
 

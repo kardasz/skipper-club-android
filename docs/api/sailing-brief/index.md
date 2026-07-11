@@ -60,8 +60,11 @@ not-available problem response is returned.
 - priority
 
 They replace the deleted `regions` and `region_i18n` tables for sailing brief
-selection. They are seeded through the CLI seeder, not through region data
-migrations.
+selection. Per-country area seeds generated from official hydrographic sources
+live in `db/seed/` (currently Croatia: `brief_areas_hr.sql`) and must be
+applied with `cli seed` before generation can work.
+See [Areas — Data Sources](./areas-sources.md) for sourcing methodology,
+per-country provenance, and how to add new countries.
 
 ## Admin and Generation
 
@@ -70,7 +73,9 @@ codes. The generation processor still produces the same nine content fields
 and stores them in the `sailing_briefs.content` JSON object.
 
 The scheduler iterates enabled brief areas, resolves the due local time slot
-from each area's timezone, and enqueues generation per supported language.
+from each area's timezone, and enqueues generation per supported language. The
+maintenance worker runs an hourly River sweep; due hours are 05:00, 12:00, and
+16:00 in each area's IANA timezone.
 
 ### Admin Endpoints
 
@@ -99,3 +104,13 @@ regeneration jobs with a custom prompt.
 Returns `202` with `{ jobs: [{ areaCode, language, timeSlot }, ...] }`, one
 entry per enqueued (area × supported language × current time slot)
 combination.
+
+### CLI
+
+`cli sailing-briefs generate-now [--areas CODE1,CODE2] [--prompt TEXT]` is the
+operational equivalent of the admin regenerate endpoint for operators without
+REST access — useful for testing or filling gaps from scheduler downtime.
+Without `--areas` it targets every currently enabled brief area. It calls the
+same `Service.Regenerate` enqueue path as `POST /v1/sailing-briefs/regenerate`
+(current time slot per area, both supported languages), so generation still
+runs asynchronously on the worker.

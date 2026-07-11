@@ -24,10 +24,9 @@ Examples:
 | Route recommendation with photos | `{route,media}` |
 | Imported navigation warning      | `{alert}`       |
 
-The column is always derived server-side through one shared pure function
-(`computeContentKeys(content, hasMedia)` in
-`src/modules/posts/services/post-content.util.ts`), used by all three write
-paths (create, update, alert sync). It is **never accepted from the client**.
+The column is always derived server-side through the shared
+`computeContentKeys` function in `internal/posts/content.go`, used by create,
+update, and alert sync paths. It is **never accepted from the client**.
 
 "Is this an alert post" in code = `content.alert` present (helper
 `isAlertContent`); in SQL: `content_keys @> '{alert}'`.
@@ -45,8 +44,8 @@ content object — media stays relational.)
 
 ### Rules
 
-- **Unknown content keys are rejected on write** (whitelist validation via the
-  global validation pipe), so the registry stays authoritative. Adding a new
+- **Unknown content keys are rejected on write** by the posts HTTP validation
+  layer, so the registry stays authoritative. Adding a new
   object type = new nested DTO + registry entry + docs, nothing else — no enum
   change, no new endpoint, no new filter parameter (`content_keys` and the
   `contains` filter pick the new key up automatically).

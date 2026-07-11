@@ -67,6 +67,19 @@ linked post:
 The sync is idempotent by the unique `(source_type, source_id)` pair. Re-imports
 update the same post. Known cancellations set the linked post to `resolved`.
 
+### Backfill / reconcile
+
+Because the sync runs inline with each import, an alert persisted while the
+sync step was failing keeps its `alerts` row but never gets a post, and the
+twice-daily import never revisits an alert once its source feed drops it. The
+`alerts:sync-posts` CLI command reconciles this by dispatching the idempotent
+`SyncAlertPostCommand` for every non-deleted alert, back-filling the missing
+posts and repairing any alert↔post drift:
+
+```sh
+go run ./cmd/cli alerts sync-posts
+```
+
 ### Lifecycle: cancellation is terminal
 
 Cancellation is a one-way transition: `published -> resolved`. There is no

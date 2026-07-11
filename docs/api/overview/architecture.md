@@ -1,322 +1,118 @@
 # Architecture
 
-This document provides a high-level overview of the SkipperClub API architecture, its components, and data flow.
+SkipperClub API is a Go modular monolith with separate API, worker, and
+administrative CLI processes. The complete design decision and migration
+context are in [ADR-0001](../adr/0001-architecture.md).
 
-## System Overview
-
-```mermaid
-flowchart TB
-    subgraph Clients
-        WEB[Web App]:::trigger
-        MOB[Mobile App]:::trigger
-        EXT[Third-party]:::trigger
-    end
-
-    subgraph API["SkipperClub API"]
-        REST[REST API]:::state
-        WS[WebSocket Gateway]:::state
-    end
-
-    subgraph Data["Data Layer"]
-        PG[(PostgreSQL)]:::success
-    end
-
-    subgraph Storage
-        R2[Cloudflare R2]:::success
-    end
-
-    WEB --> REST
-    WEB --> WS
-    MOB --> REST
-    MOB --> WS
-    EXT --> REST
-
-    REST --> PG
-    REST --> R2
-
-    WS --> PG
-
-    classDef trigger fill:#3B82F6,stroke:#1E40AF,color:#FFFFFF
-    classDef state fill:#6B7280,stroke:#374151,color:#FFFFFF
-    classDef success fill:#10B981,stroke:#047857,color:#FFFFFF
-```
-
-## Technology Stack
-
-### Backend Platform
-
-| Technology     | Version | Purpose               |
-| -------------- | ------- | --------------------- |
-| **Node.js**    | 22      | JavaScript runtime    |
-| **NestJS**     | 11      | Application framework |
-| **TypeScript** | 5       | Type-safe development |
-
-The backend follows these architectural patterns:
-
-- **CQRS** — Commands for writes, Queries for reads via `@nestjs/cqrs`
-- **Event-driven** — Domain events for decoupled communication
-- **Repository pattern** — Abstracted data access layer
-- **Domain-driven design** — Module boundaries aligned with business domains
-
-### Databases
+## Runtime view
 
 ```mermaid
 flowchart LR
-    subgraph PostgreSQL["PostgreSQL 18 + PostGIS"]
-        U[Users]:::state
-        C[Cruises]:::state
-        F[Friends]:::state
-        R[Reviews]:::state
-        P[Posts]:::state
-        N[Notifications]:::state
-        S[Sessions]:::state
-        CH[Chats]:::trigger
-        M[Messages]:::trigger
-    end
-
-    classDef state fill:#6B7280,stroke:#374151,color:#FFFFFF
-    classDef trigger fill:#3B82F6,stroke:#1E40AF,color:#FFFFFF
+    Client["Mobile/Web client"] -->|"REST /v1"| API["Go API"]
+    Client <-->|"WebSocket /v1/ws/chat"| API
+    API --> PG["PostgreSQL + PostGIS"]
+    API --> Redis["Redis"]
+    API --> S3["S3 / R2"]
+    API --> External["AI, geocoder, CAPTCHA"]
+    Worker["Go River worker"] --> PG
+    Worker --> Redis
+    Worker --> Providers["Email, APNs, FCM, HHI"]
+    API -. "River jobs" .-> PG
+    Redis -. "WS fan-out/presence" .-> API
 ```
 
-| Database       | Purpose                                                                                                     |
-| -------------- | ----------------------------------------------------------------------------------------------------------- |
-| **PostgreSQL** | All application data — users, cruises, friends, reviews, posts, notifications, sessions, chats and messages |
+The API owns synchronous REST/WS work and inserts durable jobs. The worker
+consumes River queues and registers periodic maintenance. PostgreSQL is both
+the application datastore and River job store. Redis is used for WebSocket
+fan-out/presence and HTTP rate limiting; it is not the job queue.
 
-> **Note:** Redis backs the BullMQ job queues used for email and push notification delivery (including dead-letter queues). It is not yet used for caching or session storage.
+## Processes
 
-### File Storage
+| Binary       | Responsibility                                                                    |
+| ------------ | --------------------------------------------------------------------------------- |
+| `cmd/api`    | configuration, dependencies, REST routes, WebSocket hub, domain-event subscribers |
+| `cmd/worker` | River queues: email, push, sailing brief, alert import, maintenance               |
+| `cmd/cli`    | schema/River migration, user administration, manual alert import/reconciliation   |
 
-| Service           | Purpose                               |
-| ----------------- | ------------------------------------- |
-| **Cloudflare R2** | Durable media storage (S3-compatible) |
+Both long-running processes support graceful shutdown. The API drains HTTP for
+up to 15 seconds; the worker drains jobs for up to 30 seconds.
 
-Media uploads use pre-signed URLs for secure, direct client uploads:
+## Module boundaries
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant API
-    participant R2 as Cloudflare R2
+Feature packages live directly under `internal`, for example `auth`, `users`,
+`cruises`, `posts`, `messages`, `notifications`, and `alerts`. A typical feature
+contains:
 
-    Client->>API: Request upload URL
-    API->>API: Generate pre-signed URL
-    API-->>Client: Return upload URL
-    Client->>R2: Upload file directly
-    Client->>API: Confirm upload
-    API->>API: Process and associate media
+```text
+service.go             dependencies and construction
+service_commands.go    writes and business rules
+service_queries.go     reads
+repo.go                 consumer-side persistence interface
+repo_pg.go              pgx/PostgreSQL adapter
+http.go                 generated REST interface implementation
+errors.go               domain errors mapped to RFC 7807
+*_test.go               unit tests
 ```
 
-## API Architecture
+Features do not import each other's concrete services. A consumer declares the
+narrow interface it needs and `cmd/api` or `cmd/worker` supplies an adapter.
+Cross-feature notifications use an in-process domain event dispatcher. Durable
+email and push work is inserted into River, normally in the same PostgreSQL
+transaction as its audit/domain row.
 
-### REST API
+## HTTP contract
 
-The REST API follows OpenAPI 3.1 specification defined in `docs/openapi.yaml`.
+[`api/openapi.yaml`](../../api/openapi.yaml) is the REST source of truth. The
+project generates chi server interfaces and DTOs into `api/gen/gen.go`.
+`internal/server` mounts the 107 specified operations below `/v1` and applies:
 
-Key characteristics:
+- request IDs and structured request logging;
+- panic recovery;
+- CORS;
+- `Accept-Language` negotiation;
+- Sentry HTTP context;
+- JWT authentication on protected operations;
+- Redis-backed throttling.
 
-- **Versioned** — URL path versioning (`/v1/...`)
-- **Resource-oriented** — RESTful endpoint design
-- **JSON** — Request and response bodies in JSON format
-- **RFC 7807** — Error responses in Problem Details format
+Expected failures use localized `application/problem+json` responses. English
+and Polish catalogs are embedded in the binary.
 
-### WebSocket API
+## WebSocket contract
 
-Real-time features use WebSocket connections defined in `docs/asyncapi.yaml`.
+The Go implementation uses plain RFC 6455 WebSocket through `coder/websocket`.
+There are no Socket.IO namespaces or polling fallback. Clients connect to the
+single `/v1/ws/chat` endpoint with a bearer token in `Authorization` or the
+`token` query parameter and exchange JSON `{event,data}` envelopes.
 
-Key features:
+Chat events and `notification:new` share the same connection. Every connection
+joins its personal `user:{userId}` room automatically; explicit `chat:join`
+controls chat-room broadcasts. Redis forwards broadcasts and presence between
+API instances.
 
-- **Socket.io** — Transport layer with fallback support
-- **JWT authentication** — Token-based connection authorization
-- **Namespaces** — Logical separation of event types
-- **Rooms** — Chat-specific message broadcasting
+See [WebSocket Events](../messages/websocket.md).
 
-```mermaid
-flowchart LR
-    subgraph WebSocket Events
-        direction TB
-        IN[Incoming]:::trigger
-        OUT[Outgoing]:::success
-    end
+## Storage and integrations
 
-    subgraph Incoming
-        JC[chat:join]:::trigger
-        LC[chat:leave]:::trigger
-        SM[message:send]:::trigger
-        MR[message:read]:::trigger
-        TY[chat:typing]:::trigger
-    end
+- `pgx/v5` executes hand-written SQL; there is no ORM.
+- Goose applies the embedded initial schema; River owns its tables.
+- S3-compatible storage handles media and avatars.
+- Email providers are SES, SendGrid, Mailgun, SMTP, and console.
+- Push providers are APNs and FCM.
+- AI presets route to OpenAI-compatible OpenAI/OpenRouter endpoints.
+- Google Maps backs geocoding when configured.
+- Sentry captures unexpected HTTP and worker failures.
 
-    subgraph Outgoing
-        NM[message:new]:::success
-        MS[message:sent]:::success
-        RR[message:read:receipt]:::success
-        TI[chat:typing]:::success
-        PU[presence:update]:::success
-    end
+## Scheduling
 
-    classDef trigger fill:#3B82F6,stroke:#1E40AF,color:#FFFFFF
-    classDef success fill:#10B981,stroke:#047857,color:#FFFFFF
-```
+The `maintenance` River worker registers daily cleanup/deletion/review jobs,
+minute-based post expiration, hourly sailing-brief scheduling, and a 12-hour
+alert import interval. River leader election prevents duplicate periodic job
+insertion. These schedules are intervals from worker leadership/startup rather
+than wall-clock cron expressions.
 
-## Module Structure
+## Test architecture
 
-The application is organized by domain modules:
-
-```
-src/modules/
-├── ai/             # Audio transcription & AI features
-├── alerts/         # Navigational alerts & warnings
-├── auth/           # JWT authentication & sessions
-├── check-ins/      # User location check-ins
-├── cruises/        # Cruise organization
-├── debug/          # Sentry debug endpoints (non-production only)
-├── email/          # Email queue & templates
-├── filestorage/    # File storage management
-├── friends/        # Friend system
-├── geocoder/       # Reverse geocoding with caching
-├── invitations/    # App invitations (codes & links)
-├── map/            # Unified map items endpoint
-├── media/          # Media sharing
-├── messages/       # Chat system
-├── notifications/  # Notification center
-├── posts/          # Social posts
-├── push/           # Push notifications (APNs/FCM)
-├── redis/          # Redis connection module
-├── reviews/        # Rating system
-├── sailing-brief/  # AI-generated sailing briefs
-├── spots/          # Sailing spots & validity voting
-└── users/          # User profiles
-```
-
-Each module follows CQRS pattern:
-
-```
-src/modules/{module}/
-├── commands/
-│   ├── handlers/       # Command handlers (writes)
-│   └── impl/           # Command definitions
-├── queries/
-│   ├── handlers/       # Query handlers (reads)
-│   └── impl/           # Query definitions
-├── dto/                # Data transfer objects
-├── exceptions/         # Module-specific exceptions
-├── {module}.controller.ts
-├── {module}.module.ts
-└── {module}.service.ts
-```
-
-## Security Architecture
-
-### Authentication Flow
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant API
-    participant DB as PostgreSQL
-
-    Client->>API: POST /auth/login (email, password)
-    API->>DB: Verify credentials
-    DB-->>API: User found
-    API->>API: Generate JWT tokens
-    API-->>Client: Access token + Refresh token
-
-    Note over Client,API: Access token expires in 15 minutes
-
-    Client->>API: POST /sessions/{id}/refresh
-    API->>API: Verify refresh token
-    API-->>Client: New access token + refresh token
-```
-
-### Token Specifications
-
-| Token             | Lifetime   | Purpose                   |
-| ----------------- | ---------- | ------------------------- |
-| **Access Token**  | 15 minutes | API request authorization |
-| **Refresh Token** | 7 days     | Obtain new access tokens  |
-
-### Authorization
-
-- Bearer token required for most endpoints
-- Token contains user ID and session ID
-- Resource access validated against ownership and permissions
-
-## Error Handling
-
-All errors follow RFC 7807 Problem Details format:
-
-```json
-{
-  "type": "/errors/not-found",
-  "title": "Not Found",
-  "status": 404,
-  "detail": "The requested resource was not found"
-}
-```
-
-Key aspects:
-
-- **Consistent format** across all modules
-- **i18n support** — Error messages in EN/PL
-- **Validation errors** include field-level violations
-
-## Scalability Considerations
-
-### Current Design
-
-- Single-instance deployment
-- Vertical scaling approach
-- Local session management
-
-### Future Considerations
-
-- Horizontal scaling with Redis session store
-- Database read replicas
-- CDN for static assets
-- Message queue for async processing
-
-## Development & Deployment
-
-### Environments
-
-| Environment     | Purpose                                   |
-| --------------- | ----------------------------------------- |
-| **Development** | Local development with hot reload         |
-| **Test**        | Automated testing with isolated databases |
-| **Staging**     | Pre-production verification               |
-| **Production**  | Live environment                          |
-
-### CI/CD Pipeline
-
-```mermaid
-flowchart LR
-    A[Push]:::trigger --> B[Lint & Format]:::state
-    B --> C[TypeScript Check]:::state
-    C --> D[Unit Tests]:::state
-    D --> D2[Integration Tests]:::state
-    D2 --> E[E2E Tests]:::state
-    E --> F[Build Docker]:::state
-    F --> G[Deploy]:::success
-
-    classDef trigger fill:#3B82F6,stroke:#1E40AF,color:#FFFFFF
-    classDef state fill:#6B7280,stroke:#374151,color:#FFFFFF
-    classDef success fill:#10B981,stroke:#047857,color:#FFFFFF
-```
-
-> **Note:** GitHub Actions runs a dedicated `integration-tests` job (against a
-> `postgis/postgis:18-3.6` service) between unit and E2E tests. GitLab CI does
-> not currently have an equivalent stage — only `unit-tests` and `e2e-tests`.
-
-### Infrastructure
-
-| Component            | Technology                      |
-| -------------------- | ------------------------------- |
-| **Reverse Proxy**    | Traefik v3 with automatic HTTPS |
-| **Containerization** | Docker & Docker Compose         |
-| **CI/CD**            | GitHub Actions / GitLab CI      |
-
-## Next Steps
-
-- [Quick Start](../getting-started/index.md) — Make your first API call
-- [Authentication](../getting-started/authentication.md) — Learn about JWT tokens
-- [Tech Stack](../technical/tech-stack.md) — Detailed technology information
+Unit tests cover services and adapters with fakes. Integration tests use
+testcontainers PostgreSQL/PostGIS and Redis. E2E builds the three binaries and
+drives real HTTP and WebSocket traffic with PostgreSQL, Redis, and S3Mock.
+Details are in [Testing Strategy](../technical/testing-strategy.md).

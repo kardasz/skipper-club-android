@@ -174,7 +174,7 @@ soft-deleted.
 ## Other Endpoints
 
 The full endpoint surface (comments, reactions, bookmarks, validity votes,
-reports, deletion) is defined in `docs/openapi.yaml` under the `Posts` tag —
+reports, deletion) is defined in `api/openapi.yaml` under the `Posts` tag —
 this page covers the content model and feed semantics, not every route.
 
 ## Imported Alerts

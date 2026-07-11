@@ -25,8 +25,8 @@ Start integrating with the API quickly.
 
 Machine-readable API contracts for automated tooling.
 
-- [OpenAPI Specification](./openapi.yaml) — REST API contract (OpenAPI 3.1)
-- [AsyncAPI Specification](./asyncapi.yaml) — WebSocket events contract (AsyncAPI 3.0)
+- [OpenAPI Specification](../api/openapi.yaml) — REST API contract (OpenAPI 3.1)
+- [AsyncAPI Specification](../api/asyncapi.yaml) — WebSocket events contract (AsyncAPI 3.0)
 
 ### Feature Modules
 
@@ -45,6 +45,7 @@ Detailed documentation for each API module.
 - [Push Notifications](./notifications/push-notifications.md) — APNs/FCM setup and mobile push flow
 - [Regions](./regions/index.md) — Removed legacy region picker surface
 - [Sailing Brief](./sailing-brief/index.md) — AI-generated coordinate-based sailing briefings
+- [Sailing Brief Areas — Data Sources](./sailing-brief/areas-sources.md) — Official sources and seeding of brief areas per country
 - [Media](./media/index.md) — File uploads and media processing
 - [Audio](./audio/index.md) — Audio transcription
 - [Geocoder](./geocoder/index.md) — Location search and reverse geocoding

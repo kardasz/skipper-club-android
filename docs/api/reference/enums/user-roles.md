@@ -45,7 +45,7 @@ An elevated role with administrative privileges. Admins have access to managemen
 
 - The role is included in the JWT token payload as `role`
 - The role is returned in user profile and session responses
-- Role-based access control uses the `@Roles()` decorator on protected endpoints
+- Role-based access control is enforced by the authenticated feature handlers on protected endpoints
 - New users are assigned `user` role by default
 - Admin roles must be assigned manually (database update or admin panel)
 
@@ -116,4 +116,4 @@ When a user attempts to access a role-protected endpoint without the required ro
 
 - [Authentication](../../authentication/index.md) - JWT authentication documentation
 - [Users API](../../users/index.md) - User profile documentation
-- [OpenAPI Specification](../../openapi.yaml) - Full API reference
+- [OpenAPI Specification](../../../api/openapi.yaml) - Full API reference

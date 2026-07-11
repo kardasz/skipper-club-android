@@ -786,14 +786,14 @@ All errors follow RFC 7807 Problem Details format:
 
 ```javascript
 // Load chat list
-const response = await fetch('/v1/chats?limit=20', {
+const response = await fetch("/v1/chats?limit=20", {
   headers: { Authorization: `Bearer ${token}` },
 });
 const { chats, total } = await response.json();
 
 // Display chats with unread indicators
 chats.forEach((chat) => {
-  const badge = chat.unreadCount > 0 ? `(${chat.unreadCount})` : '';
+  const badge = chat.unreadCount > 0 ? `(${chat.unreadCount})` : "";
   const name = chat.name || getOtherParticipant(chat).name;
   console.log(`${name} ${badge}`);
 });
@@ -828,16 +828,16 @@ const { messages } = await response.json();
 displayMessages(messages);
 
 // Real-time updates via WebSocket
-socket.on('message:new', (newMessage) => {
+socket.on("message:new", (newMessage) => {
   if (newMessage.chatId === chatId) {
     appendMessage(newMessage);
 
     // Mark as read if chat is open
     fetch(`/v1/chats/${chatId}/messages/${newMessage.id}`, {
-      method: 'PATCH',
+      method: "PATCH",
       headers: {
         Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({ read: true }),
     });
