@@ -82,8 +82,17 @@ private fun Intent?.extractInvitationCode(): String? {
     if (this == null) return null
     if (action != Intent.ACTION_VIEW) return null
     val uri = data ?: return null
-    if (!uri.path.orEmpty().endsWith("/register")) return null
-    return uri.getQueryParameter("invitation")?.takeIf { it.isNotBlank() }
+    return parseInvitationCode(uri.path, uri.getQueryParameter("invitation"))
+}
+
+/**
+ * Pure path matcher for `…/register[?invitation=CODE]` deep links. Any `/register`
+ * path opens the invitation screen, with the code pre-filled when present in the
+ * query string and left blank (for manual entry) otherwise.
+ */
+internal fun parseInvitationCode(path: String?, invitationParam: String?): String? {
+    if (!path.orEmpty().endsWith("/register")) return null
+    return invitationParam?.takeIf { it.isNotBlank() }.orEmpty()
 }
 
 private fun Intent?.extractPasswordResetLink(): PasswordResetDeepLink? {
