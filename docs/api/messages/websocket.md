@@ -121,6 +121,33 @@ After a successful `message:send`:
 
 Both message events carry the same message object.
 
+## Transport parity (REST + WebSocket)
+
+Chat writes have two equivalent entrypoints; **both produce identical
+server-emitted events**. The fan-out lives in one shared backend component
+(`internal/messages/realtime.go`), so the two paths cannot drift apart. A
+client may send over REST (like Android does) or over WS (like web and iOS
+do) — every other connected client receives the same real-time events either
+way.
+
+| Write               | WS entrypoint  | REST entrypoint                                       | Events emitted to others                                                           |
+| ------------------- | -------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| create message      | `message:send` | `POST /chats/{chatId}/messages`                       | `message:new` → chat room; `message:received` → other participants' personal rooms |
+| mark message read   | `message:read` | `PATCH /chats/{chatId}/messages/{messageId}` (`true`) | `message:read` receipt → chat room                                                 |
+| mark message unread | —              | `PATCH …/messages/{messageId}` (`read: false`)        | none                                                                               |
+| bulk mark-read      | —              | `POST /chats/actions` (`mark-read`)                   | none (no per-message receipts)                                                     |
+| hide chat           | —              | `DELETE /chats/{chatId}` / `POST /chats/actions`      | none                                                                               |
+| typing indicator    | `chat:typing`  | —                                                     | `chat:typing` → chat room, excluding the sender's connection                       |
+
+Only the acknowledgement differs: WS callers get the reply events
+(`message:sent`, `message:read:confirmed`, `chat:typing:sent`), REST callers
+get the HTTP response (`201` with the message object, `204`) instead.
+
+`message:received` is never delivered to the sender's own personal room —
+not even to the sender's other devices. A sender's second device sees the new
+message only if it has joined the chat room (`message:new`) or on its next
+REST fetch.
+
 ## Server to client events
 
 | Event                    | `data`                       | Scope                                             |

@@ -560,7 +560,10 @@ When a message is sent:
 1. **Chat is updated** — `lastMessage` and `updatedAt` are refreshed
 2. **Hidden chats reappear** — Users who hid the chat will see it again
 3. **Unread counts increase** — For all participants except the sender
-4. **WebSocket event** — `message:new` is broadcast to connected participants
+4. **WebSocket events** — `message:new` is broadcast to the chat room and
+   `message:received` to every other participant's personal room — exactly
+   the same events as a WS `message:send` (see
+   [Transport parity](./websocket.md#transport-parity-rest--websocket))
 
 ### Errors
 
@@ -622,6 +625,13 @@ Content-Type: application/json
 ### Response
 
 **204 No Content**
+
+### Side Effects
+
+Marking as read (`"read": true`) broadcasts a `message:read` receipt
+(`{messageId, userId, readAt}`) to the chat room — the same event the WS
+`message:read` operation produces. Marking as unread (`"read": false`) emits
+no WebSocket event.
 
 ### Errors
 
@@ -701,6 +711,8 @@ Content-Type: application/json
 - Marks all messages in the specified chats as read for the current user
 - Updates `lastReadMessageId` to the most recent message in each chat
 - Updates unread counts
+- Emits **no** WebSocket `message:read` receipts (unlike the single-message
+  `PATCH`, which does)
 
 **delete action**:
 
@@ -827,8 +839,11 @@ const response = await fetch(`/v1/chats/${chatId}/messages`, {
 const { messages } = await response.json();
 displayMessages(messages);
 
-// Real-time updates via WebSocket
-socket.on("message:new", (newMessage) => {
+// Real-time updates via WebSocket ({event, data} JSON frames — see websocket.md)
+socket.addEventListener("message", ({ data }) => {
+  const frame = JSON.parse(data);
+  if (frame.event !== "message:new") return;
+  const newMessage = frame.data;
   if (newMessage.chatId === chatId) {
     appendMessage(newMessage);
 

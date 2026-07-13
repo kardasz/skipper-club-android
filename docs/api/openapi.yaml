@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: SkipperClub API
   description: API for the SkipperClub social platform – connecting skippers and sailing enthusiasts.
-  version: 1.0.0
+  version: 1.2.1
   contact:
     name: SkipperClub Team
     email: contact@skipperclub.com
@@ -1566,7 +1566,11 @@ paths:
       tags:
         - messages
       summary: Send message to chat
-      description: Sends a message to the specified chat
+      description: |
+        Sends a message to the specified chat. Emits the same real-time
+        WebSocket events as the WS `message:send` operation: `message:new` to
+        the chat room and `message:received` to every other participant's
+        personal room (see api/asyncapi.yaml).
       parameters:
         - name: chatId
           in: path
@@ -1646,7 +1650,11 @@ paths:
       tags:
         - messages
       summary: Update message
-      description: Update a specific message (e.g., mark as read)
+      description: |
+        Update a specific message (e.g., mark as read). Marking as read
+        (`read: true`) broadcasts the same `message:read` receipt to the chat
+        room as the WS `message:read` operation; marking as unread emits no
+        WebSocket event (see api/asyncapi.yaml).
       parameters:
         - name: chatId
           in: path
@@ -11025,8 +11033,9 @@ components:
         emailNotificationsEnabled:
           type: boolean
           description: >-
-            Whether the user receives notification emails (e.g., review reminders). Does not affect
-            transactional emails (login codes, invitations, account lifecycle).
+            Whether the user receives notification emails (e.g., review reminders, friend request
+            updates). Does not affect transactional emails (login codes, invitations, account
+            lifecycle).
           example: true
         pushNotificationsEnabled:
           type: boolean

@@ -62,16 +62,26 @@ A shared chat for all accepted cruise participants. Created automatically when t
 
 ## WebSocket Events Summary
 
-| Event             | Direction       | Description                |
-| ----------------- | --------------- | -------------------------- |
-| `chat:join`       | Client → Server | Subscribe to chat updates  |
-| `chat:leave`      | Client → Server | Unsubscribe from chat      |
-| `message:send`    | Client → Server | Send message in real-time  |
-| `message:read`    | Client → Server | Mark message as read       |
-| `chat:typing`     | Client → Server | Send typing indicator      |
-| `message:new`     | Server → Client | Receive new message        |
-| `chat:typing`     | Server → Client | Receive typing indicator   |
-| `presence:update` | Server → Client | User online/offline status |
+| Event              | Direction       | Description                                                |
+| ------------------ | --------------- | ---------------------------------------------------------- |
+| `chat:join`        | Client → Server | Subscribe to a chat room's updates                         |
+| `chat:leave`       | Client → Server | Unsubscribe from a chat room                               |
+| `message:send`     | Client → Server | Send message in real-time                                  |
+| `message:read`     | Client → Server | Mark message as read                                       |
+| `chat:typing`      | Client → Server | Send typing indicator                                      |
+| `message:new`      | Server → Client | New message — delivered to the joined chat room only       |
+| `message:received` | Server → Client | New-message notification — personal room, all user's chats |
+| `message:read`     | Server → Client | Read receipt — delivered to the joined chat room           |
+| `chat:typing`      | Server → Client | Receive typing indicator                                   |
+| `presence:update`  | Server → Client | User online/offline status                                 |
+| `notification:new` | Server → Client | New notification — personal room                           |
+
+Server-to-client message events are transport-independent: a message created
+over REST (`POST /chats/{chatId}/messages`) triggers exactly the same
+`message:new` / `message:received` fan-out as one sent over WS
+`message:send`, and `PATCH …/messages/{messageId}` with `read: true`
+broadcasts the same `message:read` receipt as WS `message:read`. See
+[Transport parity](./websocket.md#transport-parity-rest--websocket).
 
 ## Key Concepts
 

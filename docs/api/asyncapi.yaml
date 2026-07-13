@@ -13,6 +13,24 @@ info:
     {"event":"<message name>","data":<documented message payload>}.
     Component payload schemas below describe the `data` member of that envelope.
 
+    ## Transport parity (REST + WebSocket)
+
+    Chat writes have two equivalent entrypoints — the WS events below and
+    the REST endpoints in api/openapi.yaml — and both produce identical
+    server-emitted events:
+
+    - Creating a message (WS message:send or REST
+      POST /chats/{chatId}/messages) emits message:new to the chat room and
+      message:received to every other participant's personal room.
+    - Marking a message read (WS message:read or REST
+      PATCH /chats/{chatId}/messages/{messageId} with read=true) broadcasts
+      the message:read receipt to the chat room.
+
+    Only the acknowledgement differs: WS callers get the reply events
+    (message:sent, message:read:confirmed); REST callers get the HTTP
+    response instead. Bulk mark-read (POST /chats/actions) and marking a
+    message unread emit no WebSocket events.
+
     ## Connection lifecycle
 
     - One connection serves chat and notifications; every authenticated
@@ -324,8 +342,10 @@ components:
       title: New Message
       summary: Receive a new message in real-time
       description: |
-        Emitted to all users in the chat room when a message is sent.
-        Requires active chat room membership (via chat:join).
+        Emitted to all users in the chat room when a message is sent —
+        whether it was created over WS message:send or over REST
+        POST /chats/{chatId}/messages. Requires active chat room membership
+        (via chat:join).
       contentType: application/json
       payload:
         $ref: "#/components/schemas/MessageNewPayload"
@@ -336,9 +356,11 @@ components:
       summary: Receive notification about a new message
       description: |
         Emitted to each participant's personal room (user:{userId}) when a message is sent
-        to any chat they're part of. This event is sent regardless of whether the user is
-        actively in the chat room. Use this for badge counts, notification bells, and global
-        message notifications. The payload is identical to message:new.
+        to any chat they're part of — whether it was created over WS message:send or over
+        REST POST /chats/{chatId}/messages. This event is sent regardless of whether the
+        user is actively in the chat room, but never to the sender's own personal room.
+        Use this for badge counts, notification bells, and global message notifications.
+        The payload is identical to message:new.
       contentType: application/json
       payload:
         $ref: "#/components/schemas/MessageNewPayload"
@@ -355,6 +377,11 @@ components:
       name: message:read
       title: Message Read Receipt
       summary: Receive read receipt for a message
+      description: |
+        Broadcast to the chat room when a participant marks a message read —
+        whether over WS message:read or over REST
+        PATCH /chats/{chatId}/messages/{messageId} with read=true. Bulk
+        mark-read (POST /chats/actions) emits no receipts.
       contentType: application/json
       payload:
         $ref: "#/components/schemas/MessageReadReceiptPayload"

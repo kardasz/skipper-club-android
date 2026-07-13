@@ -240,6 +240,9 @@ Migration steps:
       (`Chat not found or access denied`) for a foreign chat id.
 - [ ] `message:send` → `message:sent` ack, `message:new` in the open room,
       `message:received` on other participants' connections.
+- [ ] REST send (`POST /chats/{chatId}/messages`) produces the same
+      `message:new` / `message:received` delivery on other connected clients
+      as a WS send (transport parity).
 - [ ] Typing indicator round-trip; sender never receives its own
       `chat:typing` back.
 - [ ] `presence:update` arrives for chat partners going online/offline, and
