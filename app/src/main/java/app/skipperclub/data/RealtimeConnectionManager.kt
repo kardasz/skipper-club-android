@@ -1,0 +1,84 @@
+package app.skipperclub.data
+
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+
+/** The connection is held only while the app is both foregrounded and logged in. */
+internal fun shouldHoldConnection(isForeground: Boolean, isAuthenticated: Boolean): Boolean =
+    isForeground && isAuthenticated
+
+/**
+ * Owns the single app-wide realtime connection ([WebSocketChatRealtimeClient]), independent of the
+ * Messages tab. It connects when the user is authenticated **and** the app is foregrounded and
+ * disconnects on background or logout, so `message:received` and `notification:new` keep flowing
+ * everywhere in the app (see the target connection model in the socket.io→WebSocket migration
+ * guide, step 5). Started once from [app.skipperclub.SkipperClubApplication].
+ */
+object RealtimeConnectionManager : DefaultLifecycleObserver {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    private lateinit var realtime: ChatRealtimeClient
+    private var accessTokenProvider: suspend () -> String? = { null }
+    private var onAuthClose: suspend () -> Unit = {}
+
+    @Volatile
+    private var isForeground = false
+
+    @Volatile
+    private var isAuthenticated = false
+
+    @Volatile
+    private var started = false
+
+    /**
+     * @param sessionFlow authentication signal — a non-null value means logged in.
+     * @param accessTokenProvider fresh token per (re)connect (e.g. [SessionStore.validSession]).
+     * @param onAuthClose forced refresh on a `1008`/`4401` close (e.g. [SessionStore.forceRefresh]).
+     */
+    fun start(
+        realtime: ChatRealtimeClient = WebSocketChatRealtimeClient,
+        sessionFlow: StateFlow<SessionResponse?>,
+        accessTokenProvider: suspend () -> String?,
+        onAuthClose: suspend () -> Unit,
+    ) {
+        if (started) return
+        started = true
+        this.realtime = realtime
+        this.accessTokenProvider = accessTokenProvider
+        this.onAuthClose = onAuthClose
+        ProcessLifecycleOwner.get().lifecycle.addObserver(this)
+        scope.launch {
+            sessionFlow.collect { session ->
+                isAuthenticated = session != null
+                reconcile()
+            }
+        }
+    }
+
+    override fun onStart(owner: LifecycleOwner) {
+        isForeground = true
+        reconcile()
+    }
+
+    override fun onStop(owner: LifecycleOwner) {
+        isForeground = false
+        reconcile()
+    }
+
+    @Synchronized
+    private fun reconcile() {
+        if (shouldHoldConnection(isForeground, isAuthenticated)) {
+            // connect() is idempotent (guards on an existing scope).
+            realtime.connect(accessTokenProvider, onAuthClose)
+        } else {
+            realtime.disconnect()
+        }
+    }
+}

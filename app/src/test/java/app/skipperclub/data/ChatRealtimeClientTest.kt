@@ -112,4 +112,32 @@ class ChatRealtimeClientTest {
         assertTrue(first in 500..1000)
         assertTrue(later in 15_000..30_000)
     }
+
+    @Test
+    fun authCloseCodesForceTokenRefresh() {
+        assertEquals(ReconnectPolicy.RefreshToken, reconnectPolicyForClose(CLOSE_CODE_UNAUTHORIZED))
+        assertEquals(ReconnectPolicy.RefreshToken, reconnectPolicyForClose(CLOSE_CODE_TOKEN_EXPIRED))
+        assertEquals(ReconnectPolicy.RefreshToken, reconnectPolicyForClose(1008))
+        assertEquals(ReconnectPolicy.RefreshToken, reconnectPolicyForClose(4401))
+    }
+
+    @Test
+    fun otherCloseCodesBackOffWithoutRefresh() {
+        // Normal close, going away, and "message too big" all reconnect via plain backoff.
+        assertEquals(ReconnectPolicy.Backoff, reconnectPolicyForClose(1000))
+        assertEquals(ReconnectPolicy.Backoff, reconnectPolicyForClose(1001))
+        assertEquals(ReconnectPolicy.Backoff, reconnectPolicyForClose(1009))
+        assertEquals(ReconnectPolicy.Backoff, reconnectPolicyForClose(1011))
+    }
+
+    @Test
+    fun decodesNotificationNewEnvelope() {
+        val frame = decodeRealtimeFrame(
+            """{"event":"notification:new","data":{"id":"n1","type":"MESSAGE_NEW"}}""",
+        )
+
+        requireNotNull(frame)
+        assertEquals("notification:new", frame.event)
+        assertEquals("n1", frame.data.jsonObject["id"]?.jsonPrimitive?.content)
+    }
 }

@@ -240,6 +240,23 @@ class ChatListControllerTest {
     }
 
     @Test
+    fun realtimeMessageIsIdempotentAcrossDoubleDelivery() {
+        // The open chat is delivered twice for one message (message:new + message:received);
+        // the second application must not increment unread again.
+        gateway.chatPages = listOf(chatsPage(listOf(testChat("c1", unreadCount = 2))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        val message = testMessage("m9", chatId = "c1", text = "Ahoy!")
+        controller.onRealtimeMessage(message, isChatOpen = false)
+        controller.onRealtimeMessage(message, isChatOpen = false)
+
+        val updated = controller.state.value.chats.first()
+        assertEquals(3, updated.unreadCount)
+        assertEquals("m9", updated.lastMessage?.id)
+    }
+
+    @Test
     fun realtimeMessageForOpenChatKeepsUnreadAtZero() {
         gateway.chatPages = listOf(chatsPage(listOf(testChat("c1", unreadCount = 0))))
         val controller = controller()

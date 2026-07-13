@@ -41,7 +41,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -137,16 +136,11 @@ fun MessagesScreen(modifier: Modifier = Modifier) {
     var showFilters by rememberSaveable { mutableStateOf(false) }
     var chatPendingDelete by remember { mutableStateOf<Chat?>(null) }
 
-    // The socket lives while the Messages tab is visible; the conversation
-    // dialog below only joins/leaves its chat room on this shared connection.
+    // The socket is owned app-wide by RealtimeConnectionManager (connected while foregrounded and
+    // logged in), so it outlives this tab. Here we only consume events to keep the list live while
+    // it is on screen; the conversation dialog joins/leaves its chat room on the same connection.
     val realtime = remember { WebSocketChatRealtimeClient }
     val currentOpenChatId by rememberUpdatedState(openChatId)
-    LaunchedEffect(realtime) {
-        realtime.connect { SessionStore.validSession()?.accessToken }
-    }
-    DisposableEffect(realtime) {
-        onDispose { realtime.disconnect() }
-    }
     LaunchedEffect(controller, realtime) {
         realtime.events.collect { event ->
             val message = when (event) {

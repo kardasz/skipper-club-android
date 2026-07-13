@@ -104,6 +104,19 @@ object SessionStore {
         refreshStoredSession(storedSession)
     }
 
+    /**
+     * Forces a token refresh regardless of local expiry, then returns the refreshed session.
+     * Used when the realtime server rejects a token the local clock still considers valid
+     * (WebSocket close `1008`/`4401`), so [validSession]'s near-expiry heuristic would not refresh.
+     */
+    suspend fun forceRefresh(): SessionResponse? = refreshMutex.withLock {
+        val storedSession = readStoredSession() ?: run {
+            _session.value = null
+            return null
+        }
+        refreshStoredSession(storedSession)
+    }
+
     private suspend fun restoreSession() {
         runCatching { validSession() }
             .onFailure { _session.value = null }

@@ -1,6 +1,8 @@
 package app.skipperclub
 
 import android.app.Application
+import app.skipperclub.data.RealtimeConnectionManager
+import app.skipperclub.data.SessionStore
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
@@ -16,6 +18,18 @@ import coil3.video.VideoFrameDecoder
  * default singleton loader is replaced here.
  */
 class SkipperClubApplication : Application(), SingletonImageLoader.Factory {
+    override fun onCreate() {
+        super.onCreate()
+        // Initialize here (idempotent) so the app-scoped realtime owner can read session state and
+        // refresh tokens before any Activity starts.
+        SessionStore.initialize(this)
+        RealtimeConnectionManager.start(
+            sessionFlow = SessionStore.session,
+            accessTokenProvider = { SessionStore.validSession()?.accessToken },
+            onAuthClose = { SessionStore.forceRefresh() },
+        )
+    }
+
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)
             .components {

@@ -37,6 +37,9 @@ sealed interface ChatRealtimeEvent {
     /** New message notification from any chat the user participates in. */
     data class MessageReceived(val message: ChatMessage) : ChatRealtimeEvent
 
+    /** In-app notification pushed on the personal room while foregrounded. */
+    data class NotificationNew(val payload: JsonObject) : ChatRealtimeEvent
+
     data object Connected : ChatRealtimeEvent
     data object Disconnected : ChatRealtimeEvent
 }
@@ -51,8 +54,17 @@ interface ChatRealtimeClient {
     val events: SharedFlow<ChatRealtimeEvent>
     val isConnected: StateFlow<Boolean>
 
-    /** [accessTokenProvider] is invoked before every (re)connect attempt so a near-expiry token is refreshed first. */
-    fun connect(accessTokenProvider: suspend () -> String?)
+    /**
+     * [accessTokenProvider] is invoked before every (re)connect attempt so a near-expiry token is
+     * refreshed first. [onAuthClose] is invoked when the server closes with an auth code
+     * (`1008`/`4401`) to force a token refresh **before** the next reconnect, rather than relying on
+     * the passive [accessTokenProvider] re-read (which only refreshes near expiry).
+     */
+    fun connect(
+        accessTokenProvider: suspend () -> String?,
+        onAuthClose: suspend () -> Unit = {},
+    )
+
     fun disconnect()
     fun joinChat(chatId: String)
     fun leaveChat(chatId: String)
@@ -115,6 +127,26 @@ internal fun reconnectBackoffMillis(attempt: Int, random: Random = Random.Defaul
     return random.nextLong(cap / 2, cap + 1)
 }
 
+/** WebSocket close code the server uses when the connection was never authorized. */
+internal const val CLOSE_CODE_UNAUTHORIZED = 1008
+
+/** Application close code the server uses when a live access token expires. */
+internal const val CLOSE_CODE_TOKEN_EXPIRED = 4401
+
+internal enum class ReconnectPolicy {
+    /** Force a token refresh before reconnecting (auth close). */
+    RefreshToken,
+
+    /** Reconnect with bounded exponential backoff (any other close). */
+    Backoff,
+}
+
+/** Auth closes need a fresh token first; everything else just backs off. */
+internal fun reconnectPolicyForClose(code: Int): ReconnectPolicy = when (code) {
+    CLOSE_CODE_UNAUTHORIZED, CLOSE_CODE_TOKEN_EXPIRED -> ReconnectPolicy.RefreshToken
+    else -> ReconnectPolicy.Backoff
+}
+
 object WebSocketChatRealtimeClient : ChatRealtimeClient {
     private const val TAG = "ChatRealtime"
 
@@ -141,10 +173,17 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
     @Volatile
     private var tokenProvider: (suspend () -> String?)? = null
 
+    @Volatile
+    private var authCloseHandler: (suspend () -> Unit)? = null
+
     @Synchronized
-    override fun connect(accessTokenProvider: suspend () -> String?) {
+    override fun connect(
+        accessTokenProvider: suspend () -> String?,
+        onAuthClose: suspend () -> Unit,
+    ) {
         if (scope != null) return
         tokenProvider = accessTokenProvider
+        authCloseHandler = onAuthClose
         val newScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         scope = newScope
         newScope.launch { attemptConnect(newScope, attempt = 0) }
@@ -155,6 +194,7 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         scope?.cancel()
         scope = null
         tokenProvider = null
+        authCloseHandler = null
         webSocket?.close(1000, null)
         webSocket = null
         joinedChatIds.clear()
@@ -181,13 +221,34 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         webSocket = client.newWebSocket(request, RealtimeListener(ownerScope, attempt))
     }
 
-    private fun scheduleReconnect(ownerScope: CoroutineScope, attempt: Int) {
-        if (scope !== ownerScope) return
+    private fun markDisconnected() {
         _isConnected.value = false
         _events.tryEmit(ChatRealtimeEvent.Disconnected)
+    }
+
+    private fun scheduleReconnect(ownerScope: CoroutineScope, attempt: Int) {
+        if (scope !== ownerScope) return
         ownerScope.launch {
             delay(reconnectBackoffMillis(attempt))
             if (scope === ownerScope) attemptConnect(ownerScope, attempt + 1)
+        }
+    }
+
+    /**
+     * Server-initiated close. Auth codes (`1008`/`4401`) force a token refresh before the reconnect
+     * so we do not retry in a tight loop with the same rejected token; every other code just backs
+     * off. The bounded backoff still applies after the refresh as a runaway-loop guard.
+     */
+    private fun handleClose(ownerScope: CoroutineScope, attempt: Int, code: Int) {
+        if (scope !== ownerScope) return
+        markDisconnected()
+        when (reconnectPolicyForClose(code)) {
+            ReconnectPolicy.RefreshToken -> ownerScope.launch {
+                runCatching { authCloseHandler?.invoke() }
+                scheduleReconnect(ownerScope, attempt)
+            }
+
+            ReconnectPolicy.Backoff -> scheduleReconnect(ownerScope, attempt)
         }
     }
 
@@ -203,8 +264,17 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         when (frame.event) {
             "message:new" -> emitMessage(frame.data) { ChatRealtimeEvent.MessageNew(it) }
             "message:received" -> emitMessage(frame.data) { ChatRealtimeEvent.MessageReceived(it) }
+            "notification:new" -> emitNotification(frame.data)
             else -> Unit
         }
+    }
+
+    private fun emitNotification(data: JsonElement) {
+        val payload = data as? JsonObject ?: run {
+            debugLog("dropped non-object notification payload")
+            return
+        }
+        _events.tryEmit(ChatRealtimeEvent.NotificationNew(payload))
     }
 
     private fun emitMessage(data: JsonElement, wrap: (ChatMessage) -> ChatRealtimeEvent) {
@@ -242,11 +312,13 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             debugLog("closed: $code $reason")
-            scheduleReconnect(ownerScope, attempt)
+            handleClose(ownerScope, attempt, code)
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             debugLog("failure: ${t.message}, close=${response?.code}")
+            if (scope !== ownerScope) return
+            markDisconnected()
             scheduleReconnect(ownerScope, attempt)
         }
     }

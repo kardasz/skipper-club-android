@@ -137,6 +137,7 @@ fun ChatConversationScreen(
                 // Catch up on anything missed while the socket was down.
                 ChatRealtimeEvent.Connected -> controller.refreshNewMessages()
                 ChatRealtimeEvent.Disconnected -> Unit
+                is ChatRealtimeEvent.NotificationNew -> Unit
             }
         }
     }

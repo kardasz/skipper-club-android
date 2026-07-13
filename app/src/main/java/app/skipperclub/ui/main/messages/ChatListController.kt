@@ -171,6 +171,11 @@ class ChatListController(
      * Applies a message pushed over the socket: bumps the chat to the top with
      * the new preview and unread count. A message for a chat not in the list
      * (new or previously hidden) triggers a reload.
+     *
+     * The open chat is delivered twice for the same message (`message:new` on the
+     * joined room and `message:received` on the personal room), so the update is
+     * idempotent by [ChatMessage.id]: a message already shown as the last one is
+     * re-applied without incrementing the unread count again.
      */
     fun onRealtimeMessage(message: ChatMessage, isChatOpen: Boolean) {
         val snapshot = _state.value
@@ -181,11 +186,16 @@ class ChatListController(
             reload(showAsRefreshing = true)
             return
         }
+        val alreadyApplied = existing.lastMessage?.id == message.id
         _state.update { state ->
             val updated = existing.copy(
                 lastMessage = message,
                 updatedAt = message.createdAt,
-                unreadCount = if (isChatOpen) 0 else existing.unreadCount + 1,
+                unreadCount = when {
+                    isChatOpen -> 0
+                    alreadyApplied -> existing.unreadCount
+                    else -> existing.unreadCount + 1
+                },
             )
             state.copy(chats = listOf(updated) + state.chats.filterNot { it.id == message.chatId })
         }
