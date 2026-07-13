@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Badge
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -53,6 +54,7 @@ fun SkipperBottomBar(
     user: SessionUser,
     onSelect: (MainDestination) -> Unit,
     modifier: Modifier = Modifier,
+    messagesBadgeCount: Int = 0,
 ) {
     Box(
         modifier = modifier
@@ -85,6 +87,7 @@ fun SkipperBottomBar(
                             selected = destination == selected,
                             user = user.takeIf { destination == MainDestination.MENU },
                             onSelect = onSelect,
+                            badgeCount = if (destination == MainDestination.MESSAGES) messagesBadgeCount else 0,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -102,6 +105,7 @@ private fun SkipperNavItem(
     user: SessionUser?,
     onSelect: (MainDestination) -> Unit,
     modifier: Modifier = Modifier,
+    badgeCount: Int = 0,
 ) {
     val iconTint by animateColorAsState(
         targetValue = if (selected) {
@@ -144,27 +148,34 @@ private fun SkipperNavItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .width(indicatorWidth)
-                .height(34.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .background(indicatorColor),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (user != null) {
-                UserAvatar(
-                    user = user,
-                    selected = selected,
-                    modifier = Modifier.size(32.dp),
-                )
-            } else {
-                Icon(
-                    imageVector = if (selected) destination.selectedIcon else destination.unselectedIcon,
-                    contentDescription = label,
-                    tint = iconTint,
-                    modifier = Modifier.size(if (destination == MainDestination.MAP) 25.dp else 23.dp),
-                )
+        Box(contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .width(indicatorWidth)
+                    .height(34.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(indicatorColor),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (user != null) {
+                    UserAvatar(
+                        user = user,
+                        selected = selected,
+                        modifier = Modifier.size(32.dp),
+                    )
+                } else {
+                    Icon(
+                        imageVector = if (selected) destination.selectedIcon else destination.unselectedIcon,
+                        contentDescription = label,
+                        tint = iconTint,
+                        modifier = Modifier.size(if (destination == MainDestination.MAP) 25.dp else 23.dp),
+                    )
+                }
+            }
+            if (badgeCount > 0) {
+                Badge(modifier = Modifier.align(Alignment.TopEnd)) {
+                    Text(text = if (badgeCount > 99) "99+" else badgeCount.toString())
+                }
             }
         }
     }

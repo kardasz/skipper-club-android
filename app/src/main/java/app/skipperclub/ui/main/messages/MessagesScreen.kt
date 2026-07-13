@@ -72,6 +72,7 @@ import app.skipperclub.data.ChatType
 import app.skipperclub.data.ChatUser
 import app.skipperclub.data.ChatsError
 import app.skipperclub.data.SessionStore
+import app.skipperclub.data.UnreadMessagesStore
 import app.skipperclub.data.WebSocketChatRealtimeClient
 import app.skipperclub.ui.notification.InAppNotificationHost
 import app.skipperclub.ui.notification.InAppNotificationType
@@ -155,6 +156,12 @@ fun MessagesScreen(modifier: Modifier = Modifier) {
                 )
             }
         }
+    }
+
+    // Reconcile the app-wide unread badge when the tab is shown and after a conversation closes
+    // (its read receipts have committed by then), so reads made inside this tab clear the badge.
+    LaunchedEffect(openChatId) {
+        if (openChatId == null) UnreadMessagesStore.refresh()
     }
 
     Box(modifier = modifier.fillMaxSize()) {

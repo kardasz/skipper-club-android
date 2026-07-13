@@ -5,6 +5,7 @@ import app.skipperclub.data.ChatListQuery
 import app.skipperclub.data.ChatMessage
 import app.skipperclub.data.ChatType
 import app.skipperclub.data.ChatsError
+import app.skipperclub.data.UnreadMessagesStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -150,6 +151,8 @@ class ChatListController(
             val token = requireToken() ?: return@launch
             try {
                 gateway.markChatsRead(token, listOf(chat.id))
+                // Reconcile the app-wide badge with the server once the read has committed.
+                UnreadMessagesStore.refresh()
             } catch (error: ChatsError) {
                 _events.tryEmit(ChatListEvent.OperationFailed(error))
             }

@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -33,6 +34,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.skipperclub.R
 import app.skipperclub.data.SessionUser
+import app.skipperclub.data.UnreadMessagesStore
 import app.skipperclub.ui.main.cruises.CruisesScreen
 import app.skipperclub.ui.main.cruises.reviews.CruiseReviewsScreen
 import app.skipperclub.ui.main.friends.FriendsScreen
@@ -55,6 +57,7 @@ fun MainScreen(
 ) {
     val currentSelection = rememberSaveable { mutableStateOf(value = MainDestination.MAP) }
     var current by currentSelection
+    val messagesBadgeCount by UnreadMessagesStore.count.collectAsState()
     MainScreenContent(
         current = current,
         user = user,
@@ -62,6 +65,7 @@ fun MainScreen(
         onLogout = onLogout,
         pendingReviewsCruiseId = pendingReviewsCruiseId,
         onPendingReviewsConsumed = onPendingReviewsConsumed,
+        messagesBadgeCount = messagesBadgeCount,
         modifier = modifier,
     )
 }
@@ -76,6 +80,7 @@ private fun MainScreenContent(
     modifier: Modifier = Modifier,
     pendingReviewsCruiseId: String? = null,
     onPendingReviewsConsumed: () -> Unit = {},
+    messagesBadgeCount: Int = 0,
 ) {
     val menuOpenState = rememberSaveable { mutableStateOf(value = false) }
     var isMenuOpen by menuOpenState
@@ -129,6 +134,7 @@ private fun MainScreenContent(
                     onSelect(destination)
                 }
             },
+            messagesBadgeCount = messagesBadgeCount,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
