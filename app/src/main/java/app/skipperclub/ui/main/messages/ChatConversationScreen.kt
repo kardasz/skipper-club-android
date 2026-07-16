@@ -73,8 +73,15 @@ import kotlinx.coroutines.launch
 private const val POLL_INTERVAL_MILLIS = 5_000L
 private const val MAX_MESSAGE_LENGTH = 1_000
 
-/** Inactivity window before we send `chat:typing {isTyping:false}` after the last keystroke. */
-private const val TYPING_STOP_DELAY_MILLIS = 2_500L
+/**
+ * Typing indicator timings, unified with web/iOS (see docs/api/messages/websocket.md):
+ * while the user keeps typing we re-send `chat:typing {isTyping:true}` every [TYPING_KEEPALIVE_MS];
+ * [TYPING_IDLE_STOP_MS] after the last keystroke we send `{isTyping:false}` once and stop the
+ * keepalive. The receiver's expiry ([ChatConversationController.TYPING_RECEIVE_EXPIRY_MS], 5s) is
+ * longer than the keepalive so a still-typing peer never flickers off between beats.
+ */
+private const val TYPING_KEEPALIVE_MS = 2_000L
+private const val TYPING_IDLE_STOP_MS = 3_000L
 
 @Composable
 fun ChatConversationScreen(
@@ -134,15 +141,21 @@ fun ChatConversationScreen(
     val realtime = remember { WebSocketChatRealtimeClient }
     val realtimeConnected by realtime.isConnected.collectAsState()
 
-    // Typing indicator (send side): a keystroke burst sends `isTyping:true` once (guarded by
-    // [typingSent]) and `isTyping:false` after TYPING_STOP_DELAY_MILLIS of inactivity or
-    // immediately on send, mirroring iOS/Web. Not `rememberSaveable` — it is fine, even desirable,
-    // to re-arm this after a process death/config change since the server has no memory of it either.
+    // Typing indicator (send side): the first keystroke of a burst sends `isTyping:true` once
+    // (guarded by [typingSent]) and starts a keepalive that re-sends `isTyping:true` every
+    // TYPING_KEEPALIVE_MS so the peer's indicator never expires while typing continues. Each further
+    // keystroke only resets the idle timer; after TYPING_IDLE_STOP_MS of inactivity, on send, or on
+    // dispose we send `isTyping:false` once and cancel the keepalive, mirroring iOS/Web. Not
+    // `rememberSaveable` — it is fine, even desirable, to re-arm this after a process death/config
+    // change since the server has no memory of it either.
     var typingSent by remember(chatId) { mutableStateOf(false) }
-    var typingStopJob by remember(chatId) { mutableStateOf<Job?>(null) }
+    var typingIdleJob by remember(chatId) { mutableStateOf<Job?>(null) }
+    var typingKeepaliveJob by remember(chatId) { mutableStateOf<Job?>(null) }
     fun stopTyping() {
-        typingStopJob?.cancel()
-        typingStopJob = null
+        typingIdleJob?.cancel()
+        typingIdleJob = null
+        typingKeepaliveJob?.cancel()
+        typingKeepaliveJob = null
         if (typingSent) {
             typingSent = false
             realtime.sendTyping(chatId, isTyping = false)
@@ -153,7 +166,8 @@ fun ChatConversationScreen(
         realtime.joinChat(chatId)
         onDispose {
             realtime.leaveChat(chatId)
-            typingStopJob?.cancel()
+            typingIdleJob?.cancel()
+            typingKeepaliveJob?.cancel()
             if (typingSent) realtime.sendTyping(chatId, isTyping = false)
         }
     }
@@ -206,13 +220,22 @@ fun ChatConversationScreen(
             otherParticipantPresence = otherParticipantPresence,
             onInputChange = {
                 inputText = it.take(MAX_MESSAGE_LENGTH)
-                typingStopJob?.cancel()
                 if (!typingSent) {
                     typingSent = true
                     realtime.sendTyping(chatId, isTyping = true)
+                    typingKeepaliveJob = scope.launch {
+                        while (true) {
+                            delay(TYPING_KEEPALIVE_MS)
+                            realtime.sendTyping(chatId, isTyping = true)
+                        }
+                    }
                 }
-                typingStopJob = scope.launch {
-                    delay(TYPING_STOP_DELAY_MILLIS)
+                // Each keystroke only restarts the idle timer; the keepalive keeps beating.
+                typingIdleJob?.cancel()
+                typingIdleJob = scope.launch {
+                    delay(TYPING_IDLE_STOP_MS)
+                    typingKeepaliveJob?.cancel()
+                    typingKeepaliveJob = null
                     typingSent = false
                     realtime.sendTyping(chatId, isTyping = false)
                 }

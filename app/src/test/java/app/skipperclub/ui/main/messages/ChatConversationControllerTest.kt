@@ -19,7 +19,7 @@ class ChatConversationControllerTest {
 
     private fun controller(
         token: String? = "token",
-        typingExpiryMillis: Long = 3_000L,
+        typingExpiryMillis: Long = ChatConversationController.TYPING_RECEIVE_EXPIRY_MS,
     ): ChatConversationController {
         val controller = ChatConversationController(
             scope = scope,
@@ -308,6 +308,48 @@ class ChatConversationControllerTest {
         controller.loadInitialIfNeeded()
 
         assertTrue(readReceipts.isEmpty())
+    }
+
+    @Test
+    fun initialLoadWsReadReceiptSkipsOwnNewestMessageAndTargetsNewestFromOthers() {
+        gateway.chat = testChat("chat-1", unreadCount = 2)
+        // The API's newest ("m2") is our own; the receipt must target "m1", the newest from someone
+        // else, never our own message.
+        gateway.messagePages = listOf(
+            messagesPage(
+                listOf(
+                    testMessage("m2", userId = "me", createdAt = "2026-06-12T10:05:00Z"),
+                    testMessage("m1", userId = "other", createdAt = "2026-06-12T10:00:00Z"),
+                ),
+                total = 2,
+            ),
+        )
+        val controller = controller()
+
+        controller.loadInitialIfNeeded()
+
+        assertEquals(listOf("chat-1" to "m1"), readReceipts)
+    }
+
+    @Test
+    fun initialLoadSkipsWsReadReceiptWhenAllMessagesAreOwnButStillBulkMarksRead() {
+        gateway.chat = testChat("chat-1", unreadCount = 1)
+        gateway.messagePages = listOf(
+            messagesPage(listOf(testMessage("m1", userId = "me")), total = 1),
+        )
+        val controller = controller()
+
+        controller.loadInitialIfNeeded()
+
+        // No non-own message exists, so no per-message WS receipt is emitted...
+        assertTrue(readReceipts.isEmpty())
+        // ...but the REST bulk mark-read is unchanged.
+        assertTrue(gateway.calls.contains("markChatsRead:chat-1"))
+    }
+
+    @Test
+    fun typingReceiveExpiryDefaultsToFiveSeconds() {
+        assertEquals(5_000L, ChatConversationController.TYPING_RECEIVE_EXPIRY_MS)
     }
 
     @Test

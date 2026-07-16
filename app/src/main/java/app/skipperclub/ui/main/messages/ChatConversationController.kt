@@ -51,7 +51,7 @@ class ChatConversationController(
     private val gateway: ChatsGateway = RealChatsGateway,
     private val pageSize: Int = 30,
     /** Safety net for a lost `isTyping:false`: clears a user's typing state if nothing follows. */
-    private val typingExpiryMillis: Long = 3_000L,
+    private val typingExpiryMillis: Long = TYPING_RECEIVE_EXPIRY_MS,
     /**
      * `message:read` over the socket for the newest visible message, mirroring what iOS/Web send
      * (see the transport-parity table in docs/api/messages/websocket.md). Injectable so tests don't
@@ -232,10 +232,11 @@ class ChatConversationController(
 
     private fun markRead(token: String, hadUnread: Boolean) {
         if (!hadUnread) return
-        // WS parity: send a live per-message receipt for the newest visible message so other
-        // participants' "seen" indicators update immediately, in addition to the REST bulk
-        // mark-read below (which the backend does not broadcast per-message events for).
-        _state.value.messages.lastOrNull()?.let { newest ->
+        // WS parity: send a live per-message receipt for the newest visible message from *another*
+        // participant so their "seen" indicators update immediately, in addition to the REST bulk
+        // mark-read below (which the backend does not broadcast per-message events for). Skipping our
+        // own newest message avoids emitting a nonsensical read receipt for a message we authored.
+        _state.value.messages.lastOrNull { it.user.id != currentUserId }?.let { newest ->
             runCatching { sendReadReceipt(chatId, newest.id) }
         }
         scope.launch {
@@ -290,5 +291,14 @@ class ChatConversationController(
         val token = runCatching { accessToken() }.getOrNull()
         if (token == null) _events.tryEmit(ChatConversationEvent.SessionExpired)
         return token
+    }
+
+    companion object {
+        /**
+         * A received typing indicator auto-clears if no fresh `isTyping:true` arrives within this
+         * window. Kept in sync with the sender's keepalive (2s) + idle-stop (3s) on web/iOS so a
+         * still-typing peer's keepalive always lands before this expiry fires.
+         */
+        const val TYPING_RECEIVE_EXPIRY_MS = 5_000L
     }
 }
