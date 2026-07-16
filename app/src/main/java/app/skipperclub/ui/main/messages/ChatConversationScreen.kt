@@ -56,17 +56,25 @@ import app.skipperclub.data.ChatMessage
 import app.skipperclub.data.ChatRealtimeEvent
 import app.skipperclub.data.ChatType
 import app.skipperclub.data.ChatsError
+import app.skipperclub.data.PresenceStore
 import app.skipperclub.data.SessionStore
+import app.skipperclub.data.UserPresence
 import app.skipperclub.data.WebSocketChatRealtimeClient
 import app.skipperclub.ui.notification.InAppNotificationHost
 import app.skipperclub.ui.notification.InAppNotificationType
 import app.skipperclub.ui.notification.rememberInAppNotificationHostState
 import app.skipperclub.ui.theme.SkipperClubTheme
+import app.skipperclub.ui.theme.extended
 import java.time.LocalDate
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private const val POLL_INTERVAL_MILLIS = 5_000L
 private const val MAX_MESSAGE_LENGTH = 1_000
+
+/** Inactivity window before we send `chat:typing {isTyping:false}` after the last keystroke. */
+private const val TYPING_STOP_DELAY_MILLIS = 2_500L
 
 @Composable
 fun ChatConversationScreen(
@@ -125,9 +133,29 @@ fun ChatConversationScreen(
     // this screen only joins/leaves its chat room and re-joins after reconnects.
     val realtime = remember { WebSocketChatRealtimeClient }
     val realtimeConnected by realtime.isConnected.collectAsState()
+
+    // Typing indicator (send side): a keystroke burst sends `isTyping:true` once (guarded by
+    // [typingSent]) and `isTyping:false` after TYPING_STOP_DELAY_MILLIS of inactivity or
+    // immediately on send, mirroring iOS/Web. Not `rememberSaveable` — it is fine, even desirable,
+    // to re-arm this after a process death/config change since the server has no memory of it either.
+    var typingSent by remember(chatId) { mutableStateOf(false) }
+    var typingStopJob by remember(chatId) { mutableStateOf<Job?>(null) }
+    fun stopTyping() {
+        typingStopJob?.cancel()
+        typingStopJob = null
+        if (typingSent) {
+            typingSent = false
+            realtime.sendTyping(chatId, isTyping = false)
+        }
+    }
+
     DisposableEffect(realtime, chatId) {
         realtime.joinChat(chatId)
-        onDispose { realtime.leaveChat(chatId) }
+        onDispose {
+            realtime.leaveChat(chatId)
+            typingStopJob?.cancel()
+            if (typingSent) realtime.sendTyping(chatId, isTyping = false)
+        }
     }
     LaunchedEffect(controller, realtime) {
         realtime.events.collect { event ->
@@ -138,6 +166,17 @@ fun ChatConversationScreen(
                 ChatRealtimeEvent.Connected -> controller.refreshNewMessages()
                 ChatRealtimeEvent.Disconnected -> Unit
                 is ChatRealtimeEvent.NotificationNew -> Unit
+                is ChatRealtimeEvent.TypingUpdate ->
+                    controller.onRealtimeTyping(event.chatId, event.userId, event.isTyping)
+
+                is ChatRealtimeEvent.MessageRead ->
+                    controller.onRealtimeMessageRead(event.messageId, event.userId)
+
+                // Presence is app-wide (PresenceStore); this screen only reads it below.
+                is ChatRealtimeEvent.PresenceUpdate -> Unit
+                // Logged in ChatRealtimeClient; surfaced to the user from MessagesScreen, which
+                // stays composed underneath this dialog for the lifetime of the socket.
+                is ChatRealtimeEvent.ServerError -> Unit
             }
         }
     }
@@ -151,6 +190,11 @@ fun ChatConversationScreen(
         }
     }
 
+    val presenceByUserId by PresenceStore.presence.collectAsState()
+    val otherParticipantPresence = state.chat?.let { chat ->
+        otherParticipants(chat, currentUserId).singleOrNull()?.let { presenceByUserId[it.id] }
+    }
+
     BackHandler(onBack = onClose)
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -159,10 +203,24 @@ fun ChatConversationScreen(
             currentUserId = currentUserId,
             inputText = inputText,
             nowMillis = nowMillis,
-            onInputChange = { inputText = it.take(MAX_MESSAGE_LENGTH) },
+            otherParticipantPresence = otherParticipantPresence,
+            onInputChange = {
+                inputText = it.take(MAX_MESSAGE_LENGTH)
+                typingStopJob?.cancel()
+                if (!typingSent) {
+                    typingSent = true
+                    realtime.sendTyping(chatId, isTyping = true)
+                }
+                typingStopJob = scope.launch {
+                    delay(TYPING_STOP_DELAY_MILLIS)
+                    typingSent = false
+                    realtime.sendTyping(chatId, isTyping = false)
+                }
+            },
             onSend = {
                 controller.send(inputText)
                 inputText = ""
+                stopTyping()
             },
             onLoadMore = controller::loadMore,
             onRetry = controller::retry,
@@ -187,6 +245,7 @@ internal fun ChatConversationScreenContent(
     onRetry: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    otherParticipantPresence: UserPresence? = null,
 ) {
     Surface(
         modifier = modifier
@@ -203,6 +262,8 @@ internal fun ChatConversationScreenContent(
             ConversationTopBar(
                 state = state,
                 currentUserId = currentUserId,
+                otherParticipantPresence = otherParticipantPresence,
+                nowMillis = nowMillis,
                 onClose = onClose,
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f))
@@ -253,6 +314,8 @@ internal fun ChatConversationScreenContent(
                 }
             }
 
+            TypingIndicator(state = state)
+
             MessageInputBar(
                 inputText = inputText,
                 isSending = state.isSending,
@@ -263,10 +326,37 @@ internal fun ChatConversationScreenContent(
     }
 }
 
+/** "X is typing…" for the other participant(s), resolved from [ChatConversationUiState.typingUserIds]. */
+@Composable
+private fun TypingIndicator(state: ChatConversationUiState) {
+    val typingNames = remember(state.typingUserIds, state.chat) {
+        state.chat?.participants
+            ?.filter { it.id in state.typingUserIds }
+            ?.map { it.name }
+            .orEmpty()
+    }
+    if (typingNames.isEmpty()) return
+    Text(
+        text = if (typingNames.size == 1) {
+            stringResource(R.string.conversation_typing_one, typingNames.first())
+        } else {
+            stringResource(R.string.conversation_typing_multiple)
+        },
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, bottom = 2.dp)
+            .testTag("conversation_typing_indicator"),
+    )
+}
+
 @Composable
 private fun ConversationTopBar(
     state: ChatConversationUiState,
     currentUserId: String?,
+    otherParticipantPresence: UserPresence?,
+    nowMillis: Long,
     onClose: () -> Unit,
 ) {
     Row(
@@ -289,6 +379,7 @@ private fun ConversationTopBar(
             ChatListAvatar(
                 participants = otherParticipants(chat, currentUserId),
                 size = 40.dp,
+                isOnline = otherParticipantPresence?.isOnline == true,
             )
             Column(
                 modifier = Modifier
@@ -313,6 +404,22 @@ private fun ConversationTopBar(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                } else {
+                    when (val status = presenceStatus(otherParticipantPresence, nowMillis)) {
+                        PresenceStatus.Online -> Text(
+                            text = stringResource(R.string.presence_online),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.extended.success,
+                        )
+
+                        is PresenceStatus.LastSeen -> Text(
+                            text = stringResource(R.string.presence_last_seen, status.relativeTime),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+
+                        null -> Unit
+                    }
                 }
             }
         }
@@ -484,18 +591,35 @@ private fun MessageBubble(row: ConversationRow.MessageRow) {
                         MaterialTheme.colorScheme.onSurface
                     },
                 )
-                Text(
-                    text = messageTime(message.createdAt),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (row.isOwn) {
-                        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
+                val footerColor = if (row.isOwn) {
+                    MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                     modifier = Modifier
                         .align(Alignment.End)
                         .padding(top = 2.dp),
-                )
+                ) {
+                    Text(
+                        text = messageTime(message.createdAt),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = footerColor,
+                    )
+                    // The `read` flag is a single boolean (see docs/api/openapi.yaml ChatMessage),
+                    // kept live by `onRealtimeMessageRead` on `message:read`; own messages only, so
+                    // it does not misleadingly claim the *other* side's message was read by us.
+                    if (row.isOwn && message.read) {
+                        Text(
+                            text = stringResource(R.string.conversation_seen),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = footerColor,
+                            modifier = Modifier.testTag("message_seen_${message.id}"),
+                        )
+                    }
+                }
             }
         }
     }
@@ -620,10 +744,41 @@ private fun ChatConversationPreviewDark() {
 private fun ChatConversationPreviewPl() {
     SkipperClubTheme {
         ChatConversationScreenContent(
-            state = previewConversationState.copy(isSending = true),
+            state = previewConversationState.copy(
+                isSending = true,
+                typingUserIds = setOf(previewChatUsers[1].id),
+            ),
             currentUserId = "u1",
             inputText = "Do zobaczenia na przystani!",
             nowMillis = 1_775_000_000_000,
+            onInputChange = {},
+            onSend = {},
+            onLoadMore = {},
+            onRetry = {},
+            onClose = {},
+        )
+    }
+}
+
+private val previewOneToOneConversationState = ChatConversationUiState(
+    chat = previewChat("c4", type = ChatType.OneToOne),
+    messages = listOf(
+        previewMessage("m1", "Are we still on for Saturday?", 1, "2026-06-12T08:00:00Z"),
+        previewMessage("m2", "Yes, see you at the marina!", 0, "2026-06-12T08:02:00Z"),
+    ),
+    hasLoadedOnce = true,
+)
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 740, locale = "en")
+@Composable
+private fun ChatConversationPreviewOnline() {
+    SkipperClubTheme {
+        ChatConversationScreenContent(
+            state = previewOneToOneConversationState,
+            currentUserId = "u1",
+            inputText = "",
+            nowMillis = 1_775_000_000_000,
+            otherParticipantPresence = UserPresence(isOnline = true),
             onInputChange = {},
             onSend = {},
             onLoadMore = {},

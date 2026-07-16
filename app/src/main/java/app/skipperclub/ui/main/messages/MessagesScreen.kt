@@ -71,8 +71,10 @@ import app.skipperclub.data.ChatRealtimeEvent
 import app.skipperclub.data.ChatType
 import app.skipperclub.data.ChatUser
 import app.skipperclub.data.ChatsError
+import app.skipperclub.data.PresenceStore
 import app.skipperclub.data.SessionStore
 import app.skipperclub.data.UnreadMessagesStore
+import app.skipperclub.data.UserPresence
 import app.skipperclub.data.WebSocketChatRealtimeClient
 import app.skipperclub.ui.notification.InAppNotificationHost
 import app.skipperclub.ui.notification.InAppNotificationType
@@ -155,8 +157,18 @@ fun MessagesScreen(modifier: Modifier = Modifier) {
                     isChatOpen = message.chatId == currentOpenChatId,
                 )
             }
+            // This screen stays composed underneath the conversation dialog for as long as the
+            // socket lives, so it is the one lightweight place to surface a server-side WS failure
+            // (rate limiting, access denied on chat:join, ...) — it is already logged unconditionally
+            // in ChatRealtimeClient; this just makes it visible to the user too.
+            if (event is ChatRealtimeEvent.ServerError) {
+                notificationHostState.show(event.message, InAppNotificationType.Error)
+            }
         }
     }
+
+    // Online/offline indicator on chat-list rows; app-wide cache, see PresenceStore.
+    val presenceByUserId by PresenceStore.presence.collectAsState()
 
     // Reconcile the app-wide unread badge when the tab is shown and after a conversation closes
     // (its read receipts have committed by then), so reads made inside this tab clear the badge.
@@ -169,6 +181,7 @@ fun MessagesScreen(modifier: Modifier = Modifier) {
             state = state,
             nowMillis = nowMillis,
             currentUserId = currentUserId,
+            presenceByUserId = presenceByUserId,
             onSearchChange = controller::setSearchQuery,
             onOpenFilters = { showFilters = true },
             onOpenChat = { chat ->
@@ -280,6 +293,7 @@ internal fun ChatListScreenContent(
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    presenceByUserId: Map<String, UserPresence> = emptyMap(),
 ) {
     var searchActive by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = searchActive) { searchActive = false }
@@ -432,6 +446,9 @@ internal fun ChatListScreenContent(
                                 chat = chat,
                                 nowMillis = nowMillis,
                                 currentUserId = currentUserId,
+                                otherParticipantPresence = otherParticipants(chat, currentUserId)
+                                    .singleOrNull()
+                                    ?.let { presenceByUserId[it.id] },
                                 onOpen = { onOpenChat(chat) },
                                 onMarkRead = { onMarkRead(chat) },
                                 onDeleteRequest = { onDeleteRequest(chat) },
@@ -530,6 +547,7 @@ private fun ChatListItem(
     onMarkRead: () -> Unit,
     onDeleteRequest: () -> Unit,
     modifier: Modifier = Modifier,
+    otherParticipantPresence: UserPresence? = null,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val hasUnread = chat.unreadCount > 0
@@ -549,6 +567,7 @@ private fun ChatListItem(
             ChatListAvatar(
                 participants = otherParticipants(chat, currentUserId),
                 size = 52.dp,
+                isOnline = otherParticipantPresence?.isOnline == true,
             )
             Column(
                 modifier = Modifier

@@ -1,6 +1,7 @@
 package app.skipperclub
 
 import android.app.Application
+import app.skipperclub.data.PresenceStore
 import app.skipperclub.data.RealtimeConnectionManager
 import app.skipperclub.data.SessionStore
 import app.skipperclub.data.UnreadMessagesStore
@@ -35,6 +36,9 @@ class SkipperClubApplication : Application(), SingletonImageLoader.Factory {
             sessionFlow = SessionStore.session,
             accessTokenProvider = { SessionStore.validSession()?.accessToken },
         )
+        // App-wide online/offline cache, driven by the same app-scoped socket so presence updates
+        // outside the Messages tab too (e.g. while the conversation dialog is not composed).
+        PresenceStore.start()
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader =

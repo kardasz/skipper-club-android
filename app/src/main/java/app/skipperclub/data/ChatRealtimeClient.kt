@@ -40,6 +40,22 @@ sealed interface ChatRealtimeEvent {
     /** In-app notification pushed on the personal room while foregrounded. */
     data class NotificationNew(val payload: JsonObject) : ChatRealtimeEvent
 
+    /** Another participant's typing state changed in a joined chat room. */
+    data class TypingUpdate(val chatId: String, val userId: String, val isTyping: Boolean) :
+        ChatRealtimeEvent
+
+    /** A participant read a message; delivered to every connection joined to the chat room. */
+    data class MessageRead(val messageId: String, val userId: String, val readAt: String) :
+        ChatRealtimeEvent
+
+    /** Online/offline transition for a user sharing at least one chat with us. */
+    data class PresenceUpdate(val userId: String, val isOnline: Boolean, val lastSeen: String?) :
+        ChatRealtimeEvent
+
+    /** Server-side failure on the requesting connection (rate limit, access denied, ...). */
+    data class ServerError(val type: String, val message: String, val timestamp: String) :
+        ChatRealtimeEvent
+
     data object Connected : ChatRealtimeEvent
     data object Disconnected : ChatRealtimeEvent
 }
@@ -47,8 +63,10 @@ sealed interface ChatRealtimeEvent {
 /**
  * Seam over the plain WebSocket channel (docs/api/asyncapi.yaml,
  * docs/api/messages/websocket.md) so screens depend on a small interface and
- * tests can drive realtime events with a fake. Sending and read receipts stay
- * on REST; the socket is inbound-only.
+ * tests can drive realtime events with a fake. Sending a chat message stays on
+ * REST (see `ChatsApi.sendMessage`); typing indicators and per-message read
+ * receipts go over the socket, per the transport-parity table in
+ * docs/api/messages/websocket.md.
  */
 interface ChatRealtimeClient {
     val events: SharedFlow<ChatRealtimeEvent>
@@ -68,6 +86,12 @@ interface ChatRealtimeClient {
     fun disconnect()
     fun joinChat(chatId: String)
     fun leaveChat(chatId: String)
+
+    /** `chat:typing` — send once per typing burst; the caller debounces `isTyping = false`. */
+    fun sendTyping(chatId: String, isTyping: Boolean)
+
+    /** `message:read` — per-message read receipt, mirrors the REST `PATCH .../messages/{id}`. */
+    fun sendMessageRead(chatId: String, messageId: String)
 }
 
 private val realtimeJson = Json {
@@ -89,6 +113,70 @@ internal fun parseRealtimeChatMessage(payload: String): ChatMessage? =
         null
     }
 
+@Serializable
+internal data class TypingUpdateDto(val chatId: String, val userId: String, val isTyping: Boolean)
+
+/** Parses a `chat:typing` payload; null when malformed. */
+internal fun parseTypingUpdate(payload: String): ChatRealtimeEvent.TypingUpdate? =
+    try {
+        realtimeJson.decodeFromString<TypingUpdateDto>(payload).let {
+            ChatRealtimeEvent.TypingUpdate(chatId = it.chatId, userId = it.userId, isTyping = it.isTyping)
+        }
+    } catch (_: SerializationException) {
+        null
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+
+@Serializable
+internal data class MessageReadDto(val messageId: String, val userId: String, val readAt: String)
+
+/** Parses a `message:read` payload; null when malformed. */
+internal fun parseMessageRead(payload: String): ChatRealtimeEvent.MessageRead? =
+    try {
+        realtimeJson.decodeFromString<MessageReadDto>(payload).let {
+            ChatRealtimeEvent.MessageRead(messageId = it.messageId, userId = it.userId, readAt = it.readAt)
+        }
+    } catch (_: SerializationException) {
+        null
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+
+@Serializable
+internal data class PresenceUpdateDto(
+    val userId: String,
+    val isOnline: Boolean,
+    val lastSeen: String? = null,
+)
+
+/** Parses a `presence:update` payload; null when malformed. */
+internal fun parsePresenceUpdate(payload: String): ChatRealtimeEvent.PresenceUpdate? =
+    try {
+        realtimeJson.decodeFromString<PresenceUpdateDto>(payload).let {
+            ChatRealtimeEvent.PresenceUpdate(userId = it.userId, isOnline = it.isOnline, lastSeen = it.lastSeen)
+        }
+    } catch (_: SerializationException) {
+        null
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+
+@Serializable
+internal data class ServerErrorDto(val type: String, val message: String, val timestamp: String)
+
+/** Parses an `error` payload; null when malformed. */
+internal fun parseServerError(payload: String): ChatRealtimeEvent.ServerError? =
+    try {
+        realtimeJson.decodeFromString<ServerErrorDto>(payload).let {
+            ChatRealtimeEvent.ServerError(type = it.type, message = it.message, timestamp = it.timestamp)
+        }
+    } catch (_: SerializationException) {
+        null
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+
 internal fun encodeRealtimeFrame(event: String, data: JsonObject): String =
     realtimeJson.encodeToString(RealtimeFrame.serializer(), RealtimeFrame(event, data))
 
@@ -102,6 +190,18 @@ internal fun decodeRealtimeFrame(text: String): RealtimeFrame? =
     }
 
 internal fun chatIdFramePayload(chatId: String): JsonObject = buildJsonObject { put("chatId", chatId) }
+
+/** `chat:typing` outbound payload. */
+internal fun typingFramePayload(chatId: String, isTyping: Boolean): JsonObject = buildJsonObject {
+    put("chatId", chatId)
+    put("isTyping", isTyping)
+}
+
+/** `message:read` outbound payload. */
+internal fun messageReadFramePayload(chatId: String, messageId: String): JsonObject = buildJsonObject {
+    put("chatId", chatId)
+    put("messageId", messageId)
+}
 
 /** `https://` -> `wss://`, `http://` -> `ws://`; the API base URL is always one of the two. */
 internal fun String.toWebSocketUrl(): String = when {
@@ -133,17 +233,31 @@ internal const val CLOSE_CODE_UNAUTHORIZED = 1008
 /** Application close code the server uses when a live access token expires. */
 internal const val CLOSE_CODE_TOKEN_EXPIRED = 4401
 
+/** Close code the server uses when an inbound frame we sent exceeded the 32 KiB limit. */
+internal const val CLOSE_CODE_MESSAGE_TOO_BIG = 1009
+
 internal enum class ReconnectPolicy {
     /** Force a token refresh before reconnecting (auth close). */
     RefreshToken,
 
     /** Reconnect with bounded exponential backoff (any other close). */
     Backoff,
+
+    /**
+     * Do not reconnect: the close indicates a client bug (a frame we sent was malformed or too
+     * large), not a transient failure, so retrying would just repeat the same rejected frame.
+     */
+    NoRetry,
 }
 
-/** Auth closes need a fresh token first; everything else just backs off. */
+/**
+ * Auth closes need a fresh token first; `1009` ("message too big") means we sent a bad frame and
+ * must not retry it verbatim, so it is terminal rather than backed off; everything else just backs
+ * off.
+ */
 internal fun reconnectPolicyForClose(code: Int): ReconnectPolicy = when (code) {
     CLOSE_CODE_UNAUTHORIZED, CLOSE_CODE_TOKEN_EXPIRED -> ReconnectPolicy.RefreshToken
+    CLOSE_CODE_MESSAGE_TOO_BIG -> ReconnectPolicy.NoRetry
     else -> ReconnectPolicy.Backoff
 }
 
@@ -211,6 +325,14 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         sendFrame("chat:leave", chatIdFramePayload(chatId))
     }
 
+    override fun sendTyping(chatId: String, isTyping: Boolean) {
+        sendFrame("chat:typing", typingFramePayload(chatId, isTyping))
+    }
+
+    override fun sendMessageRead(chatId: String, messageId: String) {
+        sendFrame("message:read", messageReadFramePayload(chatId, messageId))
+    }
+
     private suspend fun attemptConnect(ownerScope: CoroutineScope, attempt: Int) {
         val token = tokenProvider?.invoke() ?: run {
             debugLog("no access token available, dropping connect attempt")
@@ -249,6 +371,15 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
             }
 
             ReconnectPolicy.Backoff -> scheduleReconnect(ownerScope, attempt)
+
+            // A frame we sent was rejected as too big; retrying it would just close again in a
+            // loop. Surface it loudly (unconditionally, not the debug-only log) since this is a
+            // client bug, not a network blip, and there is no crash-reporting hook yet to catch it.
+            ReconnectPolicy.NoRetry -> Log.w(
+                TAG,
+                "connection closed with code $code (message too big); not retrying — fix the " +
+                    "outgoing payload that caused this close",
+            )
         }
     }
 
@@ -265,6 +396,10 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
             "message:new" -> emitMessage(frame.data) { ChatRealtimeEvent.MessageNew(it) }
             "message:received" -> emitMessage(frame.data) { ChatRealtimeEvent.MessageReceived(it) }
             "notification:new" -> emitNotification(frame.data)
+            "chat:typing" -> emitTypingUpdate(frame.data)
+            "message:read" -> emitMessageRead(frame.data)
+            "presence:update" -> emitPresenceUpdate(frame.data)
+            "error" -> emitServerError(frame.data)
             else -> Unit
         }
     }
@@ -283,6 +418,45 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
             return
         }
         _events.tryEmit(wrap(message))
+    }
+
+    private fun emitTypingUpdate(data: JsonElement) {
+        val update = parseTypingUpdate(data.toString()) ?: run {
+            debugLog("dropped malformed chat:typing payload")
+            return
+        }
+        _events.tryEmit(update)
+    }
+
+    private fun emitMessageRead(data: JsonElement) {
+        val receipt = parseMessageRead(data.toString()) ?: run {
+            debugLog("dropped malformed message:read payload")
+            return
+        }
+        _events.tryEmit(receipt)
+    }
+
+    private fun emitPresenceUpdate(data: JsonElement) {
+        val update = parsePresenceUpdate(data.toString()) ?: run {
+            debugLog("dropped malformed presence:update payload")
+            return
+        }
+        _events.tryEmit(update)
+    }
+
+    /**
+     * Unlike the other frames this is logged unconditionally (not gated behind [debugLog]): it
+     * signals a real server-side failure (rate limiting, access denied on `chat:join`, ...) that
+     * would otherwise be completely invisible. There is no crash-reporting SDK wired up yet, so a
+     * warning-level log is the minimum viable signal until one is.
+     */
+    private fun emitServerError(data: JsonElement) {
+        val error = parseServerError(data.toString()) ?: run {
+            Log.w(TAG, "dropped malformed error frame: $data")
+            return
+        }
+        Log.w(TAG, "server error: type=${error.type} message=${error.message}")
+        _events.tryEmit(error)
     }
 
     private fun debugLog(message: String) {

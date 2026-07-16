@@ -15,6 +15,7 @@ import app.skipperclub.data.Chat
 import app.skipperclub.data.ChatMessage
 import app.skipperclub.data.ChatType
 import app.skipperclub.data.ChatUser
+import app.skipperclub.data.UserPresence
 import app.skipperclub.ui.theme.SkipperClubTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -268,6 +269,107 @@ class MessagesScreensTest {
 
         compose.onNodeWithTag("conversation_send").assertIsEnabled().performClick()
         assertEquals(1, sendCount)
+    }
+
+    @Test
+    fun conversationShowsTypingIndicatorForOtherParticipant() {
+        compose.setContent {
+            SkipperClubTheme {
+                ChatConversationScreenContent(
+                    state = ChatConversationUiState(
+                        chat = groupChat,
+                        messages = listOf(message("m1", "Hi", anna)),
+                        hasLoadedOnce = true,
+                        typingUserIds = setOf(anna.id),
+                    ),
+                    currentUserId = "me",
+                    inputText = "",
+                    nowMillis = NOW,
+                    onInputChange = {},
+                    onSend = {},
+                    onLoadMore = {},
+                    onRetry = {},
+                    onClose = {},
+                )
+            }
+        }
+
+        compose.onNodeWithTag("conversation_typing_indicator").assertExists()
+        compose.onNodeWithText("Anna Nowak is typing…").assertExists()
+    }
+
+    @Test
+    fun conversationHidesTypingIndicatorWhenNobodyIsTyping() {
+        compose.setContent {
+            SkipperClubTheme {
+                ChatConversationScreenContent(
+                    state = ChatConversationUiState(chat = groupChat, hasLoadedOnce = true),
+                    currentUserId = "me",
+                    inputText = "",
+                    nowMillis = NOW,
+                    onInputChange = {},
+                    onSend = {},
+                    onLoadMore = {},
+                    onRetry = {},
+                    onClose = {},
+                )
+            }
+        }
+
+        compose.onNodeWithTag("conversation_typing_indicator").assertDoesNotExist()
+    }
+
+    @Test
+    fun conversationShowsSeenOnlyForOwnReadMessages() {
+        compose.setContent {
+            SkipperClubTheme {
+                ChatConversationScreenContent(
+                    state = ChatConversationUiState(
+                        chat = oneToOneChat,
+                        messages = listOf(
+                            message("m1", "Hi there", jan).copy(read = true),
+                            message("m2", "Ahoy!", me).copy(read = true),
+                        ),
+                        hasLoadedOnce = true,
+                    ),
+                    currentUserId = "me",
+                    inputText = "",
+                    nowMillis = NOW,
+                    onInputChange = {},
+                    onSend = {},
+                    onLoadMore = {},
+                    onRetry = {},
+                    onClose = {},
+                )
+            }
+        }
+
+        // Only the read *own* message ("m2") shows "Seen" — the other participant's message ("m1")
+        // never does, even though it also happens to be read=true in this fixture.
+        compose.onNodeWithTag("message_seen_m2").assertExists()
+        compose.onNodeWithTag("message_seen_m1").assertDoesNotExist()
+    }
+
+    @Test
+    fun conversationShowsOnlineStatusForOneToOneChat() {
+        compose.setContent {
+            SkipperClubTheme {
+                ChatConversationScreenContent(
+                    state = ChatConversationUiState(chat = oneToOneChat, hasLoadedOnce = true),
+                    currentUserId = "me",
+                    inputText = "",
+                    nowMillis = NOW,
+                    otherParticipantPresence = UserPresence(isOnline = true),
+                    onInputChange = {},
+                    onSend = {},
+                    onLoadMore = {},
+                    onRetry = {},
+                    onClose = {},
+                )
+            }
+        }
+
+        compose.onNodeWithText(text(R.string.presence_online)).assertExists()
     }
 
     @Test

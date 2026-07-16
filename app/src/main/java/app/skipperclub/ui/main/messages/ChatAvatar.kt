@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
@@ -21,6 +22,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.skipperclub.data.ChatUser
+import app.skipperclub.ui.theme.extended
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
@@ -63,13 +65,15 @@ internal fun ChatAvatar(
 
 /**
  * Chat-list avatar: a single circle for 1:1 chats, two overlapping circles for
- * chats with several other participants.
+ * chats with several other participants. [isOnline] renders a small dot (only
+ * meaningful for a single participant — group presence isn't tracked per-chat).
  */
 @Composable
 internal fun ChatListAvatar(
     participants: List<ChatUser>,
     size: Dp,
     modifier: Modifier = Modifier,
+    isOnline: Boolean = false,
 ) {
     when {
         participants.size >= 2 -> {
@@ -93,10 +97,18 @@ internal fun ChatListAvatar(
             }
         }
 
-        participants.size == 1 -> ChatAvatar(
-            user = participants.first(),
-            modifier = modifier.size(size),
-        )
+        participants.size == 1 -> Box(modifier = modifier.size(size)) {
+            ChatAvatar(
+                user = participants.first(),
+                modifier = Modifier.fillMaxSize(),
+            )
+            if (isOnline) {
+                PresenceDot(
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                    size = (size.value * 0.32f).dp,
+                )
+            }
+        }
 
         else -> Box(
             modifier = modifier
@@ -105,4 +117,18 @@ internal fun ChatListAvatar(
                 .background(MaterialTheme.colorScheme.secondaryContainer),
         )
     }
+}
+
+/** Small green ring-and-dot marking a user online, meant to sit on an avatar's corner. */
+@Composable
+private fun PresenceDot(modifier: Modifier = Modifier, size: Dp = 12.dp) {
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.background)
+            .padding(2.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.extended.success),
+    )
 }

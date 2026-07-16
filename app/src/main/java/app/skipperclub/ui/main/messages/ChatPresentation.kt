@@ -4,6 +4,7 @@ import android.text.format.DateUtils
 import app.skipperclub.data.Chat
 import app.skipperclub.data.ChatType
 import app.skipperclub.data.ChatUser
+import app.skipperclub.data.UserPresence
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -62,6 +63,25 @@ internal fun messageDayLabel(day: LocalDate, nowMillis: Long): String =
         nowMillis,
         DateUtils.DAY_IN_MILLIS,
     ).toString()
+
+/** What to show for a 1:1 chat participant's presence; localized text is resolved by the caller. */
+internal sealed interface PresenceStatus {
+    data object Online : PresenceStatus
+    data class LastSeen(val relativeTime: String) : PresenceStatus
+}
+
+/**
+ * Resolves [presence] into something displayable, or null when nothing useful is known yet
+ * (no presence event has arrived, or the last-seen timestamp failed to parse).
+ */
+internal fun presenceStatus(presence: UserPresence?, nowMillis: Long): PresenceStatus? {
+    if (presence == null) return null
+    if (presence.isOnline) return PresenceStatus.Online
+    val lastSeen = presence.lastSeen ?: return null
+    val relative = chatRelativeTime(lastSeen, nowMillis)
+    if (relative.isBlank()) return null
+    return PresenceStatus.LastSeen(relative)
+}
 
 internal fun ChatUser.initials(): String =
     name

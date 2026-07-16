@@ -123,11 +123,18 @@ class ChatRealtimeClientTest {
 
     @Test
     fun otherCloseCodesBackOffWithoutRefresh() {
-        // Normal close, going away, and "message too big" all reconnect via plain backoff.
+        // Normal close and going away reconnect via plain backoff.
         assertEquals(ReconnectPolicy.Backoff, reconnectPolicyForClose(1000))
         assertEquals(ReconnectPolicy.Backoff, reconnectPolicyForClose(1001))
-        assertEquals(ReconnectPolicy.Backoff, reconnectPolicyForClose(1009))
         assertEquals(ReconnectPolicy.Backoff, reconnectPolicyForClose(1011))
+    }
+
+    @Test
+    fun messageTooBigDoesNotRetry() {
+        // 1009 means a frame we sent was rejected as too large — a client bug, not a transient
+        // failure, so it must not be retried (docs/api/messages/websocket.md close-codes table).
+        assertEquals(ReconnectPolicy.NoRetry, reconnectPolicyForClose(CLOSE_CODE_MESSAGE_TOO_BIG))
+        assertEquals(ReconnectPolicy.NoRetry, reconnectPolicyForClose(1009))
     }
 
     @Test
@@ -139,5 +146,104 @@ class ChatRealtimeClientTest {
         requireNotNull(frame)
         assertEquals("notification:new", frame.event)
         assertEquals("n1", frame.data.jsonObject["id"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun parsesTypingUpdatePayload() {
+        val payload = """{"chatId":"chat-1","userId":"u1","isTyping":true}"""
+
+        val update = parseTypingUpdate(payload)
+
+        requireNotNull(update)
+        assertEquals("chat-1", update.chatId)
+        assertEquals("u1", update.userId)
+        assertTrue(update.isTyping)
+    }
+
+    @Test
+    fun typingUpdateMalformedPayloadReturnsNull() {
+        assertNull(parseTypingUpdate("not json"))
+        assertNull(parseTypingUpdate("""{"chatId":"chat-1"}"""))
+    }
+
+    @Test
+    fun parsesMessageReadPayload() {
+        val payload = """{"messageId":"m1","userId":"u1","readAt":"2026-07-10T12:00:00Z"}"""
+
+        val receipt = parseMessageRead(payload)
+
+        requireNotNull(receipt)
+        assertEquals("m1", receipt.messageId)
+        assertEquals("u1", receipt.userId)
+        assertEquals("2026-07-10T12:00:00Z", receipt.readAt)
+    }
+
+    @Test
+    fun messageReadMalformedPayloadReturnsNull() {
+        assertNull(parseMessageRead("not json"))
+        assertNull(parseMessageRead("""{"messageId":"m1"}"""))
+    }
+
+    @Test
+    fun parsesPresenceUpdatePayload() {
+        val payload = """{"userId":"u1","isOnline":true,"lastSeen":"2026-07-10T12:00:00Z"}"""
+
+        val update = parsePresenceUpdate(payload)
+
+        requireNotNull(update)
+        assertEquals("u1", update.userId)
+        assertTrue(update.isOnline)
+        assertEquals("2026-07-10T12:00:00Z", update.lastSeen)
+    }
+
+    @Test
+    fun presenceUpdateToleratesMissingLastSeen() {
+        val update = parsePresenceUpdate("""{"userId":"u1","isOnline":false}""")
+
+        requireNotNull(update)
+        assertNull(update.lastSeen)
+    }
+
+    @Test
+    fun presenceUpdateMalformedPayloadReturnsNull() {
+        assertNull(parsePresenceUpdate("not json"))
+        assertNull(parsePresenceUpdate("""{"userId":"u1"}"""))
+    }
+
+    @Test
+    fun parsesServerErrorPayload() {
+        val payload = """
+            {
+              "type": "websocket_error",
+              "message": "Chat not found or access denied",
+              "timestamp": "2026-07-10T12:00:00Z"
+            }
+        """.trimIndent()
+
+        val error = parseServerError(payload)
+
+        requireNotNull(error)
+        assertEquals("websocket_error", error.type)
+        assertEquals("Chat not found or access denied", error.message)
+    }
+
+    @Test
+    fun serverErrorMalformedPayloadReturnsNull() {
+        assertNull(parseServerError("not json"))
+        assertNull(parseServerError("""{"type":"websocket_error"}"""))
+    }
+
+    @Test
+    fun typingFramePayloadEncodesChatIdAndFlag() {
+        val frame = encodeRealtimeFrame("chat:typing", typingFramePayload("chat-1", isTyping = true))
+
+        assertEquals("""{"event":"chat:typing","data":{"chatId":"chat-1","isTyping":true}}""", frame)
+    }
+
+    @Test
+    fun messageReadFramePayloadEncodesChatAndMessageIds() {
+        val frame = encodeRealtimeFrame("message:read", messageReadFramePayload("chat-1", "m1"))
+
+        assertEquals("""{"event":"message:read","data":{"chatId":"chat-1","messageId":"m1"}}""", frame)
     }
 }

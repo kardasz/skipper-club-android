@@ -391,6 +391,11 @@
         <item quantity="many">%1$d uczestników</item>
         <item quantity="other">%1$d uczestnika</item>
     </plurals>
+    <string name="conversation_typing_one">%1$s pisze…</string>
+    <string name="conversation_typing_multiple">Kilka osób pisze…</string>
+    <string name="conversation_seen">Wyświetlono</string>
+    <string name="presence_online">Dostępny</string>
+    <string name="presence_last_seen">Ostatnio widziano %1$s</string>
     <string name="new_chat_title">Nowa wiadomość</string>
     <string name="new_chat_search_placeholder">Szukaj członków</string>
     <string name="new_chat_group_name_label">Nazwa grupy</string>

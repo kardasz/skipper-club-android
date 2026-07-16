@@ -4,7 +4,10 @@ import app.skipperclub.data.Chat
 import app.skipperclub.data.ChatMessage
 import app.skipperclub.data.ChatsError
 import app.skipperclub.data.SortOrder
+import app.skipperclub.data.WebSocketChatRealtimeClient
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -24,6 +27,8 @@ data class ChatConversationUiState(
     val hasMore: Boolean = false,
     val loadFailed: Boolean = false,
     val hasLoadedOnce: Boolean = false,
+    /** User IDs currently typing in this chat, per `chat:typing`; cleared on inactivity timeout. */
+    val typingUserIds: Set<String> = emptySet(),
 )
 
 sealed interface ChatConversationEvent {
@@ -45,12 +50,24 @@ class ChatConversationController(
     private val currentUserId: String? = null,
     private val gateway: ChatsGateway = RealChatsGateway,
     private val pageSize: Int = 30,
+    /** Safety net for a lost `isTyping:false`: clears a user's typing state if nothing follows. */
+    private val typingExpiryMillis: Long = 3_000L,
+    /**
+     * `message:read` over the socket for the newest visible message, mirroring what iOS/Web send
+     * (see the transport-parity table in docs/api/messages/websocket.md). Injectable so tests don't
+     * need a real socket.
+     */
+    private val sendReadReceipt: (chatId: String, messageId: String) -> Unit = { id, messageId ->
+        WebSocketChatRealtimeClient.sendMessageRead(id, messageId)
+    },
 ) {
     private val _state = MutableStateFlow(ChatConversationUiState())
     val state: StateFlow<ChatConversationUiState> = _state.asStateFlow()
 
     private val _events = MutableSharedFlow<ChatConversationEvent>(extraBufferCapacity = 16)
     val events: SharedFlow<ChatConversationEvent> = _events.asSharedFlow()
+
+    private val typingExpiryJobs = mutableMapOf<String, Job>()
 
     fun loadInitialIfNeeded() {
         val current = _state.value
@@ -215,12 +232,57 @@ class ChatConversationController(
 
     private fun markRead(token: String, hadUnread: Boolean) {
         if (!hadUnread) return
+        // WS parity: send a live per-message receipt for the newest visible message so other
+        // participants' "seen" indicators update immediately, in addition to the REST bulk
+        // mark-read below (which the backend does not broadcast per-message events for).
+        _state.value.messages.lastOrNull()?.let { newest ->
+            runCatching { sendReadReceipt(chatId, newest.id) }
+        }
         scope.launch {
             try {
                 gateway.markChatsRead(token, listOf(chatId))
             } catch (error: ChatsError) {
                 _events.tryEmit(ChatConversationEvent.OperationFailed(error))
             }
+        }
+    }
+
+    /**
+     * Applies a `chat:typing` event pushed over the socket. Guards on [chatId] the same way
+     * [onRealtimeMessage] does, since the socket delivers events for every joined room. A fresh
+     * `isTyping = true` (re)starts a [typingExpiryMillis] safety-net timer per user: the server
+     * does not auto-expire typing state, so a lost `isTyping:false` would otherwise leave the
+     * indicator stuck forever.
+     */
+    fun onRealtimeTyping(chatId: String, userId: String, isTyping: Boolean) {
+        if (chatId != this.chatId) return
+        if (userId == currentUserId) return
+        typingExpiryJobs.remove(userId)?.cancel()
+        if (isTyping) {
+            _state.update { it.copy(typingUserIds = it.typingUserIds + userId) }
+            typingExpiryJobs[userId] = scope.launch {
+                delay(typingExpiryMillis)
+                _state.update { it.copy(typingUserIds = it.typingUserIds - userId) }
+                typingExpiryJobs.remove(userId)
+            }
+        } else {
+            _state.update { it.copy(typingUserIds = it.typingUserIds - userId) }
+        }
+    }
+
+    /**
+     * Applies a `message:read` receipt pushed over the socket: flips the matching message's
+     * [ChatMessage.read] flag so a "seen" indicator can reflect another participant's read live.
+     * Our own read receipts are echoed back to the room too, so they are ignored here.
+     */
+    fun onRealtimeMessageRead(messageId: String, userId: String) {
+        if (userId == currentUserId) return
+        _state.update { state ->
+            state.copy(
+                messages = state.messages.map {
+                    if (it.id == messageId) it.copy(read = true) else it
+                },
+            )
         }
     }
 

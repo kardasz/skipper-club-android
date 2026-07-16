@@ -15,8 +15,12 @@ class ChatConversationControllerTest {
     private val scope = CoroutineScope(Dispatchers.Unconfined + Job())
     private val gateway = FakeChatsGateway()
     private val events = mutableListOf<ChatConversationEvent>()
+    private val readReceipts = mutableListOf<Pair<String, String>>()
 
-    private fun controller(token: String? = "token"): ChatConversationController {
+    private fun controller(
+        token: String? = "token",
+        typingExpiryMillis: Long = 3_000L,
+    ): ChatConversationController {
         val controller = ChatConversationController(
             scope = scope,
             accessToken = { token },
@@ -24,6 +28,8 @@ class ChatConversationControllerTest {
             currentUserId = "me",
             gateway = gateway,
             pageSize = 2,
+            typingExpiryMillis = typingExpiryMillis,
+            sendReadReceipt = { chatId, messageId -> readReceipts += chatId to messageId },
         )
         scope.launch { controller.events.collect { events += it } }
         return controller
@@ -272,5 +278,105 @@ class ChatConversationControllerTest {
 
         assertTrue(controller.state.value.loadFailed)
         assertTrue(events.contains(ChatConversationEvent.SessionExpired))
+    }
+
+    @Test
+    fun initialLoadSendsWsReadReceiptForNewestMessageWhenUnread() {
+        gateway.chat = testChat("chat-1", unreadCount = 2)
+        gateway.messagePages = listOf(
+            messagesPage(
+                listOf(
+                    testMessage("m2", createdAt = "2026-06-12T10:05:00Z"),
+                    testMessage("m1", createdAt = "2026-06-12T10:00:00Z"),
+                ),
+                total = 2,
+            ),
+        )
+        val controller = controller()
+
+        controller.loadInitialIfNeeded()
+
+        // Messages are kept oldest-first, so "m2" (the API's newest) is the last/most recent one.
+        assertEquals(listOf("chat-1" to "m2"), readReceipts)
+    }
+
+    @Test
+    fun initialLoadSkipsWsReadReceiptWhenNothingUnread() {
+        gateway.chat = testChat("chat-1", unreadCount = 0)
+        val controller = controller()
+
+        controller.loadInitialIfNeeded()
+
+        assertTrue(readReceipts.isEmpty())
+    }
+
+    @Test
+    fun realtimeTypingAddsUserToTypingSet() {
+        val controller = controller()
+
+        controller.onRealtimeTyping("chat-1", "other", isTyping = true)
+
+        assertTrue(controller.state.value.typingUserIds.contains("other"))
+    }
+
+    @Test
+    fun realtimeTypingFalseRemovesUser() {
+        val controller = controller()
+        controller.onRealtimeTyping("chat-1", "other", isTyping = true)
+
+        controller.onRealtimeTyping("chat-1", "other", isTyping = false)
+
+        assertFalse(controller.state.value.typingUserIds.contains("other"))
+    }
+
+    @Test
+    fun realtimeTypingAutoExpiresAsASafetyNetForALostStopEvent() {
+        // Zero-length expiry + the Unconfined test scope runs the safety-net timer to completion
+        // synchronously, proving a lost `isTyping:false` does not leave the indicator stuck.
+        val controller = controller(typingExpiryMillis = 0)
+
+        controller.onRealtimeTyping("chat-1", "other", isTyping = true)
+
+        assertFalse(controller.state.value.typingUserIds.contains("other"))
+    }
+
+    @Test
+    fun realtimeTypingForOtherChatIsIgnored() {
+        val controller = controller()
+
+        controller.onRealtimeTyping("other-chat", "other", isTyping = true)
+
+        assertTrue(controller.state.value.typingUserIds.isEmpty())
+    }
+
+    @Test
+    fun realtimeTypingFromSelfIsIgnored() {
+        val controller = controller()
+
+        controller.onRealtimeTyping("chat-1", "me", isTyping = true)
+
+        assertTrue(controller.state.value.typingUserIds.isEmpty())
+    }
+
+    @Test
+    fun realtimeMessageReadMarksMatchingMessageAsRead() {
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.onRealtimeMessageRead("m1", userId = "other")
+
+        assertTrue(controller.state.value.messages.first { it.id == "m1" }.read)
+    }
+
+    @Test
+    fun realtimeMessageReadFromSelfIsIgnored() {
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.onRealtimeMessageRead("m1", userId = "me")
+
+        assertFalse(controller.state.value.messages.first { it.id == "m1" }.read)
     }
 }
