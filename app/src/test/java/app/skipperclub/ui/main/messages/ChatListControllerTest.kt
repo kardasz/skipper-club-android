@@ -293,6 +293,30 @@ class ChatListControllerTest {
     }
 
     @Test
+    fun reconnectReloadsListToCatchUpMissedMessages() {
+        gateway.chatPages = listOf(
+            chatsPage(listOf(testChat("c1"))),
+            chatsPage(listOf(testChat("c2"), testChat("c1"))),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.onRealtimeReconnected()
+
+        assertEquals(2, gateway.calls.count { it == "listChats" })
+        assertEquals(listOf("c2", "c1"), controller.state.value.chats.map { it.id })
+    }
+
+    @Test
+    fun reconnectBeforeInitialLoadIsIgnored() {
+        val controller = controller()
+
+        controller.onRealtimeReconnected()
+
+        assertTrue(gateway.calls.isEmpty())
+    }
+
+    @Test
     fun refreshReplacesChats() {
         gateway.chatPages = listOf(
             chatsPage(listOf(testChat("c1"))),

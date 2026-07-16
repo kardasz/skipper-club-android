@@ -27,6 +27,10 @@ internal fun presenceAfter(
     is ChatRealtimeEvent.PresenceUpdate ->
         current + (event.userId to UserPresence(isOnline = event.isOnline, lastSeen = event.lastSeen))
 
+    // The cache goes stale the moment the socket drops (down connection or logout, which
+    // disconnects it), so clear it rather than leave users falsely lit as "online".
+    ChatRealtimeEvent.Disconnected -> emptyMap()
+
     else -> current
 }
 

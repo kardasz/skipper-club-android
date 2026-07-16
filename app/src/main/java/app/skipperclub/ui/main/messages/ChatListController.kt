@@ -175,10 +175,11 @@ class ChatListController(
      * the new preview and unread count. A message for a chat not in the list
      * (new or previously hidden) triggers a reload.
      *
-     * The open chat is delivered twice for the same message (`message:new` on the
-     * joined room and `message:received` on the personal room), so the update is
-     * idempotent by [ChatMessage.id]: a message already shown as the last one is
-     * re-applied without incrementing the unread count again.
+     * A recipient viewing the open chat receives the same message twice — `message:new`
+     * on the joined room and `message:received` on their personal room. The server sends
+     * `message:received` to every participant except the sender, regardless of room
+     * membership, so the update is idempotent by [ChatMessage.id]: a message already shown
+     * as the last one is re-applied without incrementing the unread count again.
      */
     fun onRealtimeMessage(message: ChatMessage, isChatOpen: Boolean) {
         val snapshot = _state.value
@@ -202,6 +203,17 @@ class ChatListController(
             )
             state.copy(chats = listOf(updated) + state.chats.filterNot { it.id == message.chatId })
         }
+    }
+
+    /**
+     * Catch up the list after the socket reconnects. Messages missed while it was down can leave
+     * stale previews and unread counts on rows other than the open conversation (which refreshes
+     * itself), so we re-read the list. No-op before the first load — [loadInitialIfNeeded] handles
+     * the cold start.
+     */
+    fun onRealtimeReconnected() {
+        if (!_state.value.hasLoadedOnce) return
+        reload(showAsRefreshing = true)
     }
 
     /** Surfaces a freshly created chat at the top without a round-trip. */

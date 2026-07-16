@@ -90,11 +90,6 @@ internal data class SendMessageRequest(
     val text: String,
 )
 
-@Serializable
-internal data class MessageReadRequest(
-    val read: Boolean,
-)
-
 enum class ChatBulkAction(val wireValue: String) {
     MarkRead("mark-read"),
     Delete("delete"),

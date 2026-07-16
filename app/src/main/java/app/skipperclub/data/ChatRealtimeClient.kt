@@ -236,6 +236,21 @@ internal const val CLOSE_CODE_TOKEN_EXPIRED = 4401
 /** Close code the server uses when an inbound frame we sent exceeded the 32 KiB limit. */
 internal const val CLOSE_CODE_MESSAGE_TOO_BIG = 1009
 
+/** HTTP status the upgrade handshake returns when the bearer token is rejected. */
+internal const val HTTP_UNAUTHORIZED = 401
+
+/** HTTP status the upgrade handshake returns when the token is valid but access is denied. */
+internal const val HTTP_FORBIDDEN = 403
+
+/**
+ * A `401`/`403` on the WebSocket **upgrade** (as opposed to a post-connect close) means the server
+ * rejected the token itself — typically revoked server-side while still locally valid — so retrying
+ * with the same token would loop forever. Force a refresh first. Any other or absent HTTP status is
+ * a transient transport failure that just backs off.
+ */
+internal fun shouldRefreshTokenForHttpFailure(httpCode: Int?): Boolean =
+    httpCode == HTTP_UNAUTHORIZED || httpCode == HTTP_FORBIDDEN
+
 internal enum class ReconnectPolicy {
     /** Force a token refresh before reconnecting (auth close). */
     RefreshToken,
@@ -335,7 +350,12 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
 
     private suspend fun attemptConnect(ownerScope: CoroutineScope, attempt: Int) {
         val token = tokenProvider?.invoke() ?: run {
-            debugLog("no access token available, dropping connect attempt")
+            // A null token is usually a transient refresh failure (e.g. SessionStore swallowing an
+            // AuthError.Network), not a real logout — the connection guard keeps reconcile() from
+            // re-entering, so we must schedule our own retry or realtime dies until the app is
+            // backgrounded and restored.
+            debugLog("no access token available; scheduling reconnect")
+            scheduleReconnect(ownerScope, attempt)
             return
         }
         if (scope !== ownerScope) return
@@ -383,6 +403,24 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         }
     }
 
+    /**
+     * Handshake/transport failure (never opened, or dropped without a close frame). A `401`/`403`
+     * on the upgrade means the token itself was rejected, so we force a refresh before reconnecting;
+     * everything else just backs off. Mirrors the auth path in [handleClose] for server closes.
+     */
+    private fun handleFailure(ownerScope: CoroutineScope, attempt: Int, httpCode: Int?) {
+        if (scope !== ownerScope) return
+        markDisconnected()
+        if (shouldRefreshTokenForHttpFailure(httpCode)) {
+            ownerScope.launch {
+                runCatching { authCloseHandler?.invoke() }
+                scheduleReconnect(ownerScope, attempt)
+            }
+        } else {
+            scheduleReconnect(ownerScope, attempt)
+        }
+    }
+
     private fun sendFrame(event: String, data: JsonObject) {
         webSocket?.takeIf { _isConnected.value }?.send(encodeRealtimeFrame(event, data))
     }
@@ -400,7 +438,13 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
             "message:read" -> emitMessageRead(frame.data)
             "presence:update" -> emitPresenceUpdate(frame.data)
             "error" -> emitServerError(frame.data)
-            else -> Unit
+            // Server acks for the frames we send. We do not correlate them to their requests yet
+            // (join failures still surface only as an out-of-band `error` frame); log them in debug
+            // so they are at least visible rather than invisibly dropped.
+            "chat:joined", "chat:left", "message:sent", "message:read:confirmed", "chat:typing:sent" ->
+                debugLog("server ack: ${frame.event}")
+
+            else -> debugLog("unhandled frame: ${frame.event}")
         }
     }
 
@@ -465,10 +509,14 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
 
     private class RealtimeListener(
         private val ownerScope: CoroutineScope,
-        private val attempt: Int,
+        private var attempt: Int,
     ) : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             debugLog("connected")
+            // A healthy connection clears the accumulated backoff so the next disconnect retries
+            // promptly instead of inheriting the pre-connect delay (which otherwise grows to the
+            // 15-30s cap after a handful of reconnects over the app's lifetime).
+            attempt = 0
             _isConnected.value = true
             _events.tryEmit(ChatRealtimeEvent.Connected)
             joinedChatIds.toList().forEach { chatId ->
@@ -491,9 +539,7 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             debugLog("failure: ${t.message}, close=${response?.code}")
-            if (scope !== ownerScope) return
-            markDisconnected()
-            scheduleReconnect(ownerScope, attempt)
+            handleFailure(ownerScope, attempt, response?.code)
         }
     }
 }

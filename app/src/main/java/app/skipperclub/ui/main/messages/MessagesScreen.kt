@@ -157,6 +157,12 @@ fun MessagesScreen(modifier: Modifier = Modifier) {
                     isChatOpen = message.chatId == currentOpenChatId,
                 )
             }
+            // Catch up on messages missed during the outage: the open conversation refreshes itself
+            // (ChatConversationScreen) and the badge reconciles (UnreadMessagesStore), but the list's
+            // previews/counts would otherwise stay stale until a manual refresh.
+            if (event is ChatRealtimeEvent.Connected) {
+                controller.onRealtimeReconnected()
+            }
             // This screen stays composed underneath the conversation dialog for as long as the
             // socket lives, so it is the one lightweight place to surface a server-side WS failure
             // (rate limiting, access denied on chat:join, ...) — it is already logged unconditionally

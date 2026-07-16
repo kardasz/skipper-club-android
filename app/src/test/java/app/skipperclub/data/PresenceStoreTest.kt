@@ -43,10 +43,19 @@ class PresenceStoreTest {
     }
 
     @Test
+    fun disconnectClearsThePresenceMap() {
+        val initial = mapOf(
+            "u1" to UserPresence(isOnline = true, lastSeen = null),
+            "u2" to UserPresence(isOnline = false, lastSeen = "2026-07-10T12:00:00Z"),
+        )
+
+        assertTrue(presenceAfter(initial, ChatRealtimeEvent.Disconnected).isEmpty())
+    }
+
+    @Test
     fun otherEventsLeaveThePresenceMapUnchanged() {
         val initial = mapOf("u1" to UserPresence(isOnline = true, lastSeen = null))
 
-        assertEquals(initial, presenceAfter(initial, ChatRealtimeEvent.Disconnected))
         assertEquals(initial, presenceAfter(initial, ChatRealtimeEvent.Connected))
     }
 

@@ -165,10 +165,12 @@ fun ChatConversationScreen(
     DisposableEffect(realtime, chatId) {
         realtime.joinChat(chatId)
         onDispose {
-            realtime.leaveChat(chatId)
             typingIdleJob?.cancel()
             typingKeepaliveJob?.cancel()
+            // Send the typing-stop before leaving: the server drops typing frames for a room we
+            // have already left, which would strand the peer's indicator on the 5s receive expiry.
             if (typingSent) realtime.sendTyping(chatId, isTyping = false)
+            realtime.leaveChat(chatId)
         }
     }
     LaunchedEffect(controller, realtime) {

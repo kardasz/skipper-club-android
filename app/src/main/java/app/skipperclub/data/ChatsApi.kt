@@ -132,28 +132,6 @@ object ChatsApi {
             it.toDomain()
         }
 
-    internal fun markMessageReadRequest(
-        accessToken: String,
-        chatId: String,
-        messageId: String,
-        read: Boolean,
-    ): Request =
-        baseRequest(accessToken)
-            .url(
-                chatsUrl().newBuilder()
-                    .addPathSegment(chatId)
-                    .addPathSegment("messages")
-                    .addPathSegment(messageId)
-                    .build(),
-            )
-            .patch(json.encodeToString(MessageReadRequest(read)).toRequestBody(JSON_MEDIA_TYPE))
-            .header("Content-Type", "application/json")
-            .build()
-
-    suspend fun markMessageRead(accessToken: String, chatId: String, messageId: String, read: Boolean) {
-        executeExpectingNoContent(markMessageReadRequest(accessToken, chatId, messageId, read))
-    }
-
     internal fun bulkActionRequest(
         accessToken: String,
         action: ChatBulkAction,

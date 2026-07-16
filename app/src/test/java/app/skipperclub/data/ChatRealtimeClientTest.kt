@@ -138,6 +138,23 @@ class ChatRealtimeClientTest {
     }
 
     @Test
+    fun httpUnauthorizedOnUpgradeForcesTokenRefresh() {
+        // A rejected upgrade (401/403) means the token itself is bad; retrying it verbatim loops.
+        assertTrue(shouldRefreshTokenForHttpFailure(HTTP_UNAUTHORIZED))
+        assertTrue(shouldRefreshTokenForHttpFailure(HTTP_FORBIDDEN))
+        assertTrue(shouldRefreshTokenForHttpFailure(401))
+        assertTrue(shouldRefreshTokenForHttpFailure(403))
+    }
+
+    @Test
+    fun transientUpgradeFailuresDoNotRefreshToken() {
+        // No HTTP response (pure transport failure) or any non-auth status just backs off.
+        assertFalse(shouldRefreshTokenForHttpFailure(null))
+        assertFalse(shouldRefreshTokenForHttpFailure(500))
+        assertFalse(shouldRefreshTokenForHttpFailure(503))
+    }
+
+    @Test
     fun decodesNotificationNewEnvelope() {
         val frame = decodeRealtimeFrame(
             """{"event":"notification:new","data":{"id":"n1","type":"MESSAGE_NEW"}}""",

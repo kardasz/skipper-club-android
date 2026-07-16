@@ -123,15 +123,6 @@ class ChatsApiTest {
     }
 
     @Test
-    fun markMessageReadRequestSerializesReadFlag() {
-        val request = ChatsApi.markMessageReadRequest("token", "chat-1", "m-1", read = true)
-
-        assertEquals("PATCH", request.method)
-        assertEquals("/v1/chats/chat-1/messages/m-1", request.url.encodedPath)
-        assertEquals("""{"read":true}""", request.bodyString())
-    }
-
-    @Test
     fun bulkActionRequestSerializesWireAction() {
         val markRead = ChatsApi.bulkActionRequest("token", ChatBulkAction.MarkRead, listOf("c1", "c2"))
         val delete = ChatsApi.bulkActionRequest("token", ChatBulkAction.Delete, listOf("c1"))
