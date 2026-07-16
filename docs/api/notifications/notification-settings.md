@@ -16,20 +16,21 @@ For this reason, settings endpoints are placed under the profile namespace (`/pr
 
 ### What users can control
 
-| Channel                                  | Controlled by Settings   | Notes                                                                                                                              |
-| ---------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| In-app (WebSocket + notification center) | No                       | Always delivered and visible in the in-app notification center.                                                                    |
-| Push (APNs/FCM)                          | Yes                      | Controlled by `pushNotificationsEnabled`.                                                                                          |
-| Notification email                       | Yes (review events only) | `emailNotificationsEnabled` gates the review-progression/publication emails; other in-app social events are not mirrored by email. |
-| Transactional email                      | No                       | Always sent for critical account flows (for example login codes, invitations, account lifecycle actions).                          |
+| Channel                                  | Controlled by Settings                    | Notes                                                                                                                                                                                   |
+| ---------------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| In-app (WebSocket + notification center) | No                                        | Always delivered and visible in the in-app notification center.                                                                                                                         |
+| Push (APNs/FCM)                          | Yes                                       | Controlled by `pushNotificationsEnabled`.                                                                                                                                               |
+| Notification email                       | Yes (review + friend-request events only) | `emailNotificationsEnabled` gates the review-progression/publication emails and the friend-request sent/accepted/rejected emails; other in-app social events are not mirrored by email. |
+| Transactional email                      | No                                        | Always sent for critical account flows (for example login codes, invitations, account lifecycle actions).                                                                               |
 
 ### Current scope
 
 - Preferences are global per channel (email/push).
 - `pushNotificationsEnabled` affects every push-delivered notification.
-- `emailNotificationsEnabled` affects only the review-related notification
-  events (a review received, a review published, a review reminder) — email
-  is not a blanket mirror of every in-app/push event, per PRD-005 §4.3.
+- `emailNotificationsEnabled` affects the review-related notification events
+  (a review received, a review published, a review reminder) and the
+  friend-request events (sent, accepted, rejected) — email is not a blanket
+  mirror of every in-app/push event, per PRD-005 §4.3.
 - Per-event preferences are not available in public API yet.
 
 ## API Endpoints
@@ -79,10 +80,10 @@ The endpoint uses full replacement semantics:
 
 ### Request Body
 
-| Field                       | Type    | Required | Description                                                                        |
-| --------------------------- | ------- | -------- | ---------------------------------------------------------------------------------- |
-| `emailNotificationsEnabled` | boolean | Yes      | Enables/disables review-related notification emails (received/published/reminder). |
-| `pushNotificationsEnabled`  | boolean | Yes      | Enables/disables push notifications.                                               |
+| Field                       | Type    | Required | Description                                                                                                                    |
+| --------------------------- | ------- | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `emailNotificationsEnabled` | boolean | Yes      | Enables/disables review-related (received/published/reminder) and friend-request (sent/accepted/rejected) notification emails. |
+| `pushNotificationsEnabled`  | boolean | Yes      | Enables/disables push notifications.                                                                                           |
 
 ### Example Request
 
@@ -123,9 +124,10 @@ Set:
 Set both flags to `true`.
 
 The current Go service honors both values: push for every push-delivered
-notification, and email for the review-progression/publication/reminder
-notifications. Other in-app social/cruise notifications remain email-exempt
-by design (PRD-005 §4.3), regardless of `emailNotificationsEnabled`.
+notification, and email for the review-progression/publication/reminder and
+friend-request sent/accepted/rejected notifications. Other in-app
+social/cruise notifications remain email-exempt by design (PRD-005 §4.3),
+regardless of `emailNotificationsEnabled`.
 
 ## Related
 

@@ -487,8 +487,11 @@ components:
           example: "018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b2e"
         text:
           type: string
+          minLength: 1
           maxLength: 1000
-          description: Message content
+          description: |
+            Message content. Length is counted in Unicode characters (runes),
+            not bytes: 1 to 1000 characters.
           example: "Hello everyone! 👋"
 
     MessageReadPayload:
@@ -551,7 +554,13 @@ components:
           example: "Hello everyone! 👋"
         read:
           type: boolean
-          description: Whether the current user has read this message
+          description: |
+            Always false in message:new and message:received events: the
+            server builds one message snapshot when the message is created and
+            sends the identical bytes to every recipient, so this flag cannot
+            carry per-recipient read state. Per-viewer read state is only
+            available from the REST message responses. Clients should derive
+            read/unread state from their own read receipts, not from this field.
           example: false
         createdAt:
           type: string

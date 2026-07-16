@@ -242,18 +242,18 @@ X-Turnstile-Token: <turnstile_response_token>
 
 ## Invitation URL
 
-The invitation email contains a language-specific URL linking to the registration page:
+The invitation email contains a language-specific URL linking to the registration page, with the invitation code pre-filled as a query parameter:
 
 ```
-{WEBAPP_BASE_URL}/{lang}/register
+{WEBAPP_BASE_URL}/{lang}/register?invitation={code}
 ```
 
 **Examples:**
 
-- English: `https://skipperclub.app/en/register`
-- Polish: `https://skipperclub.app/pl/register`
+- English: `https://skipperclub.app/en/register?invitation=AB12CD34`
+- Polish: `https://skipperclub.app/pl/register?invitation=AB12CD34`
 
-The base URL is configured via `WEBAPP_BASE_URL` environment variable (default: `https://skipperclub.app`). The `/{lang}/register` path is appended automatically based on the invitation language.
+The base URL is configured via `WEBAPP_BASE_URL` environment variable (default: `https://skipperclub.app`). The `/{lang}/register` path and `invitation` query parameter are appended automatically based on the invitation's language and code.
 
 ### Platform Behavior
 

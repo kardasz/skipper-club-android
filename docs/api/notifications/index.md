@@ -51,8 +51,9 @@ Notification delivery preferences are managed as account settings on profile end
 - `PUT /v1/profile/notification-settings`
 
 In-app/WebSocket notifications are always delivered. The push flag is enforced
-by the push worker. The e-mail flag is persisted but notification e-mail
-delivery is not currently wired; see the [implementation status](../technical/notification-settings.md).
+by the push worker. The e-mail flag gates notification e-mail for review and
+friend-request events only, not every event; see the
+[implementation status](../technical/notification-settings.md).
 
 For full business behavior and endpoint examples, see [Notification Settings](./notification-settings.md).
 

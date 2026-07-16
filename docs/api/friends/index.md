@@ -216,6 +216,8 @@ Location: /v1/friend-requests/018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b99
 When a friend request is sent, the recipient receives a notification:
 
 - Event type: `FRIEND_REQUEST_SENT`
+- Delivered in-app/WebSocket, push, and email (unless the recipient disabled
+  notification email)
 - See [Notifications](../notifications/index.md) for details
 
 ### Errors
@@ -341,11 +343,13 @@ When accepted:
 
 - Friendship is created between both users
 - Both users appear in each other's friend list
-- Sender receives `FRIEND_REQUEST_ACCEPTED` notification
+- Sender receives `FRIEND_REQUEST_ACCEPTED` notification (in-app/WebSocket,
+  push, and email)
 
 When rejected:
 
-- Sender receives `FRIEND_REQUEST_REJECTED` notification
+- Sender receives `FRIEND_REQUEST_REJECTED` notification (in-app/WebSocket,
+  push, and email)
 - No friendship is created
 
 ### Errors

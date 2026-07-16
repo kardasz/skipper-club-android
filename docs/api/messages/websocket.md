@@ -104,7 +104,9 @@ Redis transports room fan-out and presence between API instances.
 | `message:read` | `{chatId, messageId}` | records receipt, replies `message:read:confirmed` |
 | `chat:typing`  | `{chatId, isTyping}`  | replies `chat:typing:sent`                        |
 
-IDs must be UUIDv7. Message text is 1 to 1000 Unicode characters.
+IDs must be UUIDv7 — the WebSocket handlers reject any other UUID version with
+an `error` event (the REST API parses generic UUIDs, so this check is stricter
+on the WS path). Message text is 1 to 1000 Unicode characters (runes).
 
 ```javascript
 ws.addEventListener("open", () => send("chat:join", { chatId }));
@@ -119,7 +121,11 @@ After a successful `message:send`:
 3. every other participant's personal room receives `message:received`, even
    when that participant has not joined the chat room.
 
-Both message events carry the same message object.
+Both message events carry the same message object. Its `read` field is always
+`false`: the server builds one snapshot when the message is created and sends
+the identical bytes to every recipient, so the flag cannot carry per-recipient
+read state. Only the REST message responses expose per-viewer read state;
+clients derive read/unread state from their own read receipts.
 
 ## Transport parity (REST + WebSocket)
 
