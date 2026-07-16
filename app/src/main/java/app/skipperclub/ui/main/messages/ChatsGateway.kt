@@ -29,7 +29,14 @@ interface ChatsGateway {
         order: SortOrder,
     ): MessagesPage
 
-    suspend fun sendMessage(accessToken: String, chatId: String, text: String): ChatMessage
+    /** [clientMessageId] is the idempotency key sent as `clientMessageId`; see [ChatsApi.sendMessage]. */
+    suspend fun sendMessage(
+        accessToken: String,
+        chatId: String,
+        text: String,
+        clientMessageId: String,
+    ): ChatMessage
+
     suspend fun markChatsRead(accessToken: String, chatIds: List<String>)
     suspend fun searchUsers(accessToken: String, query: UserSearchQuery): UsersPage
 }
@@ -55,8 +62,12 @@ object RealChatsGateway : ChatsGateway {
         order: SortOrder,
     ): MessagesPage = ChatsApi.listMessages(accessToken, chatId, limit, offset, order)
 
-    override suspend fun sendMessage(accessToken: String, chatId: String, text: String): ChatMessage =
-        ChatsApi.sendMessage(accessToken, chatId, text)
+    override suspend fun sendMessage(
+        accessToken: String,
+        chatId: String,
+        text: String,
+        clientMessageId: String,
+    ): ChatMessage = ChatsApi.sendMessage(accessToken, chatId, text, clientMessageId)
 
     override suspend fun markChatsRead(accessToken: String, chatIds: List<String>) =
         ChatsApi.bulkAction(accessToken, ChatBulkAction.MarkRead, chatIds)

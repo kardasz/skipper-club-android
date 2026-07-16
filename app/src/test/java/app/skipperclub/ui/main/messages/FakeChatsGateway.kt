@@ -72,6 +72,7 @@ internal class FakeChatsGateway : ChatsGateway {
 
     var sentMessage: ChatMessage? = null
     var mutationError: ChatsError? = null
+    val sentClientMessageIds = mutableListOf<String>()
 
     var usersPage: UsersPage = UsersPage(emptyList(), total = 0, limit = 20, offset = 0)
     var searchUsersError: ChatsError? = null
@@ -124,8 +125,14 @@ internal class FakeChatsGateway : ChatsGateway {
         return page
     }
 
-    override suspend fun sendMessage(accessToken: String, chatId: String, text: String): ChatMessage {
+    override suspend fun sendMessage(
+        accessToken: String,
+        chatId: String,
+        text: String,
+        clientMessageId: String,
+    ): ChatMessage {
         calls += "sendMessage:$chatId:$text"
+        sentClientMessageIds += clientMessageId
         mutationError?.let { throw it }
         return sentMessage ?: testMessage("sent", chatId = chatId, text = text, userId = "me")
     }

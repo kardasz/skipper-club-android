@@ -205,6 +205,40 @@ class NotificationsControllerTest {
     }
 
     @Test
+    fun realtimeNotificationPrependsUnseenRow() {
+        gateway.pages = listOf(notificationsPage(listOf(testNotification("n1"))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.onRealtimeNotification(testNotification("n2"))
+
+        val state = controller.state.value
+        // The list is newest first, so the live row lands on top.
+        assertEquals(listOf("n2", "n1"), state.notifications.map { it.id })
+        assertEquals(2, state.unreadCount)
+    }
+
+    @Test
+    fun realtimeNotificationIsDeduplicatedById() {
+        gateway.pages = listOf(notificationsPage(listOf(testNotification("n1"))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.onRealtimeNotification(testNotification("n1"))
+
+        assertEquals(listOf("n1"), controller.state.value.notifications.map { it.id })
+    }
+
+    @Test
+    fun realtimeNotificationBeforeInitialLoadIsIgnored() {
+        val controller = controller()
+
+        controller.onRealtimeNotification(testNotification("n1"))
+
+        assertTrue(controller.state.value.notifications.isEmpty())
+    }
+
+    @Test
     fun refreshReplacesNotifications() {
         gateway.pages = listOf(
             notificationsPage(listOf(testNotification("n1"))),

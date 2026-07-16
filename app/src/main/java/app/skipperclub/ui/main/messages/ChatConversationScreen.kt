@@ -181,6 +181,8 @@ fun ChatConversationScreen(
                 // Catch up on anything missed while the socket was down.
                 ChatRealtimeEvent.Connected -> controller.refreshNewMessages()
                 ChatRealtimeEvent.Disconnected -> Unit
+                // Consumed app-wide by UnreadNotificationsStore (badge) and by the
+                // notification center while it is open; nothing to do in a conversation.
                 is ChatRealtimeEvent.NotificationNew -> Unit
                 is ChatRealtimeEvent.TypingUpdate ->
                     controller.onRealtimeTyping(event.chatId, event.userId, event.isTyping)

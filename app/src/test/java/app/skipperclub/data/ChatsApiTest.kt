@@ -123,6 +123,21 @@ class ChatsApiTest {
     }
 
     @Test
+    fun sendMessageRequestSerializesClientMessageIdWhenProvided() {
+        val request = ChatsApi.sendMessageRequest(
+            accessToken = "token",
+            chatId = "chat-1",
+            text = "Ahoy!",
+            clientMessageId = "0d3ee1a5-51f0-4be9-9e1c-7e0e2f7f8b10",
+        )
+
+        assertEquals(
+            """{"text":"Ahoy!","clientMessageId":"0d3ee1a5-51f0-4be9-9e1c-7e0e2f7f8b10"}""",
+            request.bodyString(),
+        )
+    }
+
+    @Test
     fun bulkActionRequestSerializesWireAction() {
         val markRead = ChatsApi.bulkActionRequest("token", ChatBulkAction.MarkRead, listOf("c1", "c2"))
         val delete = ChatsApi.bulkActionRequest("token", ChatBulkAction.Delete, listOf("c1"))

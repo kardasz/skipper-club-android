@@ -17,6 +17,8 @@ class ChatConversationControllerTest {
     private val events = mutableListOf<ChatConversationEvent>()
     private val readReceipts = mutableListOf<Pair<String, String>>()
 
+    private var nextClientMessageId = 0
+
     private fun controller(
         token: String? = "token",
         typingExpiryMillis: Long = ChatConversationController.TYPING_RECEIVE_EXPIRY_MS,
@@ -30,6 +32,7 @@ class ChatConversationControllerTest {
             pageSize = 2,
             typingExpiryMillis = typingExpiryMillis,
             sendReadReceipt = { chatId, messageId -> readReceipts += chatId to messageId },
+            clientMessageIdProvider = { "client-id-${nextClientMessageId++}" },
         )
         scope.launch { controller.events.collect { events += it } }
         return controller
@@ -123,6 +126,42 @@ class ChatConversationControllerTest {
         assertFalse(state.isSending)
         assertTrue(gateway.calls.contains("sendMessage:chat-1:Ahoy!"))
         assertTrue(events.contains(ChatConversationEvent.MessageSent))
+    }
+
+    @Test
+    fun sendPassesOneClientMessageIdPerLogicalMessage() {
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.send("First")
+        controller.send("Second")
+
+        // Every send carries the idempotency key; a fresh one is minted per logical message so two
+        // distinct messages can never collapse into one server-side.
+        assertEquals(listOf("client-id-0", "client-id-1"), gateway.sentClientMessageIds)
+    }
+
+    @Test
+    fun sendGeneratesRandomUuidClientMessageIdsByDefault() {
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        val controller = ChatConversationController(
+            scope = scope,
+            accessToken = { "token" },
+            chatId = "chat-1",
+            currentUserId = "me",
+            gateway = gateway,
+            sendReadReceipt = { _, _ -> },
+        )
+        controller.loadInitialIfNeeded()
+
+        controller.send("Ahoy!")
+        controller.send("Ahoy again!")
+
+        assertEquals(2, gateway.sentClientMessageIds.size)
+        assertEquals(2, gateway.sentClientMessageIds.toSet().size)
+        // Parseable UUIDs (any version) — the wire contract for `clientMessageId`.
+        gateway.sentClientMessageIds.forEach { java.util.UUID.fromString(it) }
     }
 
     @Test
@@ -401,8 +440,8 @@ class ChatConversationControllerTest {
     }
 
     @Test
-    fun realtimeMessageReadMarksMatchingMessageAsRead() {
-        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+    fun realtimeMessageReadMarksMatchingOwnMessageAsRead() {
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1", userId = "me"))))
         val controller = controller()
         controller.loadInitialIfNeeded()
 
@@ -412,8 +451,90 @@ class ChatConversationControllerTest {
     }
 
     @Test
+    fun realtimeMessageReadCascadesToAllEarlierOwnMessages() {
+        // Receipts are cumulative: reading the newest message means everything before it was read
+        // too, so a single receipt for "m3" must flip the earlier own bubbles as well.
+        gateway.messagePages = listOf(
+            messagesPage(
+                listOf(
+                    testMessage("m3", userId = "me", createdAt = "2026-06-12T10:03:00Z"),
+                    testMessage("m2", userId = "me", createdAt = "2026-06-12T10:02:00Z"),
+                    testMessage("m1", userId = "me", createdAt = "2026-06-12T10:01:00Z"),
+                ),
+                total = 3,
+            ),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.onRealtimeMessageRead("m3", userId = "other")
+
+        assertTrue(controller.state.value.messages.all { it.read })
+    }
+
+    @Test
+    fun realtimeMessageReadDoesNotMarkOwnMessagesAfterTheReceiptPosition() {
+        gateway.messagePages = listOf(
+            messagesPage(
+                listOf(
+                    testMessage("m3", userId = "me", createdAt = "2026-06-12T10:03:00Z"),
+                    testMessage("m2", userId = "me", createdAt = "2026-06-12T10:02:00Z"),
+                    testMessage("m1", userId = "me", createdAt = "2026-06-12T10:01:00Z"),
+                ),
+                total = 3,
+            ),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.onRealtimeMessageRead("m2", userId = "other")
+
+        val byId = controller.state.value.messages.associateBy { it.id }
+        assertTrue(byId.getValue("m1").read)
+        assertTrue(byId.getValue("m2").read)
+        assertFalse(byId.getValue("m3").read)
+    }
+
+    @Test
+    fun realtimeMessageReadCascadePastAnotherParticipantsMessageFlipsOnlyOwnOnes() {
+        // The receipt position may be another participant's message (they read up to their own
+        // newest); earlier own messages still flip, but the other side's bubbles keep their flag
+        // (it means *we* read them, not that they were seen).
+        gateway.messagePages = listOf(
+            messagesPage(
+                listOf(
+                    testMessage("m3", userId = "other", createdAt = "2026-06-12T10:03:00Z"),
+                    testMessage("m2", userId = "other", createdAt = "2026-06-12T10:02:00Z"),
+                    testMessage("m1", userId = "me", createdAt = "2026-06-12T10:01:00Z"),
+                ),
+                total = 3,
+            ),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.onRealtimeMessageRead("m3", userId = "other")
+
+        val byId = controller.state.value.messages.associateBy { it.id }
+        assertTrue(byId.getValue("m1").read)
+        assertFalse(byId.getValue("m2").read)
+        assertFalse(byId.getValue("m3").read)
+    }
+
+    @Test
+    fun realtimeMessageReadForUnknownMessageIsIgnored() {
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1", userId = "me"))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.onRealtimeMessageRead("not-loaded", userId = "other")
+
+        assertFalse(controller.state.value.messages.first { it.id == "m1" }.read)
+    }
+
+    @Test
     fun realtimeMessageReadFromSelfIsIgnored() {
-        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1", userId = "me"))))
         val controller = controller()
         controller.loadInitialIfNeeded()
 

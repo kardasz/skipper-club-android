@@ -55,11 +55,13 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.skipperclub.R
 import app.skipperclub.data.AppNotification
+import app.skipperclub.data.ChatRealtimeEvent
 import app.skipperclub.data.NotificationEventType
 import app.skipperclub.data.NotificationSourceType
 import app.skipperclub.data.NotificationStatus
 import app.skipperclub.data.NotificationsError
 import app.skipperclub.data.SessionStore
+import app.skipperclub.data.WebSocketChatRealtimeClient
 import app.skipperclub.ui.main.cruises.CruiseDetailScreen
 import app.skipperclub.ui.main.cruises.reviews.CruiseReviewsScreen
 import app.skipperclub.ui.main.posts.PostDetailScreen
@@ -105,6 +107,23 @@ fun NotificationsScreen(
     }
 
     LaunchedEffect(controller) { controller.loadInitialIfNeeded() }
+    // The socket is owned app-wide by RealtimeConnectionManager; while this center is open,
+    // `notification:new` prepends the fresh row live and a reconnect re-syncs anything missed
+    // during the outage (mirrors how MessagesScreen keeps the chat list live).
+    val realtime = remember { WebSocketChatRealtimeClient }
+    LaunchedEffect(controller, realtime) {
+        realtime.events.collect { event ->
+            when (event) {
+                is ChatRealtimeEvent.NotificationNew ->
+                    controller.onRealtimeNotification(event.notification)
+
+                ChatRealtimeEvent.Connected ->
+                    if (controller.state.value.hasLoadedOnce) controller.refresh()
+
+                else -> Unit
+            }
+        }
+    }
     LaunchedEffect(controller) {
         controller.events.collect { event ->
             when (event) {

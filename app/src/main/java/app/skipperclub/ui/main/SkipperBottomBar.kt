@@ -55,6 +55,7 @@ fun SkipperBottomBar(
     onSelect: (MainDestination) -> Unit,
     modifier: Modifier = Modifier,
     messagesBadgeCount: Int = 0,
+    menuBadgeCount: Int = 0,
 ) {
     Box(
         modifier = modifier
@@ -87,7 +88,13 @@ fun SkipperBottomBar(
                             selected = destination == selected,
                             user = user.takeIf { destination == MainDestination.MENU },
                             onSelect = onSelect,
-                            badgeCount = if (destination == MainDestination.MESSAGES) messagesBadgeCount else 0,
+                            badgeCount = when (destination) {
+                                MainDestination.MESSAGES -> messagesBadgeCount
+                                // Unread notifications live behind the menu sheet, so its nav item
+                                // carries their count to make the badge visible app-wide.
+                                MainDestination.MENU -> menuBadgeCount
+                                else -> 0
+                            },
                             modifier = Modifier.weight(1f),
                         )
                     }

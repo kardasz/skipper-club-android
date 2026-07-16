@@ -141,6 +141,22 @@ class NotificationsController(
         }
     }
 
+    /**
+     * Applies a `notification:new` pushed over the socket while the center is open: prepends the
+     * notification when unseen (the list is newest first). Ignored before the initial load — the
+     * load itself fetches the newest page, so applying earlier would only duplicate work.
+     */
+    fun onRealtimeNotification(notification: AppNotification) {
+        if (!_state.value.hasLoadedOnce) return
+        _state.update { state ->
+            if (state.notifications.any { it.id == notification.id }) {
+                state
+            } else {
+                state.copy(notifications = listOf(notification) + state.notifications)
+            }
+        }
+    }
+
     private fun reload(showAsRefreshing: Boolean) {
         loadJob?.cancel()
         _state.update {

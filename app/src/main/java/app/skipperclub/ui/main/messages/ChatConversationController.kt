@@ -60,6 +60,12 @@ class ChatConversationController(
     private val sendReadReceipt: (chatId: String, messageId: String) -> Unit = { id, messageId ->
         WebSocketChatRealtimeClient.sendMessageRead(id, messageId)
     },
+    /**
+     * Idempotency key per logical message ([java.util.UUID] by default; injectable so tests are
+     * deterministic). Generated once per [send] and reused for any HTTP-level retry of that POST,
+     * so a timeout-and-retransmit cannot create a duplicate message server-side.
+     */
+    private val clientMessageIdProvider: () -> String = { java.util.UUID.randomUUID().toString() },
 ) {
     private val _state = MutableStateFlow(ChatConversationUiState())
     val state: StateFlow<ChatConversationUiState> = _state.asStateFlow()
@@ -148,6 +154,10 @@ class ChatConversationController(
     fun send(text: String) {
         val trimmed = text.trim()
         if (trimmed.isEmpty() || _state.value.isSending) return
+        // One key per logical message, minted before the request goes out: if OkHttp (or any proxy)
+        // retransmits the POST after a timeout, the server dedupes on it and returns the message it
+        // already created instead of a duplicate.
+        val clientMessageId = clientMessageIdProvider()
         _state.update { it.copy(isSending = true) }
         scope.launch {
             val token = requireToken() ?: run {
@@ -155,7 +165,7 @@ class ChatConversationController(
                 return@launch
             }
             try {
-                val message = gateway.sendMessage(token, chatId, trimmed)
+                val message = gateway.sendMessage(token, chatId, trimmed, clientMessageId)
                 _state.update { state ->
                     state.copy(
                         messages = if (state.messages.any { it.id == message.id }) {
@@ -272,16 +282,27 @@ class ChatConversationController(
     }
 
     /**
-     * Applies a `message:read` receipt pushed over the socket: flips the matching message's
-     * [ChatMessage.read] flag so a "seen" indicator can reflect another participant's read live.
+     * Applies a `message:read` receipt pushed over the socket. Receipts are cumulative: reading
+     * [messageId] means the participant has read it **and every earlier message** in the chat, so
+     * every own message up to and including that position (list order == createdAt order) flips
+     * [ChatMessage.read] for the "seen" indicator — not just the exact match, which would leave
+     * older bubbles stuck on "sent" when the receipt only targets the newest message. Only own
+     * messages are flipped (the indicator renders on own bubbles only, and the flag on the other
+     * side's messages means *we* read them). A receipt for a message we have not loaded is ignored.
      * Our own read receipts are echoed back to the room too, so they are ignored here.
      */
     fun onRealtimeMessageRead(messageId: String, userId: String) {
         if (userId == currentUserId) return
         _state.update { state ->
+            val readUpToIndex = state.messages.indexOfFirst { it.id == messageId }
+            if (readUpToIndex < 0) return@update state
             state.copy(
-                messages = state.messages.map {
-                    if (it.id == messageId) it.copy(read = true) else it
+                messages = state.messages.mapIndexed { index, message ->
+                    if (index <= readUpToIndex && !message.read && message.user.id == currentUserId) {
+                        message.copy(read = true)
+                    } else {
+                        message
+                    }
                 },
             )
         }

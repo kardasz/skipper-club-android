@@ -37,8 +37,11 @@ sealed interface ChatRealtimeEvent {
     /** New message notification from any chat the user participates in. */
     data class MessageReceived(val message: ChatMessage) : ChatRealtimeEvent
 
-    /** In-app notification pushed on the personal room while foregrounded. */
-    data class NotificationNew(val payload: JsonObject) : ChatRealtimeEvent
+    /**
+     * In-app notification pushed on the personal room while foregrounded. The payload is the same
+     * notification object the REST `/v1/notifications` endpoints return (docs/api/notifications/index.md).
+     */
+    data class NotificationNew(val notification: AppNotification) : ChatRealtimeEvent
 
     /** Another participant's typing state changed in a joined chat room. */
     data class TypingUpdate(val chatId: String, val userId: String, val isTyping: Boolean) :
@@ -107,6 +110,20 @@ internal data class RealtimeFrame(val event: String, val data: JsonElement)
 internal fun parseRealtimeChatMessage(payload: String): ChatMessage? =
     try {
         realtimeJson.decodeFromString<ChatMessageDto>(payload).toDomain()
+    } catch (_: SerializationException) {
+        null
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+
+/**
+ * Parses a `notification:new` payload — a REST-shaped notification object — reusing
+ * [NotificationDto] so realtime and REST rows stay in lockstep; null when malformed or when the
+ * row carries an unknown source/status (same forward-compat drop rule as the REST list).
+ */
+internal fun parseRealtimeNotification(payload: String): AppNotification? =
+    try {
+        realtimeJson.decodeFromString<NotificationDto>(payload).toDomain()
     } catch (_: SerializationException) {
         null
     } catch (_: IllegalArgumentException) {
@@ -460,11 +477,11 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
     }
 
     private fun emitNotification(data: JsonElement) {
-        val payload = data as? JsonObject ?: run {
-            debugLog("dropped non-object notification payload")
+        val notification = parseRealtimeNotification(data.toString()) ?: run {
+            debugLog("dropped malformed notification payload")
             return
         }
-        _events.tryEmit(ChatRealtimeEvent.NotificationNew(payload))
+        _events.tryEmit(ChatRealtimeEvent.NotificationNew(notification))
     }
 
     private fun emitMessage(data: JsonElement, wrap: (ChatMessage) -> ChatRealtimeEvent) {

@@ -171,6 +171,11 @@ REST fetch.
 | `notification:new`       | notification object          | recipient's personal room                         |
 | `error`                  | `{type,message,timestamp}`   | requesting connection                             |
 
+A `message:read` receipt is cumulative: it means `userId` has read
+`messageId` **and every earlier message** in that chat, so clients mark
+everything up to and including `messageId` as read rather than only the
+exact match.
+
 Message payload:
 
 ```json

@@ -178,6 +178,75 @@ class ChatRealtimeClientTest {
     }
 
     @Test
+    fun parsesNotificationNewPayload() {
+        // REST-shaped notification object per docs/api/notifications/index.md#notificationnew-event.
+        val payload = """
+            {
+              "id": "n1",
+              "recipientId": "u1",
+              "eventType": "CRUISE_INVITATION_SENT",
+              "sourceType": "CRUISE",
+              "sourceId": "c1",
+              "relationId": "r1",
+              "status": "UNREAD",
+              "metadata": {"cruiseTitle": "Mediterranean Adventure", "actorName": "John Smith"},
+              "createdAt": "2025-11-23T12:00:00Z",
+              "readAt": null
+            }
+        """.trimIndent()
+
+        val notification = parseRealtimeNotification(payload)
+
+        requireNotNull(notification)
+        assertEquals("n1", notification.id)
+        assertEquals(NotificationEventType.CruiseInvitationSent, notification.eventType)
+        assertEquals(NotificationSourceType.Cruise, notification.sourceType)
+        assertEquals("c1", notification.sourceId)
+        assertEquals(NotificationStatus.Unread, notification.status)
+        assertTrue(notification.isUnread)
+        assertEquals("John Smith", notification.actorName)
+    }
+
+    @Test
+    fun notificationNewWithUnknownEventTypeFallsBackToUnknown() {
+        val payload = """
+            {
+              "id": "n1",
+              "eventType": "SOME_FUTURE_EVENT",
+              "sourceType": "CRUISE",
+              "sourceId": "c1",
+              "status": "UNREAD",
+              "createdAt": "2025-11-23T12:00:00Z"
+            }
+        """.trimIndent()
+
+        assertEquals(NotificationEventType.Unknown, parseRealtimeNotification(payload)?.eventType)
+    }
+
+    @Test
+    fun notificationNewWithUnknownSourceTypeIsDropped() {
+        // Same forward-compat drop rule as the REST list mapping (NotificationDto.toDomain).
+        val payload = """
+            {
+              "id": "n1",
+              "eventType": "CRUISE_INVITATION_SENT",
+              "sourceType": "SOME_FUTURE_SOURCE",
+              "sourceId": "c1",
+              "status": "UNREAD",
+              "createdAt": "2025-11-23T12:00:00Z"
+            }
+        """.trimIndent()
+
+        assertNull(parseRealtimeNotification(payload))
+    }
+
+    @Test
+    fun notificationNewMalformedPayloadReturnsNull() {
+        assertNull(parseRealtimeNotification("not json"))
+        assertNull(parseRealtimeNotification("""{"id":"n1"}"""))
+    }
+
+    @Test
     fun parsesTypingUpdatePayload() {
         val payload = """{"chatId":"chat-1","userId":"u1","isTyping":true}"""
 

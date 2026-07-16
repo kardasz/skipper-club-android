@@ -120,15 +120,35 @@ object ChatsApi {
             listMessagesRequest(accessToken, chatId, limit, offset, order),
         ) { it.toDomain() }
 
-    internal fun sendMessageRequest(accessToken: String, chatId: String, text: String): Request =
+    internal fun sendMessageRequest(
+        accessToken: String,
+        chatId: String,
+        text: String,
+        clientMessageId: String? = null,
+    ): Request =
         baseRequest(accessToken)
             .url(chatsUrl().newBuilder().addPathSegment(chatId).addPathSegment("messages").build())
-            .post(json.encodeToString(SendMessageRequest(text)).toRequestBody(JSON_MEDIA_TYPE))
+            .post(
+                json.encodeToString(SendMessageRequest(text, clientMessageId))
+                    .toRequestBody(JSON_MEDIA_TYPE),
+            )
             .header("Content-Type", "application/json")
             .build()
 
-    suspend fun sendMessage(accessToken: String, chatId: String, text: String): ChatMessage =
-        executeAndDecode<ChatMessageDto, ChatMessage>(sendMessageRequest(accessToken, chatId, text)) {
+    /**
+     * [clientMessageId] is an optional idempotency key: a repeat POST with the same value returns
+     * the existing message (same `id`) instead of creating a duplicate. Callers generate one UUID
+     * per logical message and reuse it on retries.
+     */
+    suspend fun sendMessage(
+        accessToken: String,
+        chatId: String,
+        text: String,
+        clientMessageId: String? = null,
+    ): ChatMessage =
+        executeAndDecode<ChatMessageDto, ChatMessage>(
+            sendMessageRequest(accessToken, chatId, text, clientMessageId),
+        ) {
             it.toDomain()
         }
 

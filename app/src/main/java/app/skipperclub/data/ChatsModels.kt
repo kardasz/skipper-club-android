@@ -88,6 +88,12 @@ data class CreateChatRequest(
 @Serializable
 internal data class SendMessageRequest(
     val text: String,
+    /**
+     * Client-generated idempotency key (UUID, any version): resending the same value makes the
+     * server return the already-created message instead of a duplicate, so an HTTP-level retry
+     * after a timeout cannot double-post.
+     */
+    val clientMessageId: String? = null,
 )
 
 enum class ChatBulkAction(val wireValue: String) {

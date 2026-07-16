@@ -8515,6 +8515,14 @@ components:
           maxLength: 1000
           description: Message content
           example: Kiedy wypływamy?
+        clientMessageId:
+          type: string
+          format: uuid
+          description: >-
+            Optional client-generated idempotency key (UUID, any version). Repeating the request
+            with the same clientMessageId returns the already-created message (same id) instead of
+            creating a duplicate, so timeout-driven retries cannot double-post.
+          example: 0d3ee1a5-51f0-4be9-9e1c-7e0e2f7f8b10
     MessagesList:
       type: object
       properties:

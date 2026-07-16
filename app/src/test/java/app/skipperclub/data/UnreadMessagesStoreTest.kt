@@ -1,6 +1,5 @@
 package app.skipperclub.data
 
-import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -39,6 +38,6 @@ class UnreadMessagesStoreTest {
     @Test
     fun otherEventsLeaveTheCountUnchanged() {
         assertNull(unreadCountAfter(2, ChatRealtimeEvent.Disconnected))
-        assertNull(unreadCountAfter(2, ChatRealtimeEvent.NotificationNew(JsonObject(emptyMap()))))
+        assertNull(unreadCountAfter(2, ChatRealtimeEvent.NotificationNew(testAppNotification("n1"))))
     }
 }

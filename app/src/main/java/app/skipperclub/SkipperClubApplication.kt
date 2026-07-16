@@ -5,6 +5,7 @@ import app.skipperclub.data.PresenceStore
 import app.skipperclub.data.RealtimeConnectionManager
 import app.skipperclub.data.SessionStore
 import app.skipperclub.data.UnreadMessagesStore
+import app.skipperclub.data.UnreadNotificationsStore
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
@@ -33,6 +34,12 @@ class SkipperClubApplication : Application(), SingletonImageLoader.Factory {
         // App-wide unread badge, driven by the same app-scoped socket so it updates outside the
         // Messages tab (the tab-scoped controller cannot be the source).
         UnreadMessagesStore.start(
+            sessionFlow = SessionStore.session,
+            accessTokenProvider = { SessionStore.validSession()?.accessToken },
+        )
+        // App-wide unread-notifications badge, driven by `notification:new` on the same socket so
+        // it updates regardless of which screen is on top.
+        UnreadNotificationsStore.start(
             sessionFlow = SessionStore.session,
             accessTokenProvider = { SessionStore.validSession()?.accessToken },
         )

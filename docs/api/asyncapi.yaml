@@ -382,6 +382,11 @@ components:
         whether over WS message:read or over REST
         PATCH /chats/{chatId}/messages/{messageId} with read=true. Bulk
         mark-read (POST /chats/actions) emits no receipts.
+
+        Receipts are cumulative: a receipt for messageId means userId has read
+        that message and every earlier message in the chat, so clients mark
+        everything up to and including messageId as read instead of only the
+        exact match.
       contentType: application/json
       payload:
         $ref: "#/components/schemas/MessageReadReceiptPayload"

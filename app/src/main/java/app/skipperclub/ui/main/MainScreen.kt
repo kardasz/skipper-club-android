@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Badge
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -35,6 +36,7 @@ import androidx.compose.ui.window.DialogProperties
 import app.skipperclub.R
 import app.skipperclub.data.SessionUser
 import app.skipperclub.data.UnreadMessagesStore
+import app.skipperclub.data.UnreadNotificationsStore
 import app.skipperclub.ui.main.cruises.CruisesScreen
 import app.skipperclub.ui.main.cruises.reviews.CruiseReviewsScreen
 import app.skipperclub.ui.main.friends.FriendsScreen
@@ -58,6 +60,7 @@ fun MainScreen(
     val currentSelection = rememberSaveable { mutableStateOf(value = MainDestination.MAP) }
     var current by currentSelection
     val messagesBadgeCount by UnreadMessagesStore.count.collectAsState()
+    val notificationsBadgeCount by UnreadNotificationsStore.count.collectAsState()
     MainScreenContent(
         current = current,
         user = user,
@@ -66,6 +69,8 @@ fun MainScreen(
         pendingReviewsCruiseId = pendingReviewsCruiseId,
         onPendingReviewsConsumed = onPendingReviewsConsumed,
         messagesBadgeCount = messagesBadgeCount,
+        notificationsBadgeCount = notificationsBadgeCount,
+        onNotificationsClosed = { UnreadNotificationsStore.refresh() },
         modifier = modifier,
     )
 }
@@ -81,6 +86,8 @@ private fun MainScreenContent(
     pendingReviewsCruiseId: String? = null,
     onPendingReviewsConsumed: () -> Unit = {},
     messagesBadgeCount: Int = 0,
+    notificationsBadgeCount: Int = 0,
+    onNotificationsClosed: () -> Unit = {},
 ) {
     val menuOpenState = rememberSaveable { mutableStateOf(value = false) }
     var isMenuOpen by menuOpenState
@@ -94,6 +101,13 @@ private fun MainScreenContent(
     // Set when the feed's "Create → Navigation alert" option is picked; the map
     // consumes it by entering the aim-on-the-map alert flow.
     var pendingAlertPicking by rememberSaveable { mutableStateOf(value = false) }
+
+    // Reconcile the notifications badge after the notification center closes (its mark-read
+    // mutations have committed by then), mirroring how MessagesScreen reconciles the messages
+    // badge when a conversation closes.
+    androidx.compose.runtime.LaunchedEffect(showNotifications) {
+        if (!showNotifications) onNotificationsClosed()
+    }
 
     // Open the reviews center when a `…/cruises/{id}/reviews` deep link arrives.
     androidx.compose.runtime.LaunchedEffect(pendingReviewsCruiseId) {
@@ -135,6 +149,7 @@ private fun MainScreenContent(
                 }
             },
             messagesBadgeCount = messagesBadgeCount,
+            menuBadgeCount = notificationsBadgeCount,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
@@ -145,6 +160,7 @@ private fun MainScreenContent(
         ) {
             MainMenuSheet(
                 user = user,
+                notificationsBadgeCount = notificationsBadgeCount,
                 onClose = { menuOpenState.value = false },
                 onOpenProfile = {
                     menuOpenState.value = false
@@ -253,6 +269,7 @@ private fun MainScreenContent(
 @Composable
 private fun MainMenuSheet(
     user: SessionUser,
+    notificationsBadgeCount: Int,
     onClose: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenNotifications: () -> Unit,
@@ -297,6 +314,7 @@ private fun MainMenuSheet(
             label = stringResource(R.string.menu_notifications),
             iconRes = R.drawable.ic_notifications,
             onClick = onOpenNotifications,
+            badgeCount = notificationsBadgeCount,
         )
         MainMenuItem(
             label = stringResource(R.string.menu_friends),
@@ -340,10 +358,20 @@ private fun MainMenuItem(
     label: String,
     iconRes: Int,
     onClick: () -> Unit,
+    badgeCount: Int = 0,
 ) {
     ListItem(
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         headlineContent = { Text(label) },
+        trailingContent = if (badgeCount > 0) {
+            {
+                Badge {
+                    Text(text = if (badgeCount > 99) "99+" else badgeCount.toString())
+                }
+            }
+        } else {
+            null
+        },
         leadingContent = {
             Icon(
                 painter = painterResource(iconRes),
