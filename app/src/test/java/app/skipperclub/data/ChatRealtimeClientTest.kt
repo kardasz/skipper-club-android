@@ -1,6 +1,12 @@
 package app.skipperclub.data
 
 import kotlin.random.Random
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
@@ -139,11 +145,17 @@ class ChatRealtimeClientTest {
 
     @Test
     fun httpUnauthorizedOnUpgradeForcesTokenRefresh() {
-        // A rejected upgrade (401/403) means the token itself is bad; retrying it verbatim loops.
+        // A rejected upgrade (401) means the token itself is bad; retrying it verbatim loops.
         assertTrue(shouldRefreshTokenForHttpFailure(HTTP_UNAUTHORIZED))
-        assertTrue(shouldRefreshTokenForHttpFailure(HTTP_FORBIDDEN))
         assertTrue(shouldRefreshTokenForHttpFailure(401))
-        assertTrue(shouldRefreshTokenForHttpFailure(403))
+    }
+
+    @Test
+    fun httpForbiddenOnUpgradeBacksOffWithoutRefresh() {
+        // 403 means the token is valid but access is denied — a refresh cannot fix that, so
+        // refreshing would loop `refresh → reconnect → 403` and hammer the refresh endpoint.
+        assertFalse(shouldRefreshTokenForHttpFailure(HTTP_FORBIDDEN))
+        assertFalse(shouldRefreshTokenForHttpFailure(403))
     }
 
     @Test
@@ -262,5 +274,47 @@ class ChatRealtimeClientTest {
         val frame = encodeRealtimeFrame("message:read", messageReadFramePayload("chat-1", "m1"))
 
         assertEquals("""{"event":"message:read","data":{"chatId":"chat-1","messageId":"m1"}}""", frame)
+    }
+
+    @Test
+    fun manualDisconnectEmitsDisconnected() = runBlocking {
+        // Logout/backgrounding go through disconnect(); without the Disconnected emission,
+        // PresenceStore would keep stale "online" flags across those paths.
+        val events = mutableListOf<ChatRealtimeEvent>()
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+            WebSocketChatRealtimeClient.events.collect { events += it }
+        }
+        // Park connect() inside the token provider so no real socket (or Android Log call) is ever
+        // touched; await the entry so disconnect() races neither the launch nor the provider.
+        val providerEntered = CompletableDeferred<Unit>()
+        WebSocketChatRealtimeClient.connect(
+            accessTokenProvider = {
+                providerEntered.complete(Unit)
+                awaitCancellation()
+            },
+        )
+        providerEntered.await()
+
+        WebSocketChatRealtimeClient.disconnect()
+
+        yield()
+        collector.cancel()
+        assertEquals(listOf<ChatRealtimeEvent>(ChatRealtimeEvent.Disconnected), events)
+    }
+
+    @Test
+    fun disconnectWithoutActiveConnectionEmitsNothing() = runBlocking {
+        // RealtimeConnectionManager.reconcile() calls disconnect() on every background/logout
+        // signal; repeated calls with no live connection must not emit spurious events.
+        val events = mutableListOf<ChatRealtimeEvent>()
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+            WebSocketChatRealtimeClient.events.collect { events += it }
+        }
+
+        WebSocketChatRealtimeClient.disconnect()
+
+        yield()
+        collector.cancel()
+        assertTrue(events.isEmpty())
     }
 }

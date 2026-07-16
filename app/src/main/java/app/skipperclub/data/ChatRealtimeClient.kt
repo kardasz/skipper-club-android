@@ -243,13 +243,15 @@ internal const val HTTP_UNAUTHORIZED = 401
 internal const val HTTP_FORBIDDEN = 403
 
 /**
- * A `401`/`403` on the WebSocket **upgrade** (as opposed to a post-connect close) means the server
+ * A `401` on the WebSocket **upgrade** (as opposed to a post-connect close) means the server
  * rejected the token itself — typically revoked server-side while still locally valid — so retrying
- * with the same token would loop forever. Force a refresh first. Any other or absent HTTP status is
- * a transient transport failure that just backs off.
+ * with the same token would loop forever. Force a refresh first. A `403` means the token is valid
+ * but access is denied; a refresh cannot fix that, so refreshing on it would hammer the refresh
+ * endpoint in a `refresh → reconnect → 403` loop — it backs off like any other failure instead.
+ * Any other or absent HTTP status is a transient transport failure that also just backs off.
  */
 internal fun shouldRefreshTokenForHttpFailure(httpCode: Int?): Boolean =
-    httpCode == HTTP_UNAUTHORIZED || httpCode == HTTP_FORBIDDEN
+    httpCode == HTTP_UNAUTHORIZED
 
 internal enum class ReconnectPolicy {
     /** Force a token refresh before reconnecting (auth close). */
@@ -320,14 +322,22 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
 
     @Synchronized
     override fun disconnect() {
-        scope?.cancel()
+        // Idempotent: RealtimeConnectionManager.reconcile() calls this on every background/logout
+        // signal, including when nothing was ever connected — bail out so repeated calls do not
+        // emit spurious Disconnected events.
+        val activeScope = scope ?: return
+        activeScope.cancel()
         scope = null
         tokenProvider = null
         authCloseHandler = null
         webSocket?.close(1000, null)
         webSocket = null
         joinedChatIds.clear()
-        _isConnected.value = false
+        // Emit Disconnected so consumers (e.g. PresenceStore) clear stale state on logout and
+        // app-backgrounding too, not only on server-side drops. No double emission when the
+        // socket's close callback fires later: handleClose/handleFailure bail out because `scope`
+        // is already null.
+        markDisconnected()
     }
 
     override fun joinChat(chatId: String) {
@@ -404,9 +414,10 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
     }
 
     /**
-     * Handshake/transport failure (never opened, or dropped without a close frame). A `401`/`403`
-     * on the upgrade means the token itself was rejected, so we force a refresh before reconnecting;
-     * everything else just backs off. Mirrors the auth path in [handleClose] for server closes.
+     * Handshake/transport failure (never opened, or dropped without a close frame). A `401` on the
+     * upgrade means the token itself was rejected, so we force a refresh before reconnecting;
+     * everything else (including `403`, which a refresh cannot fix) just backs off. Mirrors the
+     * auth path in [handleClose] for server closes.
      */
     private fun handleFailure(ownerScope: CoroutineScope, attempt: Int, httpCode: Int?) {
         if (scope !== ownerScope) return
@@ -509,8 +520,12 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
 
     private class RealtimeListener(
         private val ownerScope: CoroutineScope,
-        private var attempt: Int,
+        initialAttempt: Int,
     ) : WebSocketListener() {
+        /** Reset in [onOpen], read in [onClosed]/[onFailure]; OkHttp may invoke them on different threads. */
+        @Volatile
+        private var attempt: Int = initialAttempt
+
         override fun onOpen(webSocket: WebSocket, response: Response) {
             debugLog("connected")
             // A healthy connection clears the accumulated backoff so the next disconnect retries
