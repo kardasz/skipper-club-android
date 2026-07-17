@@ -58,6 +58,7 @@ import app.skipperclub.data.ChatType
 import app.skipperclub.data.ChatsError
 import app.skipperclub.data.PresenceStore
 import app.skipperclub.data.SessionStore
+import app.skipperclub.data.UnreadMessagesStore
 import app.skipperclub.data.UserPresence
 import app.skipperclub.data.WebSocketChatRealtimeClient
 import app.skipperclub.ui.notification.InAppNotificationHost
@@ -71,7 +72,24 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val POLL_INTERVAL_MILLIS = 5_000L
-private const val MAX_MESSAGE_LENGTH = 1_000
+
+/**
+ * Server-side message limit, counted in Unicode code points (the API validates runes, not UTF-16
+ * units) — see docs/api/messages/websocket.md.
+ */
+internal const val MAX_MESSAGE_LENGTH = 1_000
+
+/**
+ * Truncate [text] to [maxCodePoints] Unicode code points.
+ *
+ * `String.take` would cut by UTF-16 units instead, which is wrong twice over: it counts an emoji as
+ * two toward a limit the server counts as one, and — worse — a cut landing between a surrogate pair
+ * splits the emoji, leaving a lone surrogate the user sees as `�` and the server rejects.
+ */
+internal fun truncateToCodePoints(text: String, maxCodePoints: Int): String {
+    if (text.codePointCount(0, text.length) <= maxCodePoints) return text
+    return text.substring(0, text.offsetByCodePoints(0, maxCodePoints))
+}
 
 /**
  * Typing indicator timings, unified with web/iOS (see docs/api/messages/websocket.md):
@@ -164,7 +182,12 @@ fun ChatConversationScreen(
 
     DisposableEffect(realtime, chatId) {
         realtime.joinChat(chatId)
+        // Messages arriving in the chat on screen are read as they land, so they must not bump the
+        // app-wide badge — otherwise it counts up while the user watches the very conversation it
+        // is counting, and only settles when the screen closes and reconciles.
+        UnreadMessagesStore.setActiveChat(chatId)
         onDispose {
+            UnreadMessagesStore.setActiveChat(null)
             typingIdleJob?.cancel()
             typingKeepaliveJob?.cancel()
             // Send the typing-stop before leaving: the server drops typing frames for a room we
@@ -223,7 +246,7 @@ fun ChatConversationScreen(
             nowMillis = nowMillis,
             otherParticipantPresence = otherParticipantPresence,
             onInputChange = {
-                inputText = it.take(MAX_MESSAGE_LENGTH)
+                inputText = truncateToCodePoints(it, MAX_MESSAGE_LENGTH)
                 if (!typingSent) {
                     typingSent = true
                     realtime.sendTyping(chatId, isTyping = true)

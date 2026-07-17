@@ -36,6 +36,23 @@ class UnreadMessagesStoreTest {
     }
 
     @Test
+    fun messageReceivedForTheOpenChatDoesNotBumpTheCount() {
+        // The user is looking at this conversation and the screen marks it read on arrival, so a
+        // badge here counts up for a message being read and then clears itself moments later.
+        assertNull(
+            unreadCountAfter(3, ChatRealtimeEvent.MessageReceived(message("c1")), activeChatId = "c1"),
+        )
+    }
+
+    @Test
+    fun messageReceivedForAnotherChatStillBumpsTheCountWhileAChatIsOpen() {
+        assertEquals(
+            4,
+            unreadCountAfter(3, ChatRealtimeEvent.MessageReceived(message("c2")), activeChatId = "c1"),
+        )
+    }
+
+    @Test
     fun otherEventsLeaveTheCountUnchanged() {
         assertNull(unreadCountAfter(2, ChatRealtimeEvent.Disconnected))
         assertNull(unreadCountAfter(2, ChatRealtimeEvent.NotificationNew(testAppNotification("n1"))))

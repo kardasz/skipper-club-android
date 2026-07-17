@@ -52,6 +52,8 @@ class ChatConversationController(
     private val pageSize: Int = 30,
     /** Safety net for a lost `isTyping:false`: clears a user's typing state if nothing follows. */
     private val typingExpiryMillis: Long = TYPING_RECEIVE_EXPIRY_MS,
+    /** How long arrivals are coalesced before one mark-read goes out; see [scheduleMarkRead]. */
+    private val readReceiptDebounceMillis: Long = READ_RECEIPT_DEBOUNCE_MILLIS,
     /**
      * `message:read` over the socket for the newest visible message, mirroring what iOS/Web send
      * (see the transport-parity table in docs/api/messages/websocket.md). Injectable so tests don't
@@ -74,6 +76,9 @@ class ChatConversationController(
     val events: SharedFlow<ChatConversationEvent> = _events.asSharedFlow()
 
     private val typingExpiryJobs = mutableMapOf<String, Job>()
+
+    /** In-flight debounced mark-read, cancelled and restarted by each new arrival. */
+    private var markReadJob: Job? = null
 
     fun loadInitialIfNeeded() {
         val current = _state.value
@@ -202,10 +207,25 @@ class ChatConversationController(
             }
         }
         if (appended && message.user.id != currentUserId) {
-            scope.launch {
-                val token = runCatching { accessToken() }.getOrNull() ?: return@launch
-                markRead(token, hadUnread = true)
-            }
+            scheduleMarkRead()
+        }
+    }
+
+    /**
+     * Coalesces mark-read work over a short window instead of firing it per arriving message.
+     *
+     * Read receipts cascade — a receipt for the newest message already means every earlier one is
+     * read — so a burst of arrivals (a chat opened with a backlog, a lively group) only ever needs
+     * one receipt and one bulk mark-read. Firing per message instead sent one WS frame plus one
+     * REST call each, which on 20 unread walks straight through the server's 10 events/second
+     * inbound limit and comes back as `Rate limit exceeded`.
+     */
+    private fun scheduleMarkRead() {
+        markReadJob?.cancel()
+        markReadJob = scope.launch {
+            delay(readReceiptDebounceMillis)
+            val token = runCatching { accessToken() }.getOrNull() ?: return@launch
+            markRead(token, hadUnread = true)
         }
     }
 
@@ -233,7 +253,7 @@ class ChatConversationController(
                     receivedNew = fresh.isNotEmpty()
                     if (fresh.isEmpty()) state else state.copy(messages = state.messages + fresh)
                 }
-                if (receivedNew) markRead(token, hadUnread = true)
+                if (receivedNew) scheduleMarkRead()
             } catch (_: ChatsError) {
                 // Background poll: stay quiet, the next tick retries.
             }
@@ -321,5 +341,12 @@ class ChatConversationController(
          * still-typing peer's keepalive always lands before this expiry fires.
          */
         const val TYPING_RECEIVE_EXPIRY_MS = 5_000L
+
+        /**
+         * How long arrivals are coalesced before one mark-read goes out. Short enough that the
+         * sender's "seen" indicator still feels immediate; long enough that a burst collapses into
+         * a single receipt. Mirrors the same window on web.
+         */
+        const val READ_RECEIPT_DEBOUNCE_MILLIS = 400L
     }
 }

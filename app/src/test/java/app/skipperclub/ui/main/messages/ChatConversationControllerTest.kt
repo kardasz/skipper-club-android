@@ -4,7 +4,9 @@ import app.skipperclub.data.ChatsError
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -22,6 +24,10 @@ class ChatConversationControllerTest {
     private fun controller(
         token: String? = "token",
         typingExpiryMillis: Long = ChatConversationController.TYPING_RECEIVE_EXPIRY_MS,
+        // No debounce by default: `delay(0)` never suspends, so on Dispatchers.Unconfined the
+        // mark-read runs inline and these tests stay synchronous. The coalescing behaviour itself
+        // is covered by markReadCoalescesABurstOfArrivals below, which sets a real window.
+        readReceiptDebounceMillis: Long = 0L,
     ): ChatConversationController {
         val controller = ChatConversationController(
             scope = scope,
@@ -31,6 +37,7 @@ class ChatConversationControllerTest {
             gateway = gateway,
             pageSize = 2,
             typingExpiryMillis = typingExpiryMillis,
+            readReceiptDebounceMillis = readReceiptDebounceMillis,
             sendReadReceipt = { chatId, messageId -> readReceipts += chatId to messageId },
             clientMessageIdProvider = { "client-id-${nextClientMessageId++}" },
         )
@@ -238,6 +245,28 @@ class ChatConversationControllerTest {
 
         assertEquals(listOf("m1", "m2"), controller.state.value.messages.map { it.id })
         assertTrue(gateway.calls.contains("markChatsRead:chat-1"))
+    }
+
+    @Test
+    fun markReadCoalescesABurstOfArrivals() {
+        // Receipts cascade, so a burst needs exactly one receipt (for the newest message) and one
+        // bulk mark-read. One per arrival — the old behaviour — walks a busy chat straight through
+        // the server's 10 events/second inbound limit and comes back as `Rate limit exceeded`.
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        val controller = controller(readReceiptDebounceMillis = 50L)
+        controller.loadInitialIfNeeded()
+        gateway.calls.clear()
+        readReceipts.clear()
+
+        for (i in 2..11) {
+            controller.onRealtimeMessage(
+                testMessage("m$i", userId = "other", createdAt = "2026-06-12T10:0$i:00Z"),
+            )
+        }
+        runBlocking { delay(300) }
+
+        assertEquals(listOf("markChatsRead:chat-1"), gateway.calls.filter { it.startsWith("markChatsRead") })
+        assertEquals(listOf("chat-1" to "m11"), readReceipts)
     }
 
     @Test

@@ -136,11 +136,13 @@ class ChatRealtimeClientTest {
     }
 
     @Test
-    fun messageTooBigDoesNotRetry() {
-        // 1009 means a frame we sent was rejected as too large — a client bug, not a transient
-        // failure, so it must not be retried (docs/api/messages/websocket.md close-codes table).
-        assertEquals(ReconnectPolicy.NoRetry, reconnectPolicyForClose(CLOSE_CODE_MESSAGE_TOO_BIG))
-        assertEquals(ReconnectPolicy.NoRetry, reconnectPolicyForClose(1009))
+    fun messageTooBigStillReconnects() {
+        // 1009 means a frame we sent was rejected as too large — a client bug rather than a
+        // transient failure, and it is logged loudly as one. It is still retried: nothing re-sends
+        // the offending frame after a reconnect, so treating it as terminal only meant one
+        // anomalous frame left the app with no realtime at all for the rest of the process.
+        assertEquals(ReconnectPolicy.Backoff, reconnectPolicyForClose(CLOSE_CODE_MESSAGE_TOO_BIG))
+        assertEquals(ReconnectPolicy.Backoff, reconnectPolicyForClose(1009))
     }
 
     @Test

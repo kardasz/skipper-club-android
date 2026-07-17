@@ -108,6 +108,7 @@ fun MessagesScreen(modifier: Modifier = Modifier) {
     val errorNetworkMessage = stringResource(R.string.messages_error_network)
     val errorAuthMessage = stringResource(R.string.messages_error_auth)
     val errorGenericMessage = stringResource(R.string.messages_error_generic)
+    val errorRealtimeMessage = stringResource(R.string.messages_error_realtime)
     val chatDeletedMessage = stringResource(R.string.messages_deleted)
 
     fun errorMessage(error: Exception): String = when (error) {
@@ -167,8 +168,12 @@ fun MessagesScreen(modifier: Modifier = Modifier) {
             // socket lives, so it is the one lightweight place to surface a server-side WS failure
             // (rate limiting, access denied on chat:join, ...) — it is already logged unconditionally
             // in ChatRealtimeClient; this just makes it visible to the user too.
+            //
+            // The server's own text is deliberately not shown: it is English-only protocol wording
+            // ("Rate limit exceeded", "Chat not found or access denied") aimed at developers, and
+            // the app is localized. The detail stays in the log for whoever is debugging.
             if (event is ChatRealtimeEvent.ServerError) {
-                notificationHostState.show(event.message, InAppNotificationType.Error)
+                notificationHostState.show(errorRealtimeMessage, InAppNotificationType.Error)
             }
         }
     }

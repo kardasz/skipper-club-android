@@ -14,10 +14,19 @@ import kotlinx.coroutines.launch
  * feedback; every other event returns `null`, meaning "no optimistic change" (the caller reconciles
  * from the server on [ChatRealtimeEvent.Connected]). Extracted as a pure function so the increment
  * rule is unit-testable without the singleton's coroutine machinery.
+ *
+ * [activeChatId] is the conversation the user currently has open, if any. Messages arriving there
+ * are being read as they land — the screen marks them read immediately — so counting them shows the
+ * user a badge for a message they are looking at, which then disappears on its own a moment later.
  */
-internal fun unreadCountAfter(current: Int, event: ChatRealtimeEvent): Int? = when (event) {
-    is ChatRealtimeEvent.MessageReceived -> current + 1
-    else -> null
+internal fun unreadCountAfter(
+    current: Int,
+    event: ChatRealtimeEvent,
+    activeChatId: String? = null,
+): Int? = when {
+    event !is ChatRealtimeEvent.MessageReceived -> null
+    event.message.chatId == activeChatId -> null
+    else -> current + 1
 }
 
 /**
@@ -45,6 +54,18 @@ object UnreadMessagesStore {
     private var started = false
 
     /**
+     * The chat the user currently has open, or null. Set by the conversation screen for as long as
+     * it is on screen, so live messages the user is already reading don't bump the badge.
+     */
+    @Volatile
+    private var activeChatId: String? = null
+
+    /** Marks [chatId] as the open conversation; pass null when it closes. */
+    fun setActiveChat(chatId: String?) {
+        activeChatId = chatId
+    }
+
+    /**
      * @param sessionFlow authentication signal — logout resets the badge, login reconciles it.
      * @param accessTokenProvider fresh token for the reconciliation fetch (e.g. [SessionStore.validSession]).
      */
@@ -64,7 +85,7 @@ object UnreadMessagesStore {
         }
         scope.launch {
             realtime.events.collect { event ->
-                unreadCountAfter(_count.value, event)?.let { next -> _count.value = next }
+                unreadCountAfter(_count.value, event, activeChatId)?.let { next -> _count.value = next }
                 if (event is ChatRealtimeEvent.Connected) refresh()
             }
         }

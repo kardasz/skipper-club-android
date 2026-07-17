@@ -380,6 +380,7 @@
     <string name="messages_error_network">Brak połączenia z internetem. Spróbuj ponownie.</string>
     <string name="messages_error_auth">Zaloguj się ponownie.</string>
     <string name="messages_error_generic">Coś poszło nie tak. Spróbuj ponownie.</string>
+    <string name="messages_error_realtime">Czat ma teraz problem z połączeniem. Spróbuj ponownie.</string>
     <string name="conversation_back">Wstecz</string>
     <string name="conversation_input_placeholder">Napisz wiadomość…</string>
     <string name="conversation_send">Wyślij</string>

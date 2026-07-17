@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -244,6 +245,18 @@ internal fun reconnectBackoffMillis(attempt: Int, random: Random = Random.Defaul
     return random.nextLong(cap / 2, cap + 1)
 }
 
+/**
+ * How often OkHttp pings the server to prove the connection is still alive, and how long it then
+ * waits for the pong before failing the connection. Matches the server's own 30s heartbeat.
+ */
+internal const val PING_INTERVAL_SECONDS = 30L
+
+/** Inbound realtime events buffered for main-thread collectors before the oldest is dropped. */
+internal const val EVENT_BUFFER_CAPACITY = 256
+
+/** Normal closure — what we send when tearing a connection down deliberately. */
+internal const val CLOSE_CODE_NORMAL = 1000
+
 /** WebSocket close code the server uses when the connection was never authorized. */
 internal const val CLOSE_CODE_UNAUTHORIZED = 1008
 
@@ -277,28 +290,41 @@ internal enum class ReconnectPolicy {
     /** Reconnect with bounded exponential backoff (any other close). */
     Backoff,
 
-    /**
-     * Do not reconnect: the close indicates a client bug (a frame we sent was malformed or too
-     * large), not a transient failure, so retrying would just repeat the same rejected frame.
-     */
-    NoRetry,
 }
 
 /**
- * Auth closes need a fresh token first; `1009` ("message too big") means we sent a bad frame and
- * must not retry it verbatim, so it is terminal rather than backed off; everything else just backs
- * off.
+ * Auth closes need a fresh token first; everything else — including `1009` ("message too big") —
+ * backs off and retries.
+ *
+ * `1009` does indicate a client bug rather than a transient failure, and it used to be terminal for
+ * that reason. But nothing re-sends the offending frame after a reconnect, so refusing to retry
+ * only meant one anomalous frame silently killed realtime for the rest of the process: no live
+ * messages, no typing, no presence, until the app was backgrounded and restored. The frame is still
+ * logged loudly (see [handleClose]) — the bug is worth fixing, but not by leaving chat dead.
  */
 internal fun reconnectPolicyForClose(code: Int): ReconnectPolicy = when (code) {
     CLOSE_CODE_UNAUTHORIZED, CLOSE_CODE_TOKEN_EXPIRED -> ReconnectPolicy.RefreshToken
-    CLOSE_CODE_MESSAGE_TOO_BIG -> ReconnectPolicy.NoRetry
     else -> ReconnectPolicy.Backoff
 }
 
 object WebSocketChatRealtimeClient : ChatRealtimeClient {
     private const val TAG = "ChatRealtime"
 
-    private val _events = MutableSharedFlow<ChatRealtimeEvent>(extraBufferCapacity = 64)
+    /**
+     * Socket callbacks run off-main and must never block, so emission is always `tryEmit` — which
+     * means a full buffer silently drops the event. Collectors run on the main thread, so a burst
+     * (the backlog replayed after a rejoin, a busy group chat) can outrun them.
+     *
+     * The buffer is sized well past any plausible burst, and overflow drops the *oldest* event: a
+     * dropped frame is unavoidable at that point, and losing the stalest one keeps the live tail
+     * of the conversation intact rather than discarding exactly the newest message. Anything lost
+     * is still recoverable — [ChatRealtimeEvent.Connected] triggers a REST catch-up, and the chat
+     * list refetches on open.
+     */
+    private val _events = MutableSharedFlow<ChatRealtimeEvent>(
+        extraBufferCapacity = EVENT_BUFFER_CAPACITY,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
     override val events: SharedFlow<ChatRealtimeEvent> = _events.asSharedFlow()
 
     private val _isConnected = MutableStateFlow(false)
@@ -306,6 +332,13 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
 
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
+        // Detect a half-open connection instead of waiting to discover it on the next send. The
+        // server pings every 30s, but a peer that vanishes without a FIN (a dropped NAT binding,
+        // a sleeping radio) leaves us reading a socket that will never deliver anything again:
+        // isConnected stays true, incoming messages silently stop, and nothing reconnects. OkHttp
+        // sends its own pings on this interval and fails the connection when a pong doesn't come
+        // back in time, which surfaces as onFailure and drives the normal backoff path.
+        .pingInterval(PING_INTERVAL_SECONDS, TimeUnit.SECONDS)
         .let { HttpLoggingProvider.apply(it) }
         .build()
 
@@ -385,8 +418,24 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
             scheduleReconnect(ownerScope, attempt)
             return
         }
-        if (scope !== ownerScope) return
         val request = buildChatWebSocketRequest(BuildConfig.API_BASE_URL, token)
+        openSocketIfCurrent(ownerScope, request, attempt)
+    }
+
+    /**
+     * Open the socket and publish it, or do nothing if this connect attempt has been superseded.
+     *
+     * Synchronized on the same monitor as [disconnect] because the check and the assignment must be
+     * one step: `tokenProvider` above is a suspension point, so a logout or a background can land
+     * anywhere before this. A plain `if (scope !== ownerScope) return` outside the lock passes,
+     * `disconnect()` then runs to completion (cancelling the scope, closing and nulling the old
+     * socket), and only then does the assignment land — publishing a live socket that nothing will
+     * ever close. The user reads as online to everyone they share a chat with, after logging out,
+     * until the server reaps the connection.
+     */
+    @Synchronized
+    private fun openSocketIfCurrent(ownerScope: CoroutineScope, request: Request, attempt: Int) {
+        if (scope !== ownerScope) return
         webSocket = client.newWebSocket(request, RealtimeListener(ownerScope, attempt))
     }
 
@@ -411,6 +460,18 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
     private fun handleClose(ownerScope: CoroutineScope, attempt: Int, code: Int) {
         if (scope !== ownerScope) return
         markDisconnected()
+
+        // A frame we sent was rejected as too big. Reconnect anyway (nothing re-sends it), but
+        // surface it loudly — unconditionally, not the debug-only log — since this is a client bug,
+        // not a network blip, and there is no crash-reporting hook yet to catch it.
+        if (code == CLOSE_CODE_MESSAGE_TOO_BIG) {
+            Log.w(
+                TAG,
+                "connection closed with code $code (message too big) — fix the outgoing payload " +
+                    "that caused this close; reconnecting",
+            )
+        }
+
         when (reconnectPolicyForClose(code)) {
             ReconnectPolicy.RefreshToken -> ownerScope.launch {
                 runCatching { authCloseHandler?.invoke() }
@@ -418,15 +479,6 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
             }
 
             ReconnectPolicy.Backoff -> scheduleReconnect(ownerScope, attempt)
-
-            // A frame we sent was rejected as too big; retrying it would just close again in a
-            // loop. Surface it loudly (unconditionally, not the debug-only log) since this is a
-            // client bug, not a network blip, and there is no crash-reporting hook yet to catch it.
-            ReconnectPolicy.NoRetry -> Log.w(
-                TAG,
-                "connection closed with code $code (message too big); not retrying — fix the " +
-                    "outgoing payload that caused this close",
-            )
         }
     }
 
@@ -544,6 +596,14 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         private var attempt: Int = initialAttempt
 
         override fun onOpen(webSocket: WebSocket, response: Response) {
+            // The handshake can complete after a logout or a background — this socket belongs to a
+            // connection nobody wants any more. Close it rather than reporting it as the live one,
+            // which would flip isConnected back on and re-join rooms for a signed-out session.
+            if (scope !== ownerScope) {
+                debugLog("connected after disconnect; closing orphaned socket")
+                webSocket.close(CLOSE_CODE_NORMAL, null)
+                return
+            }
             debugLog("connected")
             // A healthy connection clears the accumulated backoff so the next disconnect retries
             // promptly instead of inheriting the pre-connect delay (which otherwise grows to the
@@ -557,6 +617,8 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
+            // Frames from an orphaned socket are not this session's to deliver.
+            if (scope !== ownerScope) return
             handleFrame(text)
         }
 
