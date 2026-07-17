@@ -8,6 +8,7 @@ import kotlin.random.Random
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
@@ -207,6 +208,23 @@ internal fun parseServerError(payload: String): ChatRealtimeEvent.ServerError? =
         null
     }
 
+@Serializable
+internal data class ChatJoinedDto(val chatId: String)
+
+/**
+ * Parses a `chat:joined` ack payload — `{chatId}` — returning the chat id, or null when malformed.
+ * The only ack we correlate: it is the sole reliable signal a `chat:join` landed, since the server's
+ * `error` frame carries no correlation id (docs/api/messages/websocket.md).
+ */
+internal fun parseChatJoinedChatId(payload: String): String? =
+    try {
+        realtimeJson.decodeFromString<ChatJoinedDto>(payload).chatId
+    } catch (_: SerializationException) {
+        null
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+
 internal fun encodeRealtimeFrame(event: String, data: JsonObject): String =
     realtimeJson.encodeToString(RealtimeFrame.serializer(), RealtimeFrame(event, data))
 
@@ -383,6 +401,79 @@ internal class ReconnectBackoffGate {
     }
 }
 
+/** How long to wait for a `chat:joined` ack before re-sending the `chat:join` frame. */
+internal const val JOIN_ACK_TIMEOUT_MILLIS = 10_000L
+
+/** Total `chat:join` sends (initial + retries) before surfacing a failure and giving up. */
+internal const val MAX_JOIN_ATTEMPTS = 3
+
+/**
+ * Correlates `chat:join` requests with their positive `chat:joined` acks and retries the ones the
+ * server never acknowledges. A failed join otherwise leaves the connection silently out of the room
+ * (the conversation screen believes it is live but receives no `message:new`/`chat:typing` until the
+ * next reconnect replays the joins), and the `error` frame the server sends on failure carries no
+ * correlation id (docs/api/messages/websocket.md), so a positive ack is the only reliable signal.
+ *
+ * Each tracked join re-sends up to [maxAttempts] total, [timeoutMillis] apart, then invokes
+ * `onExhausted` once. Joining a room is idempotent server-side (membership is a set; a re-join is
+ * just re-acked) and joins are spaced well under the inbound rate limit, so retries are safe.
+ *
+ * A separate, injectable seam (like [ReconnectBackoffGate]) so the retry timing is unit-testable
+ * with a short timeout instead of the production 10s. All state is guarded by this instance's
+ * monitor; the retry jobs run on the [CoroutineScope] passed to [track], so cancelling that scope
+ * (a full disconnect) stops them, and [clear] stops them on an in-place reconnect.
+ */
+internal class JoinAckTracker(
+    private val timeoutMillis: Long = JOIN_ACK_TIMEOUT_MILLIS,
+    private val maxAttempts: Int = MAX_JOIN_ATTEMPTS,
+) {
+    private val pending = mutableMapOf<String, Job>()
+
+    /**
+     * Register a just-sent join for [chatId] and arm its retry timer on [scope]. [resend] fires for
+     * each retry; [onExhausted] once, after the final attempt goes unacked. Re-tracking a chat that
+     * is already pending supersedes the previous timer, so a reconnect replay re-arms cleanly.
+     */
+    @Synchronized
+    fun track(
+        chatId: String,
+        scope: CoroutineScope,
+        resend: (String) -> Unit,
+        onExhausted: (String) -> Unit,
+    ) {
+        pending.remove(chatId)?.cancel()
+        pending[chatId] = scope.launch {
+            // The caller already sent attempt 1; re-send for each remaining attempt, then wait one
+            // last timeout before giving up. An ack (or a leave/clear) cancels this job.
+            repeat(maxAttempts - 1) {
+                delay(timeoutMillis)
+                resend(chatId)
+            }
+            delay(timeoutMillis)
+            // Remove ourselves atomically: if an ack raced in during the final wait it already
+            // removed the entry, in which case the join succeeded and we must not report a failure.
+            val stillPending = synchronized(this@JoinAckTracker) { pending.remove(chatId) != null }
+            if (stillPending) onExhausted(chatId)
+        }
+    }
+
+    /** A `chat:joined` ack (or an explicit leave) landed: stop retrying [chatId]. No-op if absent. */
+    @Synchronized
+    fun resolve(chatId: String) {
+        pending.remove(chatId)?.cancel()
+    }
+
+    /** Cancel and forget every pending join — disconnect or in-place connection teardown. */
+    @Synchronized
+    fun clear() {
+        pending.values.forEach { it.cancel() }
+        pending.clear()
+    }
+
+    @Synchronized
+    fun isPending(chatId: String): Boolean = pending.containsKey(chatId)
+}
+
 object WebSocketChatRealtimeClient : ChatRealtimeClient {
     private const val TAG = "ChatRealtime"
 
@@ -444,6 +535,9 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
     /** Lets a returning network cut a pending reconnect backoff short; see [onNetworkAvailable]. */
     private val backoffGate = ReconnectBackoffGate()
 
+    /** Retries `chat:join` frames the server never acks with `chat:joined`; see [JoinAckTracker]. */
+    private val joinAckTracker = JoinAckTracker()
+
     @Synchronized
     override fun connect(
         accessTokenProvider: suspend () -> String?,
@@ -490,10 +584,20 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
     override fun joinChat(chatId: String) {
         joinedChatIds += chatId
         sendFrame("chat:join", chatIdFramePayload(chatId))
+        // Arm the ack timeout only when a frame could actually go out; with no live scope/socket the
+        // frame was dropped, and the reconnect replay (through this same method) re-arms on open.
+        val activeScope = scope ?: return
+        joinAckTracker.track(
+            chatId = chatId,
+            scope = activeScope,
+            resend = { sendFrame("chat:join", chatIdFramePayload(it)) },
+            onExhausted = ::emitJoinFailed,
+        )
     }
 
     override fun leaveChat(chatId: String) {
         joinedChatIds -= chatId
+        joinAckTracker.resolve(chatId)
         sendFrame("chat:leave", chatIdFramePayload(chatId))
     }
 
@@ -565,6 +669,11 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
 
     private fun markDisconnected() {
         _isConnected.value = false
+        // Stop retrying joins across the outage: pending timers would otherwise fire spurious
+        // re-sends (dropped while disconnected) and a bogus failure event before the reconnect. The
+        // onOpen replay re-arms them through joinChat. Reached under the object monitor from every
+        // disconnect path (disconnect / markDisconnectedIfCurrent), and JoinAckTracker locks its own.
+        joinAckTracker.clear()
         _events.tryEmit(ChatRealtimeEvent.Disconnected)
     }
 
@@ -670,14 +779,47 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
             "message:read" -> emitMessageRead(frame.data)
             "presence:update" -> emitPresenceUpdate(frame.data)
             "error" -> emitServerError(frame.data)
-            // Server acks for the frames we send. We do not correlate them to their requests yet
-            // (join failures still surface only as an out-of-band `error` frame); log them in debug
-            // so they are at least visible rather than invisibly dropped.
-            "chat:joined", "chat:left", "message:sent", "message:read:confirmed", "chat:typing:sent" ->
+            // The one ack we correlate: a positive `chat:joined` stops the join-retry timer for that
+            // chat (see [JoinAckTracker]). Its payload is `{chatId}`.
+            "chat:joined" -> confirmJoin(frame.data)
+            // The remaining acks are not correlated to their requests: sends go over REST on Android
+            // (their acks are unused) and typing/read are fire-and-forget with REST backstops. Log
+            // them in debug so they are visible rather than invisibly dropped.
+            "chat:left", "message:sent", "message:read:confirmed", "chat:typing:sent" ->
                 debugLog("server ack: ${frame.event}")
 
             else -> debugLog("unhandled frame: ${frame.event}")
         }
+    }
+
+    /**
+     * A `chat:joined` ack: stop the join-retry timer for its chat. A malformed payload is left
+     * pending so the timeout path retries it, and never crashes the dispatch loop.
+     */
+    private fun confirmJoin(data: JsonElement) {
+        val chatId = parseChatJoinedChatId(data.toString()) ?: run {
+            debugLog("dropped malformed chat:joined payload")
+            return
+        }
+        joinAckTracker.resolve(chatId)
+        debugLog("chat:join acknowledged for $chatId")
+    }
+
+    /**
+     * A `chat:join` went unacked after [MAX_JOIN_ATTEMPTS] sends. Surface it as a [ChatRealtimeEvent.ServerError]
+     * so `MessagesScreen` shows the same localized realtime-error notice as any other server-side WS
+     * failure (the raw type/message stays in the log, per the UI's English-only-protocol-text policy).
+     * The chat stays in [joinedChatIds] so the next reconnect replay remains the backstop.
+     */
+    private fun emitJoinFailed(chatId: String) {
+        Log.w(TAG, "chat:join for $chatId not acknowledged after $MAX_JOIN_ATTEMPTS attempts; giving up until next reconnect")
+        _events.tryEmit(
+            ChatRealtimeEvent.ServerError(
+                type = "join_failed",
+                message = "chat:join for $chatId was not acknowledged",
+                timestamp = "",
+            ),
+        )
     }
 
     private fun emitNotification(data: JsonElement) {
@@ -763,9 +905,10 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
             // promptly instead of inheriting the pre-connect delay (which otherwise grows to the
             // 15-30s cap after a handful of reconnects over the app's lifetime).
             attempt = 0
-            joinedChatIds.toList().forEach { chatId ->
-                webSocket.send(encodeRealtimeFrame("chat:join", chatIdFramePayload(chatId)))
-            }
+            // Replay through joinChat (not a raw send) so each replayed room re-arms its ack-timeout
+            // retry on the fresh connection; publishOpenIfCurrent already set isConnected and the
+            // live socket, so sendFrame targets this socket.
+            joinedChatIds.toList().forEach { chatId -> joinChat(chatId) }
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {

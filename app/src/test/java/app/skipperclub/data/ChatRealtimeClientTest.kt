@@ -1,11 +1,13 @@
 package app.skipperclub.data
 
+import kotlin.coroutines.coroutineContext
 import kotlin.random.Random
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -567,6 +569,93 @@ class ChatRealtimeClientTest {
         } finally {
             WebSocketChatRealtimeClient.disconnect()
         }
+    }
+
+    @Test
+    fun parsesChatJoinedChatId() {
+        assertEquals("chat-1", parseChatJoinedChatId("""{"chatId":"chat-1"}"""))
+    }
+
+    @Test
+    fun chatJoinedMalformedPayloadReturnsNull() {
+        // A malformed ack is dropped (leaving the join pending for the timeout path) rather than
+        // crashing the dispatch loop.
+        assertNull(parseChatJoinedChatId("not json"))
+        assertNull(parseChatJoinedChatId("""{"foo":"bar"}"""))
+    }
+
+    @Test
+    fun ackedJoinIsNotRetried() = runBlocking {
+        // Join → ack within the timeout → no retry, no failure. Jobs run on this runBlocking event
+        // loop (single-threaded) via a cancelable child scope, so the fakes need no synchronization.
+        val trackerScope = CoroutineScope(coroutineContext + Job())
+        val tracker = JoinAckTracker(timeoutMillis = 40, maxAttempts = 3)
+        val resends = mutableListOf<String>()
+        val exhausted = mutableListOf<String>()
+
+        tracker.track("chat-1", trackerScope, resend = { resends += it }, onExhausted = { exhausted += it })
+        tracker.resolve("chat-1")
+
+        delay(200)
+        assertTrue(resends.isEmpty())
+        assertTrue(exhausted.isEmpty())
+        assertFalse(tracker.isPending("chat-1"))
+        trackerScope.cancel()
+    }
+
+    @Test
+    fun unackedJoinIsResentThenExhaustedOnce() = runBlocking {
+        // No ack → re-sent twice (attempts 2 and 3), 40ms apart → still no ack → exhausted once,
+        // then retries stop. Mirrors the production 10s/20s re-sends at a test-friendly cadence.
+        val trackerScope = CoroutineScope(coroutineContext + Job())
+        val tracker = JoinAckTracker(timeoutMillis = 40, maxAttempts = 3)
+        val resends = mutableListOf<String>()
+        val exhausted = mutableListOf<String>()
+
+        tracker.track("chat-1", trackerScope, resend = { resends += it }, onExhausted = { exhausted += it })
+
+        withTimeout(2_000) { while (exhausted.isEmpty()) delay(10) }
+        delay(120) // settle: nothing fires after giving up
+        assertEquals(listOf("chat-1", "chat-1"), resends)
+        assertEquals(listOf("chat-1"), exhausted)
+        assertFalse(tracker.isPending("chat-1"))
+        trackerScope.cancel()
+    }
+
+    @Test
+    fun ackForOneChatDoesNotCancelAnother() = runBlocking {
+        val trackerScope = CoroutineScope(coroutineContext + Job())
+        val tracker = JoinAckTracker(timeoutMillis = 40, maxAttempts = 3)
+        val resends = mutableListOf<String>()
+
+        tracker.track("A", trackerScope, resend = { resends += it }, onExhausted = {})
+        tracker.track("B", trackerScope, resend = { resends += it }, onExhausted = {})
+        tracker.resolve("A")
+
+        withTimeout(2_000) { while (!resends.contains("B")) delay(10) }
+        assertFalse(resends.contains("A"))
+        trackerScope.cancel()
+    }
+
+    @Test
+    fun clearCancelsPendingJoinsAndTrackReArms() = runBlocking {
+        // Disconnect clears pending joins; the reconnect replay re-tracks them.
+        val trackerScope = CoroutineScope(coroutineContext + Job())
+        val tracker = JoinAckTracker(timeoutMillis = 40, maxAttempts = 3)
+        val resends = mutableListOf<String>()
+
+        tracker.track("chat-1", trackerScope, resend = { resends += it }, onExhausted = {})
+        assertTrue(tracker.isPending("chat-1"))
+        tracker.clear()
+        assertFalse(tracker.isPending("chat-1"))
+
+        delay(120) // the cleared timer must not fire
+        assertTrue(resends.isEmpty())
+
+        tracker.track("chat-1", trackerScope, resend = { resends += it }, onExhausted = {})
+        withTimeout(2_000) { while (resends.isEmpty()) delay(10) }
+        assertTrue(resends.contains("chat-1"))
+        trackerScope.cancel()
     }
 
     /** Minimal no-op [WebSocket]; publish tests only need an instance, never a live transport. */
