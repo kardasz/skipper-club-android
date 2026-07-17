@@ -251,9 +251,45 @@ internal fun buildChatWebSocketRequest(baseUrl: String, accessToken: String): Re
 private const val INITIAL_BACKOFF_MILLIS = 1_000L
 private const val MAX_BACKOFF_MILLIS = 30_000L
 
-/** Bounded exponential backoff with jitter, capped at 30s, per the migration guide. */
-internal fun reconnectBackoffMillis(attempt: Int, random: Random = Random.Default): Long {
-    val cap = (INITIAL_BACKOFF_MILLIS shl attempt.coerceIn(0, 5)).coerceAtMost(MAX_BACKOFF_MILLIS)
+/**
+ * Dedicated, much longer backoff cap for HTTP-403 upgrade rejections. A server that answers the WS
+ * upgrade with 403 persistently (banned account, revoked WS entitlement, feature flag off) cannot be
+ * fixed by a token refresh (see [shouldRefreshTokenForHttpFailure]); parking on this 5-minute tier
+ * instead of the 30s one stops the pointless ~15-30s upgrade attempts while the app is foregrounded.
+ * Still recoverable: a foreground/login cycle (RealtimeConnectionManager.reconcile), a network change
+ * ([onNetworkAvailable] via [ReconnectBackoffGate.skip]), or the slow retry itself all re-attempt.
+ */
+private const val FORBIDDEN_BACKOFF_MILLIS = 300_000L
+
+/**
+ * Upper bound on the exponential shift so `INITIAL_BACKOFF_MILLIS shl attempt` cannot overflow a Long
+ * on a long-lived failing session. Well past the shift needed to saturate either cap
+ * (`1_000L shl 9` already exceeds [FORBIDDEN_BACKOFF_MILLIS]), so it never changes the curve — it is
+ * purely an overflow guard.
+ */
+private const val MAX_BACKOFF_SHIFT = 30
+
+/**
+ * The backoff ceiling for the next reconnect: forbidden upgrades park on the long
+ * [FORBIDDEN_BACKOFF_MILLIS] tier, every other failure on the standard [MAX_BACKOFF_MILLIS] one.
+ */
+internal fun backoffCapFor(forbidden: Boolean): Long =
+    if (forbidden) FORBIDDEN_BACKOFF_MILLIS else MAX_BACKOFF_MILLIS
+
+/**
+ * A rejected WS upgrade with HTTP 403 is the only failure that earns the long backoff tier; anything
+ * else (401, transport errors, no HTTP status) stays on the fast tier. Kept as a named seam so the
+ * cap selection is unit-testable without driving the singleton's real reconnect schedule.
+ */
+internal fun isForbiddenUpgradeFailure(httpCode: Int?): Boolean = httpCode == HTTP_FORBIDDEN
+
+/** Bounded exponential backoff with jitter, capped at [maxCap], per the migration guide. */
+internal fun reconnectBackoffMillis(
+    attempt: Int,
+    maxCap: Long = MAX_BACKOFF_MILLIS,
+    random: Random = Random.Default,
+): Long {
+    val cap = (INITIAL_BACKOFF_MILLIS shl attempt.coerceIn(0, MAX_BACKOFF_SHIFT)).coerceAtMost(maxCap)
     return random.nextLong(cap / 2, cap + 1)
 }
 
@@ -289,8 +325,10 @@ internal const val HTTP_FORBIDDEN = 403
  * rejected the token itself — typically revoked server-side while still locally valid — so retrying
  * with the same token would loop forever. Force a refresh first. A `403` means the token is valid
  * but access is denied; a refresh cannot fix that, so refreshing on it would hammer the refresh
- * endpoint in a `refresh → reconnect → 403` loop — it backs off like any other failure instead.
- * Any other or absent HTTP status is a transient transport failure that also just backs off.
+ * endpoint in a `refresh → reconnect → 403` loop — it backs off instead, on the dedicated long
+ * [FORBIDDEN_BACKOFF_MILLIS] tier (see [backoffCapFor]/[isForbiddenUpgradeFailure]) so a persistent
+ * 403 stops re-attempting every 30s. Any other or absent HTTP status is a transient transport
+ * failure that just backs off on the standard tier.
  */
 internal fun shouldRefreshTokenForHttpFailure(httpCode: Int?): Boolean =
     httpCode == HTTP_UNAUTHORIZED
@@ -394,6 +432,14 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
 
     @Volatile
     private var authCloseHandler: (suspend () -> Unit)? = null
+
+    /**
+     * Whether the most recent upgrade/connection failure was an HTTP 403, so [scheduleReconnect]
+     * picks the long [FORBIDDEN_BACKOFF_MILLIS] tier instead of [MAX_BACKOFF_MILLIS]. Written under
+     * the object monitor like the other state transitions, read from the reconnect coroutine.
+     */
+    @Volatile
+    private var lastFailureWasForbidden: Boolean = false
 
     /** Lets a returning network cut a pending reconnect backoff short; see [onNetworkAvailable]. */
     private val backoffGate = ReconnectBackoffGate()
@@ -510,6 +556,9 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         if (scope !== ownerScope) return false
         webSocket = openedSocket
         _isConnected.value = true
+        // The server accepted the upgrade — any earlier 403 is stale, so the next failure starts
+        // from the fast backoff tier again.
+        lastFailureWasForbidden = false
         _events.tryEmit(ChatRealtimeEvent.Connected)
         return true
     }
@@ -517,6 +566,15 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
     private fun markDisconnected() {
         _isConnected.value = false
         _events.tryEmit(ChatRealtimeEvent.Disconnected)
+    }
+
+    /**
+     * Records whether the last failure was an HTTP 403, on the same monitor the connection-state
+     * transitions use so it cannot race a concurrent connect/disconnect flipping [scope].
+     */
+    @Synchronized
+    private fun recordForbiddenFailure(forbidden: Boolean) {
+        lastFailureWasForbidden = forbidden
     }
 
     /**
@@ -535,8 +593,11 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         if (scope !== ownerScope) return
         ownerScope.launch {
             // Interruptible: RealtimeConnectionManager signals network return through
-            // onNetworkAvailable, which skips the remainder of this delay.
-            backoffGate.awaitBackoff(reconnectBackoffMillis(attempt))
+            // onNetworkAvailable, which skips the remainder of this delay. A persistent 403 upgrade
+            // rejection uses the long forbidden cap; every other failure the standard 30s one.
+            backoffGate.awaitBackoff(
+                reconnectBackoffMillis(attempt, backoffCapFor(lastFailureWasForbidden)),
+            )
             if (scope === ownerScope) attemptConnect(ownerScope, attempt + 1)
         }
     }
@@ -578,6 +639,10 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
      */
     private fun handleFailure(ownerScope: CoroutineScope, attempt: Int, httpCode: Int?) {
         if (!markDisconnectedIfCurrent(ownerScope)) return
+        // Record whether this was a 403 so the reconnect picks the right backoff tier. Setting it on
+        // every failure (not only 403) also resets the flag after a non-403 — a 403 followed by a
+        // network error drops back to the fast tier, since the 403 may have been a proxy fluke.
+        recordForbiddenFailure(isForbiddenUpgradeFailure(httpCode))
         if (shouldRefreshTokenForHttpFailure(httpCode)) {
             ownerScope.launch {
                 runCatching { authCloseHandler?.invoke() }

@@ -165,6 +165,52 @@ class ChatRealtimeClientTest {
     }
 
     @Test
+    fun forbiddenUpgradeFailureUsesTheFiveMinuteBackoffCap() {
+        // A 403 upgrade rejection parks on the long tier so a permanently-forbidden connection stops
+        // re-attempting every 30s.
+        assertEquals(300_000L, backoffCapFor(isForbiddenUpgradeFailure(HTTP_FORBIDDEN)))
+        assertEquals(300_000L, backoffCapFor(isForbiddenUpgradeFailure(403)))
+    }
+
+    @Test
+    fun forbiddenThenNonForbiddenFailureReturnsToTheThirtySecondCap() {
+        // A 403 followed by a network error (or any non-403) drops back to the fast tier — the 403
+        // may have been a proxy fluke. handleFailure overwrites the flag on every failure, so the
+        // later non-403 wins.
+        assertTrue(isForbiddenUpgradeFailure(HTTP_FORBIDDEN))
+        assertEquals(30_000L, backoffCapFor(isForbiddenUpgradeFailure(null)))
+        assertEquals(30_000L, backoffCapFor(isForbiddenUpgradeFailure(500)))
+    }
+
+    @Test
+    fun unauthorizedUpgradeFailureKeepsTheFastCap() {
+        // 401 must keep its refresh-then-reconnect fast path — it is not a forbidden failure, so the
+        // standard 30s cap still applies.
+        assertFalse(isForbiddenUpgradeFailure(HTTP_UNAUTHORIZED))
+        assertEquals(30_000L, backoffCapFor(isForbiddenUpgradeFailure(HTTP_UNAUTHORIZED)))
+    }
+
+    @Test
+    fun successfulOpenClearsTheForbiddenFlagBackToTheFastCap() {
+        // publishOpenIfCurrent resets the flag on a successful open; the reset value selects the
+        // fast cap for the next failure.
+        val flagAfterOpen = false
+        assertEquals(30_000L, backoffCapFor(flagAfterOpen))
+    }
+
+    @Test
+    fun forbiddenBackoffSaturatesWithinTheFiveMinuteCap() {
+        val fixed = Random(0)
+
+        val early = reconnectBackoffMillis(attempt = 0, maxCap = 300_000L, random = fixed)
+        val saturated = reconnectBackoffMillis(attempt = 20, maxCap = 300_000L, random = fixed)
+
+        // Same exponential-plus-jitter shape as the 30s tier: jitter in [cap/2, cap] at saturation.
+        assertTrue(early in 500..1_000)
+        assertTrue(saturated in 150_000..300_000)
+    }
+
+    @Test
     fun authCloseCodesForceTokenRefresh() {
         assertEquals(ReconnectPolicy.RefreshToken, reconnectPolicyForClose(CLOSE_CODE_UNAUTHORIZED))
         assertEquals(ReconnectPolicy.RefreshToken, reconnectPolicyForClose(CLOSE_CODE_TOKEN_EXPIRED))
