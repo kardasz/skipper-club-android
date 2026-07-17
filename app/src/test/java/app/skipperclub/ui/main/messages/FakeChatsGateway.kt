@@ -12,6 +12,7 @@ import app.skipperclub.data.MessagesPage
 import app.skipperclub.data.SortOrder
 import app.skipperclub.data.UserSearchQuery
 import app.skipperclub.data.UsersPage
+import java.util.Collections
 
 internal fun testUser(id: String, name: String = "User $id") = ChatUser(id = id, name = name)
 
@@ -80,7 +81,10 @@ internal class FakeChatsGateway : ChatsGateway {
     var searchUsersError: ChatsError? = null
     val userSearchQueries = mutableListOf<UserSearchQuery>()
 
-    val calls = mutableListOf<String>()
+    // Synchronized: the debounced chat-list reload resumes on the coroutine delay-scheduler thread,
+    // so a test polling this list reads it off the thread that records the call. Reads that iterate
+    // (count/any/…) must lock on the list itself.
+    val calls: MutableList<String> = Collections.synchronizedList(mutableListOf())
 
     private var listChatsCallCount = 0
     private var listMessagesCallCount = 0

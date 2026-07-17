@@ -22,16 +22,29 @@ class ChatListControllerTest {
     private val gateway = FakeChatsGateway()
     private val events = mutableListOf<ChatListEvent>()
 
-    private fun controller(token: String? = "token"): ChatListController {
+    private fun controller(
+        token: String? = "token",
+        reloadDebounceMillis: Long = 40,
+    ): ChatListController {
         val controller = ChatListController(
             scope = scope,
             accessToken = { token },
             gateway = gateway,
             pageSize = 2,
             searchDebounceMillis = 0,
+            reloadDebounceMillis = reloadDebounceMillis,
         )
         scope.launch { controller.events.collect { events += it } }
         return controller
+    }
+
+    private fun listChatsCount(): Int =
+        synchronized(gateway.calls) { gateway.calls.count { it == "listChats" } }
+
+    /** Polls until the debounced reload has fired (or the timeout elapses); realtime reloads delay. */
+    private fun awaitListChatsCount(target: Int, timeoutMillis: Long = 2_000) {
+        val deadline = System.nanoTime() + timeoutMillis * 1_000_000
+        while (listChatsCount() < target && System.nanoTime() < deadline) Thread.sleep(5)
     }
 
     @Test
@@ -279,8 +292,56 @@ class ChatListControllerTest {
 
         controller.onRealtimeMessage(testMessage("m9", chatId = "c-new"), isChatOpen = false)
 
-        assertEquals(2, gateway.calls.count { it == "listChats" })
+        // The reload for an unlisted chat is debounced, so it lands after the window rather than
+        // synchronously.
+        awaitListChatsCount(2)
+        assertEquals(2, listChatsCount())
         assertEquals(listOf("c-new", "c1"), controller.state.value.chats.map { it.id })
+    }
+
+    @Test
+    fun unlistedChatReloadCoalescesTheMessageNewAndReceivedPair() {
+        // The server emits message:new + message:received for the same first message in a new chat.
+        // Both hit the unlisted branch, but only one reload should fire.
+        gateway.chatPages = listOf(
+            chatsPage(listOf(testChat("c1"))),
+            chatsPage(listOf(testChat("c-new"), testChat("c1"))),
+        )
+        val controller = controller(reloadDebounceMillis = 60)
+        controller.loadInitialIfNeeded()
+        assertEquals(1, listChatsCount())
+
+        val message = testMessage("m9", chatId = "c-new")
+        controller.onRealtimeMessage(message, isChatOpen = false) // message:new
+        controller.onRealtimeMessage(message, isChatOpen = false) // message:received
+        // Still within the debounce window: neither reload has fired yet.
+        assertEquals(1, listChatsCount())
+
+        awaitListChatsCount(2)
+        Thread.sleep(120) // let any erroneous second reload land, if coalescing were broken
+        assertEquals(2, listChatsCount())
+        assertEquals(listOf("c-new", "c1"), controller.state.value.chats.map { it.id })
+    }
+
+    @Test
+    fun unlistedChatReloadFiresAgainAfterTheWindow() {
+        gateway.chatPages = listOf(
+            chatsPage(listOf(testChat("c1"))),
+            chatsPage(listOf(testChat("c-new"), testChat("c1"))),
+            chatsPage(listOf(testChat("c-new2"), testChat("c-new"), testChat("c1"))),
+        )
+        val controller = controller(reloadDebounceMillis = 60)
+        controller.loadInitialIfNeeded()
+
+        controller.onRealtimeMessage(testMessage("m1", chatId = "c-new"), isChatOpen = false)
+        awaitListChatsCount(2)
+        assertEquals(2, listChatsCount())
+        Thread.sleep(40) // let the debounced reload job finish so the next trigger is not coalesced
+
+        // A fresh trigger after the window schedules another reload rather than being swallowed.
+        controller.onRealtimeMessage(testMessage("m2", chatId = "c-new2"), isChatOpen = false)
+        awaitListChatsCount(3)
+        assertEquals(3, listChatsCount())
     }
 
     @Test

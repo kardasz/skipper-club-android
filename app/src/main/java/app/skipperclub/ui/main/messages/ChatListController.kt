@@ -55,6 +55,7 @@ class ChatListController(
     private val gateway: ChatsGateway = RealChatsGateway,
     private val pageSize: Int = 20,
     private val searchDebounceMillis: Long = 300,
+    private val reloadDebounceMillis: Long = 250,
 ) {
     private val _state = MutableStateFlow(ChatListUiState())
     val state: StateFlow<ChatListUiState> = _state.asStateFlow()
@@ -64,6 +65,7 @@ class ChatListController(
 
     private var loadJob: Job? = null
     private var searchJob: Job? = null
+    private var reloadJob: Job? = null
 
     fun loadInitialIfNeeded() {
         val current = _state.value
@@ -186,8 +188,10 @@ class ChatListController(
         if (!snapshot.hasLoadedOnce) return
         val existing = snapshot.chats.firstOrNull { it.id == message.chatId }
         if (existing == null) {
-            // Respect an active search/type filter by asking the server again.
-            reload(showAsRefreshing = true)
+            // Respect an active search/type filter by asking the server again. The server emits both
+            // message:new (chat room) and message:received (personal room) for the same first message
+            // in a new chat, so coalesce the pair into a single reload instead of firing two.
+            scheduleReload()
             return
         }
         val alreadyApplied = existing.lastMessage?.id == message.id
@@ -261,6 +265,23 @@ class ChatListController(
                 }
                 _events.tryEmit(ChatListEvent.OperationFailed(error))
             }
+        }
+    }
+
+    /**
+     * Coalesces realtime-triggered reloads for an unlisted chat: the first trigger arms a short
+     * debounce, and further triggers while it is pending are no-ops, so a burst of events (the
+     * message:new + message:received pair for one message) results in a single [reload]. Only this
+     * realtime path is debounced — user-driven reloads ([refresh], [loadInitialIfNeeded]) stay
+     * immediate. The job lives on [scope], so it is cancelled with the controller on teardown; a
+     * reload lost to teardown mid-window only leaves a stale list until the next screen entry, which
+     * reloads anyway.
+     */
+    private fun scheduleReload() {
+        if (reloadJob?.isActive == true) return
+        reloadJob = scope.launch {
+            delay(reloadDebounceMillis)
+            reload(showAsRefreshing = true)
         }
     }
 
