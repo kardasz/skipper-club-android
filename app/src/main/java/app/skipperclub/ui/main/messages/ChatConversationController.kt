@@ -7,6 +7,7 @@ import app.skipperclub.data.SortOrder
 import app.skipperclub.data.WebSocketChatRealtimeClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,6 +56,14 @@ class ChatConversationController(
     /** How long arrivals are coalesced before one mark-read goes out; see [scheduleMarkRead]. */
     private val readReceiptDebounceMillis: Long = READ_RECEIPT_DEBOUNCE_MILLIS,
     /**
+     * Upper bound on how long the debounce may keep postponing: a continuous stream of arrivals
+     * faster than one per [readReceiptDebounceMillis] would otherwise reset the window forever and
+     * starve mark-read; see [scheduleMarkRead].
+     */
+    private val readReceiptMaxLatencyMillis: Long = READ_RECEIPT_MAX_LATENCY_MILLIS,
+    /** Monotonic-enough clock for the max-latency bound; injectable so tests are deterministic. */
+    private val nowMillis: () -> Long = System::currentTimeMillis,
+    /**
      * `message:read` over the socket for the newest visible message, mirroring what iOS/Web send
      * (see the transport-parity table in docs/api/messages/websocket.md). Injectable so tests don't
      * need a real socket.
@@ -79,6 +88,22 @@ class ChatConversationController(
 
     /** In-flight debounced mark-read, cancelled and restarted by each new arrival. */
     private var markReadJob: Job? = null
+
+    /**
+     * When the oldest still-unflushed mark-read was scheduled; drives the max-latency bound and
+     * doubles as the "work is pending" marker for [flushPendingMarkRead] — non-null from the first
+     * coalesced arrival until the debounced job actually starts executing. Deliberately not
+     * derived from [markReadJob]'s liveness: a scope teardown can cancel the job before the
+     * screen's dispose gets to flush, and the flush must still see the work as pending.
+     */
+    private var firstPendingMarkReadAtMillis: Long? = null
+
+    /**
+     * Same dispatcher as [scope] but an independent [SupervisorJob], so the dispose-time flush in
+     * [flushPendingMarkRead] survives the screen scope being torn down at that very moment. Only
+     * short-lived flush work runs here; nothing long-lived can leak.
+     */
+    private val markReadFlushScope = CoroutineScope(scope.coroutineContext + SupervisorJob())
 
     fun loadInitialIfNeeded() {
         val current = _state.value
@@ -173,7 +198,9 @@ class ChatConversationController(
                 val message = gateway.sendMessage(token, chatId, trimmed, clientMessageId)
                 _state.update { state ->
                     state.copy(
-                        messages = if (state.messages.any { it.id == message.id }) {
+                        // The WS echo of this very send can land before the REST response does;
+                        // isDuplicate matches it by server id or by the echoed clientMessageId.
+                        messages = if (state.messages.any { isDuplicate(it, message) }) {
                             state.messages
                         } else {
                             state.messages + message
@@ -199,7 +226,7 @@ class ChatConversationController(
         if (!_state.value.hasLoadedOnce) return
         var appended = false
         _state.update { state ->
-            if (state.messages.any { it.id == message.id }) {
+            if (state.messages.any { isDuplicate(it, message) }) {
                 state
             } else {
                 appended = true
@@ -212,6 +239,17 @@ class ChatConversationController(
     }
 
     /**
+     * Same logical message? Matches by server id, or — when the incoming payload carries the
+     * echoed `clientMessageId` idempotency key (backend v1.5.0+) — by that key too. The second
+     * match closes the tiny window where the WS echo of our own REST send arrives before the REST
+     * response: both carry the same key, so whichever lands second is dropped instead of showing
+     * the message twice.
+     */
+    private fun isDuplicate(existing: ChatMessage, incoming: ChatMessage): Boolean =
+        existing.id == incoming.id ||
+            (incoming.clientMessageId != null && existing.clientMessageId == incoming.clientMessageId)
+
+    /**
      * Coalesces mark-read work over a short window instead of firing it per arriving message.
      *
      * Read receipts cascade — a receipt for the newest message already means every earlier one is
@@ -219,13 +257,47 @@ class ChatConversationController(
      * one receipt and one bulk mark-read. Firing per message instead sent one WS frame plus one
      * REST call each, which on 20 unread walks straight through the server's 10 events/second
      * inbound limit and comes back as `Rate limit exceeded`.
+     *
+     * The window is bounded by [readReceiptMaxLatencyMillis]: each arrival restarts the debounce,
+     * so a stream faster than one message per [readReceiptDebounceMillis] would otherwise postpone
+     * the flush indefinitely — the peer would never see "seen" while the conversation stays busy.
+     * The first unflushed arrival starts the latency clock; once it runs out the flush fires
+     * regardless of what keeps landing.
      */
     private fun scheduleMarkRead() {
+        val now = nowMillis()
+        val firstPendingAt = firstPendingMarkReadAtMillis ?: now.also { firstPendingMarkReadAtMillis = it }
+        val remainingUntilForced = (firstPendingAt + readReceiptMaxLatencyMillis - now).coerceAtLeast(0)
         markReadJob?.cancel()
         markReadJob = scope.launch {
-            delay(readReceiptDebounceMillis)
+            delay(minOf(readReceiptDebounceMillis, remainingUntilForced))
+            firstPendingMarkReadAtMillis = null
             val token = runCatching { accessToken() }.getOrNull() ?: return@launch
             markRead(token, hadUnread = true)
+        }
+    }
+
+    /**
+     * Cancels a pending debounced mark-read and executes it immediately. The screen calls this
+     * from its dispose, **before** sending `chat:leave`: closing the conversation inside the
+     * debounce window used to cancel [markReadJob] silently, losing both the WS receipt (the peer
+     * never saw "seen") and the REST bulk mark-read (the unread badge resurfaced for a message
+     * that was actually read).
+     *
+     * The WS receipt is sent synchronously so it reaches the server before the caller's
+     * `chat:leave` frame (receipts for a room we already left are dropped). The token fetch and
+     * REST call run on [markReadFlushScope] because the screen's scope — the [scope] this
+     * controller launches everything in — is being torn down at that very moment.
+     */
+    fun flushPendingMarkRead() {
+        if (firstPendingMarkReadAtMillis == null) return
+        firstPendingMarkReadAtMillis = null
+        markReadJob?.cancel()
+        markReadJob = null
+        sendNewestReadReceiptFromOthers()
+        markReadFlushScope.launch {
+            val token = runCatching { accessToken() }.getOrNull() ?: return@launch
+            markChatsReadViaRest(token)
         }
     }
 
@@ -262,19 +334,27 @@ class ChatConversationController(
 
     private fun markRead(token: String, hadUnread: Boolean) {
         if (!hadUnread) return
-        // WS parity: send a live per-message receipt for the newest visible message from *another*
-        // participant so their "seen" indicators update immediately, in addition to the REST bulk
-        // mark-read below (which the backend does not broadcast per-message events for). Skipping our
-        // own newest message avoids emitting a nonsensical read receipt for a message we authored.
+        sendNewestReadReceiptFromOthers()
+        scope.launch { markChatsReadViaRest(token) }
+    }
+
+    /**
+     * WS parity: send a live per-message receipt for the newest visible message from *another*
+     * participant so their "seen" indicators update immediately, in addition to the REST bulk
+     * mark-read (which the backend does not broadcast per-message events for). Skipping our own
+     * newest message avoids emitting a nonsensical read receipt for a message we authored.
+     */
+    private fun sendNewestReadReceiptFromOthers() {
         _state.value.messages.lastOrNull { it.user.id != currentUserId }?.let { newest ->
             runCatching { sendReadReceipt(chatId, newest.id) }
         }
-        scope.launch {
-            try {
-                gateway.markChatsRead(token, listOf(chatId))
-            } catch (error: ChatsError) {
-                _events.tryEmit(ChatConversationEvent.OperationFailed(error))
-            }
+    }
+
+    private suspend fun markChatsReadViaRest(token: String) {
+        try {
+            gateway.markChatsRead(token, listOf(chatId))
+        } catch (error: ChatsError) {
+            _events.tryEmit(ChatConversationEvent.OperationFailed(error))
         }
     }
 
@@ -348,5 +428,13 @@ class ChatConversationController(
          * a single receipt. Mirrors the same window on web.
          */
         const val READ_RECEIPT_DEBOUNCE_MILLIS = 400L
+
+        /**
+         * Hard ceiling on mark-read latency under a continuous message stream. A conversation
+         * receiving faster than one message per [READ_RECEIPT_DEBOUNCE_MILLIS] restarts the
+         * debounce on every arrival; without this bound the flush would be starved for as long as
+         * the burst lasts.
+         */
+        const val READ_RECEIPT_MAX_LATENCY_MILLIS = 1_500L
     }
 }

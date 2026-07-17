@@ -5,6 +5,7 @@ import app.skipperclub.BuildConfig
 import java.util.Collections
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -88,6 +90,16 @@ interface ChatRealtimeClient {
     )
 
     fun disconnect()
+
+    /**
+     * Hint that device connectivity returned. Short-circuits a pending reconnect backoff so the
+     * next attempt starts immediately instead of waiting out the remaining delay (up to 30s). The
+     * retry still goes through the normal attempt path — token refresh and scope guards are not
+     * bypassed. No-op while connected, disconnected deliberately, or with no backoff pending.
+     * [RealtimeConnectionManager] wires this to a [android.net.ConnectivityManager.NetworkCallback].
+     */
+    fun onNetworkAvailable() {}
+
     fun joinChat(chatId: String)
     fun leaveChat(chatId: String)
 
@@ -307,6 +319,32 @@ internal fun reconnectPolicyForClose(code: Int): ReconnectPolicy = when (code) {
     else -> ReconnectPolicy.Backoff
 }
 
+/**
+ * Interruptible reconnect wait. [awaitBackoff] suspends for the backoff delay unless [skip]
+ * short-circuits the wait currently in flight — used when connectivity returns, so the client
+ * retries immediately instead of sitting out the remainder of an up-to-30s backoff. A skip with no
+ * wait in flight is dropped rather than latched: connectivity flapping while connected must not
+ * silently shorten some future backoff.
+ */
+internal class ReconnectBackoffGate {
+    @Volatile
+    private var pendingSkip: CompletableDeferred<Unit>? = null
+
+    suspend fun awaitBackoff(millis: Long) {
+        val skipSignal = CompletableDeferred<Unit>()
+        pendingSkip = skipSignal
+        try {
+            withTimeoutOrNull(millis) { skipSignal.await() }
+        } finally {
+            pendingSkip = null
+        }
+    }
+
+    fun skip() {
+        pendingSkip?.complete(Unit)
+    }
+}
+
 object WebSocketChatRealtimeClient : ChatRealtimeClient {
     private const val TAG = "ChatRealtime"
 
@@ -357,6 +395,9 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
     @Volatile
     private var authCloseHandler: (suspend () -> Unit)? = null
 
+    /** Lets a returning network cut a pending reconnect backoff short; see [onNetworkAvailable]. */
+    private val backoffGate = ReconnectBackoffGate()
+
     @Synchronized
     override fun connect(
         accessTokenProvider: suspend () -> String?,
@@ -388,6 +429,16 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         // socket's close callback fires later: handleClose/handleFailure bail out because `scope`
         // is already null.
         markDisconnected()
+    }
+
+    /**
+     * Connectivity returned: skip the remainder of a pending backoff delay so the reconnect fires
+     * now rather than after the full (up to 30s) wait. Only the delay is cut short — the retry
+     * re-enters [attemptConnect], so the token provider runs and [openSocketIfCurrent] still
+     * refuses superseded attempts. Safe to call at any time from any thread.
+     */
+    override fun onNetworkAvailable() {
+        backoffGate.skip()
     }
 
     override fun joinChat(chatId: String) {
@@ -439,15 +490,53 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         webSocket = client.newWebSocket(request, RealtimeListener(ownerScope, attempt))
     }
 
+    /**
+     * Publish an opened socket as the live connection, or refuse when the connect attempt behind it
+     * has been superseded. Called from [RealtimeListener.onOpen], which runs on an OkHttp thread.
+     *
+     * Shares the monitor with [connect]/[disconnect]/[openSocketIfCurrent] because the guard and
+     * the state flip must be one step: an unlocked `scope !== ownerScope` check can pass, lose the
+     * thread to a full `disconnect()` (scope cancelled, socket closed, Disconnected emitted), and
+     * only then set `isConnected = true` and emit Connected — for a session that no longer exists.
+     * The socket's own later close callback bails on its scope guard and never calls
+     * [markDisconnected], so `isConnected` would stay true after logout: the REST-poll fallback
+     * stays disabled and consumers see a spurious Connected.
+     *
+     * Holding the monitor here is safe: [MutableSharedFlow.tryEmit] and the [MutableStateFlow]
+     * write never suspend or block, and no other lock is taken inside.
+     */
+    @Synchronized
+    internal fun publishOpenIfCurrent(ownerScope: CoroutineScope, openedSocket: WebSocket): Boolean {
+        if (scope !== ownerScope) return false
+        webSocket = openedSocket
+        _isConnected.value = true
+        _events.tryEmit(ChatRealtimeEvent.Connected)
+        return true
+    }
+
     private fun markDisconnected() {
         _isConnected.value = false
         _events.tryEmit(ChatRealtimeEvent.Disconnected)
     }
 
+    /**
+     * Guard-and-flip for the close paths, on the same monitor as [publishOpenIfCurrent] and
+     * [disconnect] so a server close racing a logout cannot re-emit Disconnected after
+     * `disconnect()` already did, and cannot interleave with a publish from a late handshake.
+     */
+    @Synchronized
+    private fun markDisconnectedIfCurrent(ownerScope: CoroutineScope): Boolean {
+        if (scope !== ownerScope) return false
+        markDisconnected()
+        return true
+    }
+
     private fun scheduleReconnect(ownerScope: CoroutineScope, attempt: Int) {
         if (scope !== ownerScope) return
         ownerScope.launch {
-            delay(reconnectBackoffMillis(attempt))
+            // Interruptible: RealtimeConnectionManager signals network return through
+            // onNetworkAvailable, which skips the remainder of this delay.
+            backoffGate.awaitBackoff(reconnectBackoffMillis(attempt))
             if (scope === ownerScope) attemptConnect(ownerScope, attempt + 1)
         }
     }
@@ -458,8 +547,7 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
      * off. The bounded backoff still applies after the refresh as a runaway-loop guard.
      */
     private fun handleClose(ownerScope: CoroutineScope, attempt: Int, code: Int) {
-        if (scope !== ownerScope) return
-        markDisconnected()
+        if (!markDisconnectedIfCurrent(ownerScope)) return
 
         // A frame we sent was rejected as too big. Reconnect anyway (nothing re-sends it), but
         // surface it loudly — unconditionally, not the debug-only log — since this is a client bug,
@@ -489,8 +577,7 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
      * auth path in [handleClose] for server closes.
      */
     private fun handleFailure(ownerScope: CoroutineScope, attempt: Int, httpCode: Int?) {
-        if (scope !== ownerScope) return
-        markDisconnected()
+        if (!markDisconnectedIfCurrent(ownerScope)) return
         if (shouldRefreshTokenForHttpFailure(httpCode)) {
             ownerScope.launch {
                 runCatching { authCloseHandler?.invoke() }
@@ -598,8 +685,10 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             // The handshake can complete after a logout or a background — this socket belongs to a
             // connection nobody wants any more. Close it rather than reporting it as the live one,
-            // which would flip isConnected back on and re-join rooms for a signed-out session.
-            if (scope !== ownerScope) {
+            // which would flip isConnected back on and re-join rooms for a signed-out session. The
+            // guard and the publish are one atomic step under the client monitor (see
+            // publishOpenIfCurrent) so a disconnect() cannot slip in between them.
+            if (!publishOpenIfCurrent(ownerScope, webSocket)) {
                 debugLog("connected after disconnect; closing orphaned socket")
                 webSocket.close(CLOSE_CODE_NORMAL, null)
                 return
@@ -609,8 +698,6 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
             // promptly instead of inheriting the pre-connect delay (which otherwise grows to the
             // 15-30s cap after a handful of reconnects over the app's lifetime).
             attempt = 0
-            _isConnected.value = true
-            _events.tryEmit(ChatRealtimeEvent.Connected)
             joinedChatIds.toList().forEach { chatId ->
                 webSocket.send(encodeRealtimeFrame("chat:join", chatIdFramePayload(chatId)))
             }

@@ -4,6 +4,7 @@ import app.skipperclub.data.ChatsError
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -28,6 +29,8 @@ class ChatConversationControllerTest {
         // mark-read runs inline and these tests stay synchronous. The coalescing behaviour itself
         // is covered by markReadCoalescesABurstOfArrivals below, which sets a real window.
         readReceiptDebounceMillis: Long = 0L,
+        readReceiptMaxLatencyMillis: Long = ChatConversationController.READ_RECEIPT_MAX_LATENCY_MILLIS,
+        nowMillis: () -> Long = System::currentTimeMillis,
     ): ChatConversationController {
         val controller = ChatConversationController(
             scope = scope,
@@ -38,6 +41,8 @@ class ChatConversationControllerTest {
             pageSize = 2,
             typingExpiryMillis = typingExpiryMillis,
             readReceiptDebounceMillis = readReceiptDebounceMillis,
+            readReceiptMaxLatencyMillis = readReceiptMaxLatencyMillis,
+            nowMillis = nowMillis,
             sendReadReceipt = { chatId, messageId -> readReceipts += chatId to messageId },
             clientMessageIdProvider = { "client-id-${nextClientMessageId++}" },
         )
@@ -270,6 +275,104 @@ class ChatConversationControllerTest {
     }
 
     @Test
+    fun flushPendingMarkReadExecutesTheDebouncedWorkImmediately() {
+        // Closing the conversation inside the debounce window must not lose the mark-read: the
+        // flush cancels the pending job and fires the WS receipt + REST bulk call right away.
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        val controller = controller(readReceiptDebounceMillis = 60_000L)
+        controller.loadInitialIfNeeded()
+        gateway.calls.clear()
+        readReceipts.clear()
+
+        controller.onRealtimeMessage(testMessage("m2", userId = "other"))
+        // Still inside the debounce window — nothing has gone out yet.
+        assertFalse(gateway.calls.any { it.startsWith("markChatsRead") })
+        assertTrue(readReceipts.isEmpty())
+
+        controller.flushPendingMarkRead()
+
+        assertEquals(listOf("markChatsRead:chat-1"), gateway.calls.filter { it.startsWith("markChatsRead") })
+        assertEquals(listOf("chat-1" to "m2"), readReceipts)
+    }
+
+    @Test
+    fun flushPendingMarkReadWithoutPendingWorkIsNoop() {
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        val controller = controller(readReceiptDebounceMillis = 60_000L)
+        controller.loadInitialIfNeeded()
+        gateway.calls.clear()
+        readReceipts.clear()
+
+        controller.flushPendingMarkRead()
+
+        assertFalse(gateway.calls.any { it.startsWith("markChatsRead") })
+        assertTrue(readReceipts.isEmpty())
+    }
+
+    @Test
+    fun flushPendingMarkReadSurvivesScreenScopeCancellation() {
+        // The dispose-time reality: the screen's scope is being torn down while the flush runs.
+        // Even if the pending debounce job was already cancelled with the scope, the flush must
+        // still deliver the receipt and the REST mark-read (it runs on its own surviving scope).
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        val controller = controller(readReceiptDebounceMillis = 60_000L)
+        controller.loadInitialIfNeeded()
+        controller.onRealtimeMessage(testMessage("m2", userId = "other"))
+        gateway.calls.clear()
+        readReceipts.clear()
+
+        scope.cancel()
+        controller.flushPendingMarkRead()
+
+        assertEquals(listOf("markChatsRead:chat-1"), gateway.calls.filter { it.startsWith("markChatsRead") })
+        assertEquals(listOf("chat-1" to "m2"), readReceipts)
+    }
+
+    @Test
+    fun flushPendingMarkReadDoesNotRepeatWorkThatAlreadyFlushed() {
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        // Zero debounce: the scheduled mark-read completes inline on the Unconfined scope.
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        controller.onRealtimeMessage(testMessage("m2", userId = "other"))
+        gateway.calls.clear()
+        readReceipts.clear()
+
+        controller.flushPendingMarkRead()
+
+        assertFalse(gateway.calls.any { it.startsWith("markChatsRead") })
+        assertTrue(readReceipts.isEmpty())
+    }
+
+    @Test
+    fun markReadIsForcedAfterMaxLatencyUnderAContinuousStream() {
+        // A stream arriving faster than the debounce window restarts it on every message; the
+        // max-latency bound guarantees the flush still fires. Fake clock + Unconfined scope keep
+        // this deterministic: once the elapsed time crosses the bound the scheduled delay is 0,
+        // which never suspends and runs the mark-read inline.
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        var now = 0L
+        val controller = controller(
+            readReceiptDebounceMillis = 1_000L,
+            readReceiptMaxLatencyMillis = 300L,
+            nowMillis = { now },
+        )
+        controller.loadInitialIfNeeded()
+        gateway.calls.clear()
+        readReceipts.clear()
+
+        controller.onRealtimeMessage(testMessage("m2", userId = "other", createdAt = "2026-06-12T10:02:00Z"))
+        now = 200L
+        controller.onRealtimeMessage(testMessage("m3", userId = "other", createdAt = "2026-06-12T10:03:00Z"))
+        assertFalse(gateway.calls.any { it.startsWith("markChatsRead") })
+        now = 320L
+        controller.onRealtimeMessage(testMessage("m4", userId = "other", createdAt = "2026-06-12T10:04:00Z"))
+
+        assertEquals(listOf("markChatsRead:chat-1"), gateway.calls.filter { it.startsWith("markChatsRead") })
+        assertEquals(listOf("chat-1" to "m4"), readReceipts)
+    }
+
+    @Test
     fun realtimeOwnMessageDoesNotMarkRead() {
         gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
         val controller = controller()
@@ -291,6 +394,55 @@ class ChatConversationControllerTest {
 
         assertEquals(listOf("m1"), controller.state.value.messages.map { it.id })
         assertFalse(gateway.calls.any { it.startsWith("markChatsRead") })
+    }
+
+    @Test
+    fun realtimeEchoIsDeduplicatedByClientMessageIdWhenRestResponseLandedFirst() {
+        // REST send response landed first; the WS echo of the same logical message must be dropped
+        // on the echoed clientMessageId even if the ids were to disagree.
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        gateway.sentMessage = testMessage("rest-id", userId = "me", text = "Ahoy!", clientMessageId = "client-id-0")
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        controller.send("Ahoy!")
+
+        controller.onRealtimeMessage(
+            testMessage("ws-echo-id", userId = "me", text = "Ahoy!", clientMessageId = "client-id-0"),
+        )
+
+        assertEquals(listOf("m1", "rest-id"), controller.state.value.messages.map { it.id })
+    }
+
+    @Test
+    fun restResponseIsDeduplicatedByClientMessageIdWhenWsEchoLandedFirst() {
+        // The tiny race the echoed key closes: the WS echo of our own REST send arrives before the
+        // REST response. The echo is appended as it lands; when the REST response then resolves,
+        // its message matches the echo on clientMessageId and must not be appended again.
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        gateway.sentMessage = testMessage("rest-id", userId = "me", text = "Ahoy!", clientMessageId = "client-id-0")
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.onRealtimeMessage(
+            testMessage("ws-echo-id", userId = "me", text = "Ahoy!", clientMessageId = "client-id-0"),
+        )
+        controller.send("Ahoy!")
+
+        assertEquals(listOf("m1", "ws-echo-id"), controller.state.value.messages.map { it.id })
+        assertFalse(controller.state.value.isSending)
+    }
+
+    @Test
+    fun realtimeMessagesWithoutClientMessageIdAreNotDeduplicatedAgainstEachOther() {
+        // Distinct messages that both lack the echoed key must never collapse into one.
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.onRealtimeMessage(testMessage("m2", userId = "other"))
+        controller.onRealtimeMessage(testMessage("m3", userId = "other"))
+
+        assertEquals(listOf("m1", "m2", "m3"), controller.state.value.messages.map { it.id })
     }
 
     @Test

@@ -193,6 +193,11 @@ fun ChatConversationScreen(
             // Send the typing-stop before leaving: the server drops typing frames for a room we
             // have already left, which would strand the peer's indicator on the 5s receive expiry.
             if (typingSent) realtime.sendTyping(chatId, isTyping = false)
+            // Same ordering constraint for a mark-read still sitting in its debounce window:
+            // flush it (WS receipt synchronously, REST on a scope that survives this screen)
+            // before chat:leave, or closing the conversation within the window silently loses
+            // the receipt.
+            controller.flushPendingMarkRead()
             realtime.leaveChat(chatId)
         }
     }

@@ -2,13 +2,20 @@ package app.skipperclub.data
 
 import kotlin.random.Random
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.Request
+import okhttp3.WebSocket
+import okio.ByteString
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -66,6 +73,44 @@ class ChatRealtimeClientTest {
     fun malformedPayloadReturnsNull() {
         assertNull(parseRealtimeChatMessage("not json"))
         assertNull(parseRealtimeChatMessage("""{"id":"m1"}"""))
+    }
+
+    @Test
+    fun parsesEchoedClientMessageId() {
+        // Backend v1.5.0 echoes the sender's idempotency key in message payloads; the controller
+        // uses it as an additional dedup key for the WS echo of an own REST send.
+        val payload = """
+            {
+              "id": "m1",
+              "chatId": "chat-1",
+              "text": "Hi",
+              "createdAt": "2025-11-23T14:30:00Z",
+              "updatedAt": "2025-11-23T14:30:00Z",
+              "user": {"id": "u1", "name": "Jan"},
+              "clientMessageId": "0e2f4b1c-8a51-4a0e-9a3d-1d2e3f4a5b6c"
+            }
+        """.trimIndent()
+
+        assertEquals(
+            "0e2f4b1c-8a51-4a0e-9a3d-1d2e3f4a5b6c",
+            parseRealtimeChatMessage(payload)?.clientMessageId,
+        )
+    }
+
+    @Test
+    fun clientMessageIdIsNullWhenNotEchoed() {
+        val payload = """
+            {
+              "id": "m1",
+              "chatId": "chat-1",
+              "text": "Hi",
+              "createdAt": "2025-11-23T14:30:00Z",
+              "updatedAt": "2025-11-23T14:30:00Z",
+              "user": {"id": "u1", "name": "Jan"}
+            }
+        """.trimIndent()
+
+        assertNull(parseRealtimeChatMessage(payload)?.clientMessageId)
     }
 
     @Test
@@ -387,5 +432,104 @@ class ChatRealtimeClientTest {
         yield()
         collector.cancel()
         assertTrue(events.isEmpty())
+    }
+
+    @Test
+    fun backoffGateSkipShortCircuitsThePendingWait() = runBlocking {
+        // Network returned mid-backoff: the pending (up to 30s) wait must end immediately. The
+        // skip is polled the way repeated NetworkCallback invocations would arrive, which also
+        // removes any race with the waiter reaching its suspension point.
+        val gate = ReconnectBackoffGate()
+        val waiter = launch { gate.awaitBackoff(60_000) }
+
+        withTimeout(5_000) {
+            while (!waiter.isCompleted) {
+                gate.skip()
+                delay(10)
+            }
+        }
+    }
+
+    @Test
+    fun backoffGateCompletesAfterTheDelayWithoutASkip() = runBlocking {
+        val gate = ReconnectBackoffGate()
+
+        withTimeout(5_000) { gate.awaitBackoff(10) }
+    }
+
+    @Test
+    fun backoffGateDropsASkipWithNoWaitInFlight() = runBlocking {
+        // Connectivity events while connected must not latch and silently shorten a future
+        // backoff — only a wait currently in flight can be skipped.
+        val gate = ReconnectBackoffGate()
+        gate.skip()
+
+        val startedAt = System.nanoTime()
+        gate.awaitBackoff(200)
+        val elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000
+
+        assertTrue("expected a full wait, got ${elapsedMillis}ms", elapsedMillis >= 150)
+    }
+
+    @Test
+    fun onNetworkAvailableWithoutPendingBackoffIsNoop() {
+        // Fired by the platform callback whenever a default network appears, including while
+        // connected or logged out — must be safe to call at any time.
+        WebSocketChatRealtimeClient.onNetworkAvailable()
+
+        assertFalse(WebSocketChatRealtimeClient.isConnected.value)
+    }
+
+    @Test
+    fun publishOpenIfCurrentRefusesWhenNoConnectionIsCurrent() {
+        // The residual onOpen race: the handshake completes only after disconnect() already tore
+        // the connection down. The atomic guard-and-publish must refuse — flipping isConnected
+        // true here would strand it forever, because the socket's later close callback bails on
+        // its own scope guard and never calls markDisconnected.
+        WebSocketChatRealtimeClient.disconnect()
+
+        val published = WebSocketChatRealtimeClient.publishOpenIfCurrent(
+            CoroutineScope(Job()),
+            FakeWebSocket(),
+        )
+
+        assertFalse(published)
+        assertFalse(WebSocketChatRealtimeClient.isConnected.value)
+    }
+
+    @Test
+    fun publishOpenIfCurrentRefusesASupersededConnectAttempt() = runBlocking {
+        // Park connect() inside the token provider (no real socket, no Android Log) so there is a
+        // live connection scope; a different scope — an older, superseded attempt — must still be
+        // refused and must not flip isConnected for the live session.
+        val providerEntered = CompletableDeferred<Unit>()
+        WebSocketChatRealtimeClient.connect(
+            accessTokenProvider = {
+                providerEntered.complete(Unit)
+                awaitCancellation()
+            },
+        )
+        providerEntered.await()
+        try {
+            val published = WebSocketChatRealtimeClient.publishOpenIfCurrent(
+                CoroutineScope(Job()),
+                FakeWebSocket(),
+            )
+
+            assertFalse(published)
+            assertFalse(WebSocketChatRealtimeClient.isConnected.value)
+        } finally {
+            WebSocketChatRealtimeClient.disconnect()
+        }
+    }
+
+    /** Minimal no-op [WebSocket]; publish tests only need an instance, never a live transport. */
+    private class FakeWebSocket : WebSocket {
+        override fun request(): Request = Request.Builder().url("https://example.invalid").build()
+        override fun queueSize(): Long = 0
+        override fun send(text: String): Boolean = true
+        override fun send(bytes: ByteString): Boolean = true
+        override fun close(code: Int, reason: String?): Boolean = true
+        override fun cancel() {}
     }
 }

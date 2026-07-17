@@ -45,6 +45,13 @@ data class ChatMessage(
     val user: ChatUser,
     val createdAt: String,
     val updatedAt: String,
+    /**
+     * Client-generated idempotency key echoed by the backend (v1.5.0+) in message payloads
+     * (`message:sent`/`message:new`/`message:received` and the REST send response). Used as an
+     * additional dedup key when reconciling realtime arrivals with REST-sent messages; null for
+     * messages sent by clients that did not provide one.
+     */
+    val clientMessageId: String? = null,
 )
 
 data class Chat(
@@ -125,6 +132,8 @@ internal data class ChatMessageDto(
     val user: ChatUserDto,
     val createdAt: String,
     val updatedAt: String,
+    /** Echoed idempotency key (backend v1.5.0+); absent for messages sent without one. */
+    val clientMessageId: String? = null,
 ) {
     fun toDomain(): ChatMessage =
         ChatMessage(
@@ -135,6 +144,7 @@ internal data class ChatMessageDto(
             user = user.toDomain(),
             createdAt = createdAt,
             updatedAt = updatedAt,
+            clientMessageId = clientMessageId,
         )
 }
 

@@ -27,6 +27,7 @@ class SkipperClubApplication : Application(), SingletonImageLoader.Factory {
         // refresh tokens before any Activity starts.
         SessionStore.initialize(this)
         RealtimeConnectionManager.start(
+            context = this,
             sessionFlow = SessionStore.session,
             accessTokenProvider = { SessionStore.validSession()?.accessToken },
             onAuthClose = { SessionStore.forceRefresh() },

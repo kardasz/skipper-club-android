@@ -21,6 +21,7 @@ internal fun testMessage(
     text: String = "message $id",
     userId: String = "other",
     createdAt: String = "2026-06-12T10:00:00Z",
+    clientMessageId: String? = null,
 ) = ChatMessage(
     id = id,
     chatId = chatId,
@@ -29,6 +30,7 @@ internal fun testMessage(
     user = testUser(userId),
     createdAt = createdAt,
     updatedAt = createdAt,
+    clientMessageId = clientMessageId,
 )
 
 internal fun testChat(
