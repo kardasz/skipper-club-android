@@ -45,8 +45,12 @@ class SkipperClubApplication : Application(), SingletonImageLoader.Factory {
             accessTokenProvider = { SessionStore.validSession()?.accessToken },
         )
         // App-wide online/offline cache, driven by the same app-scoped socket so presence updates
-        // outside the Messages tab too (e.g. while the conversation dialog is not composed).
-        PresenceStore.start()
+        // outside the Messages tab too (e.g. while the conversation dialog is not composed). Seeds
+        // from GET /chats/presence on every (re)connect, so already-online co-participants show
+        // online without waiting for their next live transition.
+        PresenceStore.start(
+            accessTokenProvider = { SessionStore.validSession()?.accessToken },
+        )
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader =

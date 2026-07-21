@@ -157,6 +157,39 @@ class ChatsApiTest {
     }
 
     @Test
+    fun presenceRequestTargetsPresencePath() {
+        val request = ChatsApi.presenceRequest("token")
+
+        assertEquals("GET", request.method)
+        assertEquals("/v1/chats/presence", request.url.encodedPath)
+    }
+
+    @Test
+    fun presenceDtoDecodesToUserPresenceMapKeyedByUserId() {
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val body = """
+            {"items":[
+              {"userId":"u1","isOnline":true,"lastSeen":null},
+              {"userId":"u2","isOnline":false,"lastSeen":"2026-07-18T09:41:12Z"}
+            ]}
+        """.trimIndent()
+
+        val presence = json.decodeFromString<ChatPresenceDto>(body).toDomain()
+
+        assertEquals(UserPresence(isOnline = true, lastSeen = null), presence["u1"])
+        assertEquals(UserPresence(isOnline = false, lastSeen = "2026-07-18T09:41:12Z"), presence["u2"])
+    }
+
+    @Test
+    fun presenceDtoDecodesEmptySnapshot() {
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+        val presence = json.decodeFromString<ChatPresenceDto>("""{"items":[]}""").toDomain()
+
+        assertTrue(presence.isEmpty())
+    }
+
+    @Test
     fun searchUsersRequestIncludesSearchAndPagination() {
         val request = ChatsApi.searchUsersRequest(
             accessToken = "token",

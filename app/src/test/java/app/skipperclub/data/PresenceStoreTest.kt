@@ -63,4 +63,33 @@ class PresenceStoreTest {
     fun startsEmpty() {
         assertNull(presenceAfter(emptyMap(), ChatRealtimeEvent.Disconnected)["u1"])
     }
+
+    @Test
+    fun seedAppliesSnapshotForUsersWithoutALiveUpdate() {
+        val snapshot = mapOf(
+            "u1" to UserPresence(isOnline = true, lastSeen = null),
+            "u2" to UserPresence(isOnline = false, lastSeen = "2026-07-10T12:00:00Z"),
+        )
+
+        val next = seededPresence(current = emptyMap(), snapshot = snapshot, liveUpdatedSinceOpen = emptySet())
+
+        assertEquals(UserPresence(isOnline = true, lastSeen = null), next["u1"])
+        assertEquals(UserPresence(isOnline = false, lastSeen = "2026-07-10T12:00:00Z"), next["u2"])
+    }
+
+    @Test
+    fun seedDoesNotOverwriteAUserThatAlreadyGotALiveUpdate() {
+        // A live event landed for u1 (online) before the snapshot arrived; the snapshot says u1 is
+        // offline. The race rule must keep the live value and still seed the untouched u2.
+        val current = mapOf("u1" to UserPresence(isOnline = true, lastSeen = null))
+        val snapshot = mapOf(
+            "u1" to UserPresence(isOnline = false, lastSeen = "2026-07-10T12:00:00Z"),
+            "u2" to UserPresence(isOnline = true, lastSeen = null),
+        )
+
+        val next = seededPresence(current = current, snapshot = snapshot, liveUpdatedSinceOpen = setOf("u1"))
+
+        assertEquals(UserPresence(isOnline = true, lastSeen = null), next["u1"])
+        assertEquals(UserPresence(isOnline = true, lastSeen = null), next["u2"])
+    }
 }

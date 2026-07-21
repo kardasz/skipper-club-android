@@ -214,6 +214,25 @@ internal data class UnreadCountDto(
     val totalUnread: Int = 0,
 )
 
+@Serializable
+internal data class ChatPresenceEntryDto(
+    val userId: String,
+    val isOnline: Boolean = false,
+    /** Null when the user has never cleanly disconnected since the field shipped; ignored while online. */
+    val lastSeen: String? = null,
+) {
+    fun toDomain(): UserPresence = UserPresence(isOnline = isOnline, lastSeen = lastSeen)
+}
+
+/** Response of `GET /v1/chats/presence`: the online state of the caller's chat co-participants. */
+@Serializable
+internal data class ChatPresenceDto(
+    val items: List<ChatPresenceEntryDto> = emptyList(),
+) {
+    /** Keyed by userId, matching [PresenceStore]'s in-memory shape. */
+    fun toDomain(): Map<String, UserPresence> = items.associate { it.userId to it.toDomain() }
+}
+
 /** Query parameters for `GET /v1/users` (participant picker). */
 data class UserSearchQuery(
     val search: String? = null,

@@ -35,6 +35,26 @@ internal fun presenceAfter(
 }
 
 /**
+ * Merges a `GET /chats/presence` [snapshot] into [current] under the snapshot-vs-live race rule:
+ * a snapshot entry is applied only for a user NOT in [liveUpdatedSinceOpen] — the set of users that
+ * received a live `presence:update` since the current connection opened. Live events always win, so
+ * a snapshot that lands after a live event never regresses it. Pure for unit testing, like
+ * [presenceAfter].
+ */
+internal fun seededPresence(
+    current: Map<String, UserPresence>,
+    snapshot: Map<String, UserPresence>,
+    liveUpdatedSinceOpen: Set<String>,
+): Map<String, UserPresence> {
+    val next = current.toMutableMap()
+    for ((userId, presence) in snapshot) {
+        if (userId in liveUpdatedSinceOpen) continue
+        next[userId] = presence
+    }
+    return next
+}
+
+/**
  * App-wide presence cache fed by `presence:update` frames on the shared socket ([RealtimeConnectionManager]),
  * which the server delivers to a user's personal room for every chat co-participant (see
  * docs/api/messages/websocket.md#presence-semantics). Started once from
@@ -52,13 +72,65 @@ object PresenceStore {
     @Volatile
     private var started = false
 
-    fun start(realtime: ChatRealtimeClient = WebSocketChatRealtimeClient) {
+    private var accessTokenProvider: suspend () -> String? = { null }
+    private var snapshotProvider: suspend (String) -> Map<String, UserPresence> = { ChatsApi.presence(it) }
+
+    // userIds that received a live presence:update since the current connection opened. The seed
+    // fetched on connect is applied only to users NOT in this set (race rule). Confined to the store's
+    // single Main-immediate thread, so a plain set is safe.
+    private val liveUpdatedSinceOpen = mutableSetOf<String>()
+
+    // Bumped on every Connected. A seed fetch in flight when a newer (dis)connect happens is dropped,
+    // so a late snapshot from a superseded connection can't overwrite fresh state.
+    private var connectionEpoch = 0
+
+    /**
+     * @param accessTokenProvider fresh token for the snapshot fetch (e.g. [SessionStore.validSession]).
+     * @param snapshotProvider fetches `GET /chats/presence`; overridable for tests.
+     */
+    fun start(
+        realtime: ChatRealtimeClient = WebSocketChatRealtimeClient,
+        accessTokenProvider: suspend () -> String? = { null },
+        snapshotProvider: suspend (String) -> Map<String, UserPresence> = { ChatsApi.presence(it) },
+    ) {
         if (started) return
         started = true
+        this.accessTokenProvider = accessTokenProvider
+        this.snapshotProvider = snapshotProvider
         scope.launch {
-            realtime.events.collect { event ->
-                _presence.update { presenceAfter(it, event) }
-            }
+            realtime.events.collect { event -> onEvent(event) }
         }
+    }
+
+    private fun onEvent(event: ChatRealtimeEvent) {
+        when (event) {
+            // Live events always win: record the user so the seed skips them, then apply.
+            is ChatRealtimeEvent.PresenceUpdate -> liveUpdatedSinceOpen.add(event.userId)
+            // A fresh connection: reset the race set and seed from the REST snapshot. presenceAfter
+            // leaves the map untouched for Connected — the seed (launched below) fills it.
+            ChatRealtimeEvent.Connected -> {
+                connectionEpoch += 1
+                liveUpdatedSinceOpen.clear()
+                val epoch = connectionEpoch
+                scope.launch { seedFromSnapshot(epoch) }
+            }
+            // Clearing on disconnect resets the race set too (presenceAfter empties the map).
+            ChatRealtimeEvent.Disconnected -> liveUpdatedSinceOpen.clear()
+            else -> Unit
+        }
+        _presence.update { presenceAfter(it, event) }
+    }
+
+    /**
+     * Fetches the presence snapshot and merges it under the race rule. Runs concurrently with the
+     * event collector (same single thread), so live events arriving during the fetch are recorded in
+     * [liveUpdatedSinceOpen] and win over the snapshot. A failed fetch leaves state as "unknown",
+     * never wrong; a stale [epoch] (a newer connect/disconnect happened meanwhile) is discarded.
+     */
+    private suspend fun seedFromSnapshot(epoch: Int) {
+        val token = accessTokenProvider() ?: return
+        val snapshot = runCatching { snapshotProvider(token) }.getOrNull() ?: return
+        if (epoch != connectionEpoch) return
+        _presence.update { seededPresence(it, snapshot, liveUpdatedSinceOpen) }
     }
 }

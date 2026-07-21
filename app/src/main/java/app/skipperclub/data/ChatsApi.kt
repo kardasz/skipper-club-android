@@ -180,6 +180,19 @@ object ChatsApi {
     suspend fun unreadCount(accessToken: String): Int =
         executeAndDecode<UnreadCountDto, Int>(unreadCountRequest(accessToken)) { it.totalUnread }
 
+    internal fun presenceRequest(accessToken: String): Request =
+        baseRequest(accessToken)
+            .url(chatsUrl().newBuilder().addPathSegment("presence").build())
+            .get()
+            .build()
+
+    /**
+     * Presence snapshot of the caller's chat co-participants, keyed by userId, for seeding
+     * [PresenceStore] after every WS (re)connect.
+     */
+    suspend fun presence(accessToken: String): Map<String, UserPresence> =
+        executeAndDecode<ChatPresenceDto, Map<String, UserPresence>>(presenceRequest(accessToken)) { it.toDomain() }
+
     internal fun searchUsersRequest(accessToken: String, query: UserSearchQuery): Request {
         val url = usersUrl().newBuilder().apply {
             query.search?.takeIf { it.isNotBlank() }?.let { addQueryParameter("search", it) }

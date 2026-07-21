@@ -1864,6 +1864,41 @@ paths:
                     example: 23
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /chats/presence:
+    get:
+      operationId: getChatsPresence
+      tags:
+        - messages
+      summary: Get presence snapshot for chat co-participants
+      description: >-
+        Returns the current online state of the caller's chat co-participants —
+        the same audience the `presence:update` WebSocket event is delivered to
+        (users sharing at least one chat with the caller), never arbitrary
+        users. Clients seed their presence state from this snapshot after every
+        WebSocket (re)connect, then apply live `presence:update` events on top;
+        a live event received for a user since the connection opened must win
+        over this snapshot regardless of arrival order. The result may be empty
+        (the caller shares no chat with anyone). A user whose instance was
+        crash-killed can still read as online until presence self-heals, and
+        their `lastSeen` stays null or stale until their next clean disconnect.
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Presence snapshot for the caller's chat co-participants
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatPresence'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /sailing-briefs:
     get:
       operationId: getSailingBrief
@@ -8003,6 +8038,43 @@ components:
           type: integer
         offset:
           type: integer
+    ChatPresence:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatPresenceEntry'
+          description: One entry per chat co-participant of the caller
+    ChatPresenceEntry:
+      type: object
+      required:
+        - userId
+        - isOnline
+        - lastSeen
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: UUID of a chat co-participant of the caller
+          example: 018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b2e
+        isOnline:
+          type: boolean
+          description: Whether the user currently holds at least one live WebSocket connection
+          example: true
+        lastSeen:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+          description: >-
+            Persisted moment the user's last connection closed. Null when the
+            user has never disconnected since the field was introduced and is
+            currently offline. When isOnline is true, clients should display
+            "online" and ignore lastSeen.
+          example: 2026-07-18T09:41:12Z
     ChatCreate:
       type: object
       required:

@@ -42,7 +42,9 @@ info:
     - Presence is connection-scoped: a user becomes online when their first
       connection is established and offline when their last connection closes.
       presence:update is delivered only to users sharing at least one chat
-      with the affected user.
+      with the affected user. It is push-only (no on-connect snapshot over the
+      socket): after every (re)connect, seed presence from the REST endpoint
+      GET /chats/presence, then let live presence:update events win.
     - The server does not reconnect for you: clients must implement bounded
       exponential backoff with jitter and re-send chat:join for the chats they
       are viewing after every reconnect.
@@ -423,6 +425,10 @@ components:
         Connection-scoped presence: emitted with isOnline=true when a user's
         first connection is established and isOnline=false when their last
         connection closes, delivered only to that user's chat co-participants.
+        This event is push-only — it fires on those transitions, not on
+        connect. To learn the state of already-online co-participants after a
+        (re)connect, seed from the REST snapshot GET /chats/presence and apply
+        these live events on top (live always wins).
       contentType: application/json
       payload:
         $ref: "#/components/schemas/PresenceUpdatePayload"
