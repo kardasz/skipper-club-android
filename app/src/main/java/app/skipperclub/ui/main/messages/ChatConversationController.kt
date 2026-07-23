@@ -137,6 +137,20 @@ class ChatConversationController(
     private val sendWatchdogJobs = mutableMapOf<String, Job>()
 
     /**
+     * Realtime arrivals held until the first page lands; drained by [loadInitialIfNeeded].
+     *
+     * `chat:join` is sent before (and acked independently of) the initial REST load, so there is a
+     * real window in which the room is live but [ChatConversationUiState.hasLoadedOnce] is still
+     * false. Dropping what arrives in it — the previous behaviour — hid the message until the next
+     * catch-up, which on a healthy socket is only the next reconnect.
+     *
+     * Bounded by [PENDING_REALTIME_CAPACITY], dropping the oldest on overflow, mirroring the
+     * socket's own [app.skipperclub.data.EVENT_BUFFER_CAPACITY] policy: the window is short-lived,
+     * but a burst inside it must not grow without limit.
+     */
+    private val pendingRealtimeMessages = mutableListOf<ChatMessage>()
+
+    /**
      * How many history rows this controller has fetched through *paged* requests — the offset the
      * next [loadMore] must use. Deliberately not derived from [ChatConversationUiState.messages],
      * which also grows from realtime arrivals, catch-up and optimistic bubbles: the server
@@ -199,7 +213,16 @@ class ChatConversationController(
                         hasLoadedOnce = true,
                     )
                 }
-                markRead(token, hadUnread = chat.unreadCount > 0)
+                // Anything that arrived between `chat:join` and this page landing was buffered
+                // rather than dropped; merge it through the same isDuplicate() filter a catch-up
+                // page goes through, so the page's own copy of a buffered message wins.
+                val buffered = drainPendingRealtimeMessages()
+                val gainedFromOthers = if (buffered.isEmpty()) {
+                    false
+                } else {
+                    mergeFetched(buffered) && buffered.any { it.user.id != currentUserId }
+                }
+                markRead(token, hadUnread = chat.unreadCount > 0 || gainedFromOthers)
             } catch (error: ChatsError) {
                 _state.update { it.copy(isLoading = false, loadFailed = true, hasLoadedOnce = true) }
                 _events.tryEmit(ChatConversationEvent.OperationFailed(error))
@@ -209,6 +232,10 @@ class ChatConversationController(
 
     fun retry() {
         historyOffset = 0
+        // The buffer belongs to the load that failed: the retry re-reads page 0, which already
+        // contains everything the server has, so replaying stale arrivals on top only risks
+        // resurrecting a message that was meanwhile deleted.
+        pendingRealtimeMessages.clear()
         _state.update { it.copy(hasLoadedOnce = false) }
         loadInitialIfNeeded()
     }
@@ -447,10 +474,16 @@ class ChatConversationController(
      * **replaced** by it rather than the echo being discarded — discarding leaves the
      * `optimistic-…` id in the list, so the row never picks up the server id and the send stays
      * unconfirmed until the watchdog fires.
+     *
+     * Before the first page has landed the message is buffered (see [pendingRealtimeMessages])
+     * instead of applied: appending to an empty list would put it above history it precedes.
      */
     fun onRealtimeMessage(message: ChatMessage) {
         if (message.chatId != chatId) return
-        if (!_state.value.hasLoadedOnce) return
+        if (!_state.value.hasLoadedOnce) {
+            bufferRealtimeMessage(message)
+            return
+        }
         var appended = false
         var confirmedClientMessageId: String? = null
         _state.update { state ->
@@ -484,6 +517,26 @@ class ChatConversationController(
         if (appended && message.user.id != currentUserId) {
             scheduleMarkRead()
         }
+    }
+
+    /**
+     * Holds an arrival that landed before the initial page. Deduplicated on the way in so the
+     * `message:new` / `message:received` pair for one message is buffered once, and bounded so a
+     * burst during a slow load cannot grow the buffer without limit.
+     */
+    private fun bufferRealtimeMessage(message: ChatMessage) {
+        if (pendingRealtimeMessages.any { isDuplicate(it, message) }) return
+        while (pendingRealtimeMessages.size >= PENDING_REALTIME_CAPACITY) {
+            pendingRealtimeMessages.removeAt(0)
+        }
+        pendingRealtimeMessages += message
+    }
+
+    private fun drainPendingRealtimeMessages(): List<ChatMessage> {
+        if (pendingRealtimeMessages.isEmpty()) return emptyList()
+        val drained = pendingRealtimeMessages.toList()
+        pendingRealtimeMessages.clear()
+        return drained
     }
 
     /**
@@ -875,6 +928,13 @@ class ChatConversationController(
          * the burst lasts.
          */
         const val READ_RECEIPT_MAX_LATENCY_MILLIS = 1_500L
+
+        /**
+         * Cap on realtime arrivals held while the initial page is still loading
+         * ([pendingRealtimeMessages]). Same order of magnitude and the same drop-oldest policy as
+         * the socket's own `EVENT_BUFFER_CAPACITY`, which this buffer sits directly behind.
+         */
+        const val PENDING_REALTIME_CAPACITY = 200
     }
 }
 

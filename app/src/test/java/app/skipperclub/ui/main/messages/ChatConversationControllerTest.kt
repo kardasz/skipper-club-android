@@ -1066,12 +1066,91 @@ class ChatConversationControllerTest {
     }
 
     @Test
-    fun realtimeMessageBeforeInitialLoadIsIgnored() {
+    fun realtimeMessageBeforeInitialLoadIsNotRendered() {
+        // Buffered, not applied: appending to an empty list would put it above the history it
+        // precedes. It surfaces once the first page lands — see the test below.
         val controller = controller()
 
         controller.onRealtimeMessage(testMessage("m1"))
 
         assertTrue(controller.state.value.messages.isEmpty())
+    }
+
+    @Test
+    fun realtimeMessageArrivingDuringTheInitialLoadIsDeliveredOnceAfterIt() {
+        // `chat:join` goes out before the first page lands, so there is a real window in which the
+        // room is live and hasLoadedOnce is still false. Dropping what arrives in it hid the
+        // message until the next catch-up — on a healthy socket, the next reconnect.
+        gateway.chat = testChat("chat-1")
+        gateway.messagePages = listOf(
+            messagesPage(listOf(testMessage("m1", createdAt = "2026-06-12T10:01:00Z")), total = 1),
+        )
+        val controller = controller()
+        val loadGate = CompletableDeferred<Unit>()
+        gateway.listMessagesGate = loadGate
+        controller.loadInitialIfNeeded()
+
+        val arrival = testMessage("m2", userId = "other", createdAt = "2026-06-12T10:02:00Z")
+        // The message:new / message:received pair for the same message, both inside the window.
+        controller.onRealtimeMessage(arrival)
+        controller.onRealtimeMessage(arrival)
+        assertTrue(controller.state.value.messages.isEmpty())
+
+        gateway.listMessagesGate = null
+        loadGate.complete(Unit)
+
+        assertEquals(listOf("m1", "m2"), controller.state.value.messages.map { it.id })
+        // ...and it counts as unread news, so the read is reported like any other arrival.
+        assertTrue(gateway.calls.contains("markChatsRead:chat-1"))
+    }
+
+    @Test
+    fun pendingRealtimeBufferDropsTheOldestBeyondItsCap() {
+        // Same drop-oldest policy as the socket's own event buffer: the window is short-lived, but
+        // a burst inside it must not grow the buffer without limit.
+        gateway.messagePages = listOf(messagesPage(emptyList(), total = 0))
+        val controller = controller()
+        val loadGate = CompletableDeferred<Unit>()
+        gateway.listMessagesGate = loadGate
+        controller.loadInitialIfNeeded()
+
+        val overflow = ChatConversationController.PENDING_REALTIME_CAPACITY + 10
+        repeat(overflow) { index ->
+            controller.onRealtimeMessage(
+                testMessage("m$index", userId = "other", createdAt = "2026-06-12T10:00:00Z"),
+            )
+        }
+
+        gateway.listMessagesGate = null
+        loadGate.complete(Unit)
+
+        val delivered = controller.state.value.messages.map { it.id }
+        assertEquals(ChatConversationController.PENDING_REALTIME_CAPACITY, delivered.size)
+        // The oldest ten were dropped; the live tail of the conversation survived.
+        assertFalse(delivered.contains("m0"))
+        assertTrue(delivered.contains("m${overflow - 1}"))
+    }
+
+    @Test
+    fun retryDiscardsTheBufferedArrivals() {
+        // The buffer belongs to the load that failed; the retry re-reads page 0, which already
+        // contains everything the server has, so replaying stale arrivals on top of it only risks
+        // resurrecting a message that was meanwhile deleted.
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1")), total = 1))
+        val controller = controller()
+        val loadGate = CompletableDeferred<Unit>()
+        gateway.listMessagesGate = loadGate
+        gateway.listMessagesError = ChatsError.Network(Exception("offline"))
+        controller.loadInitialIfNeeded()
+        controller.onRealtimeMessage(testMessage("m2", userId = "other"))
+        gateway.listMessagesGate = null
+        loadGate.complete(Unit)
+        assertTrue(controller.state.value.loadFailed)
+
+        gateway.listMessagesError = null
+        controller.retry()
+
+        assertEquals(listOf("m1"), controller.state.value.messages.map { it.id })
     }
 
     @Test
