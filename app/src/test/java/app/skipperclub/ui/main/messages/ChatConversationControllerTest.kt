@@ -9,6 +9,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -30,6 +31,7 @@ class ChatConversationControllerTest {
         catchUpLimit: Int = 2,
         catchUpMaxPages: Int = 3,
         typingExpiryMillis: Long = ChatConversationController.TYPING_RECEIVE_EXPIRY_MS,
+        sendConfirmTimeoutMillis: Long = ChatConversationController.SEND_CONFIRM_TIMEOUT_MILLIS,
         // No debounce by default: `delay(0)` never suspends, so on Dispatchers.Unconfined the
         // mark-read runs inline and these tests stay synchronous. The coalescing behaviour itself
         // is covered by markReadCoalescesABurstOfArrivals below, which sets a real window.
@@ -47,6 +49,7 @@ class ChatConversationControllerTest {
             catchUpLimit = catchUpLimit,
             catchUpMaxPages = catchUpMaxPages,
             typingExpiryMillis = typingExpiryMillis,
+            sendConfirmTimeoutMillis = sendConfirmTimeoutMillis,
             readReceiptDebounceMillis = readReceiptDebounceMillis,
             readReceiptMaxLatencyMillis = readReceiptMaxLatencyMillis,
             nowMillis = nowMillis,
@@ -55,6 +58,12 @@ class ChatConversationControllerTest {
         )
         scope.launch { controller.events.collect { events += it } }
         return controller
+    }
+
+    /** Nothing outlives a test — in particular the send-confirmation watchdogs left armed by it. */
+    @After
+    fun cancelScope() {
+        scope.cancel()
     }
 
     @Test
@@ -203,6 +212,241 @@ class ChatConversationControllerTest {
 
         assertFalse(controller.state.value.isSending)
         assertTrue(events.any { it is ChatConversationEvent.OperationFailed })
+    }
+
+    @Test
+    fun sendAppendsAnOptimisticBubbleBeforeTheGatewayReturns() {
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        val sendGate = CompletableDeferred<Unit>()
+        gateway.sendMessageGate = sendGate
+
+        val clientMessageId = controller.send("  Ahoy!  ")
+
+        assertEquals("client-id-0", clientMessageId)
+        val state = controller.state.value
+        val optimistic = state.messages.last()
+        assertEquals("optimistic-client-id-0", optimistic.id)
+        assertEquals("Ahoy!", optimistic.text)
+        // Authored by the current user, resolved from the loaded chat's participants.
+        assertEquals("me", optimistic.user.id)
+        assertEquals("client-id-0", optimistic.clientMessageId)
+        assertEquals(MessageSendStatus.Sending, state.sendStatusByClientMessageId["client-id-0"])
+        assertTrue(state.isSending)
+
+        sendGate.complete(Unit)
+    }
+
+    @Test
+    fun sendSuccessReplacesTheOptimisticBubbleInPlace() {
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        gateway.sentMessage =
+            testMessage("server-id", userId = "me", text = "Ahoy!", clientMessageId = "client-id-0")
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.send("Ahoy!")
+
+        val state = controller.state.value
+        // Replaced, not removed-and-re-appended: the list is the same length and the bubble kept
+        // its position instead of jumping when the server's createdAt took over.
+        assertEquals(listOf("m1", "server-id"), state.messages.map { it.id })
+        assertEquals(MessageSendStatus.Sent, state.sendStatusByClientMessageId["client-id-0"])
+        assertFalse(state.isSending)
+    }
+
+    @Test
+    fun wsEchoArrivingFirstReplacesTheOptimisticBubbleAndTheRestResponseAddsNoDuplicate() {
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        gateway.sentMessage =
+            testMessage("server-id", userId = "me", text = "Ahoy!", clientMessageId = "client-id-0")
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        val sendGate = CompletableDeferred<Unit>()
+        gateway.sendMessageGate = sendGate
+        controller.send("Ahoy!")
+
+        controller.onRealtimeMessage(
+            testMessage("server-id", userId = "me", text = "Ahoy!", clientMessageId = "client-id-0"),
+        )
+
+        // The echo *replaces* the placeholder rather than being discarded as a duplicate — the row
+        // has to pick up the server id, or it would stay unconfirmed until the watchdog fired.
+        assertEquals(listOf("m1", "server-id"), controller.state.value.messages.map { it.id })
+        assertEquals(
+            MessageSendStatus.Sent,
+            controller.state.value.sendStatusByClientMessageId["client-id-0"],
+        )
+
+        sendGate.complete(Unit)
+        assertEquals(listOf("m1", "server-id"), controller.state.value.messages.map { it.id })
+        assertFalse(controller.state.value.isSending)
+    }
+
+    @Test
+    fun sendFailureMarksTheBubbleFailedAndKeepsItInTheConversation() {
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        gateway.mutationError = ChatsError.Network(Exception("offline"))
+
+        controller.send("Ahoy!")
+
+        val state = controller.state.value
+        assertEquals(listOf("m1", "optimistic-client-id-0"), state.messages.map { it.id })
+        assertEquals(MessageSendStatus.Failed, state.sendStatusByClientMessageId["client-id-0"])
+        assertFalse(state.isSending)
+        assertTrue(events.any { it is ChatConversationEvent.OperationFailed })
+        // ...and the text comes back so the screen can restore the draft.
+        assertEquals(
+            listOf(ChatConversationEvent.SendFailed("client-id-0", "Ahoy!")),
+            events.filterIsInstance<ChatConversationEvent.SendFailed>(),
+        )
+    }
+
+    @Test
+    fun retrySendReusesTheSameClientMessageIdAndFlipsBackToSending() {
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        gateway.mutationError = ChatsError.Network(Exception("offline"))
+        controller.send("Ahoy!")
+        gateway.mutationError = null
+        val retryGate = CompletableDeferred<Unit>()
+        gateway.sendMessageGate = retryGate
+
+        controller.retrySend("client-id-0")
+
+        assertEquals(
+            MessageSendStatus.Sending,
+            controller.state.value.sendStatusByClientMessageId["client-id-0"],
+        )
+        // The *same* idempotency key goes back on the wire: the backend returns the message it
+        // already created for a replay instead of a second one.
+        assertEquals(listOf("client-id-0", "client-id-0"), gateway.sentClientMessageIds)
+
+        gateway.sentMessage =
+            testMessage("server-id", userId = "me", text = "Ahoy!", clientMessageId = "client-id-0")
+        retryGate.complete(Unit)
+
+        assertEquals(listOf("m1", "server-id"), controller.state.value.messages.map { it.id })
+        assertEquals(
+            MessageSendStatus.Sent,
+            controller.state.value.sendStatusByClientMessageId["client-id-0"],
+        )
+    }
+
+    @Test
+    fun retrySendIgnoresAnEntryThatIsNotFailed() {
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        controller.send("Ahoy!")
+
+        controller.retrySend("client-id-0")
+        controller.retrySend("never-sent")
+
+        assertEquals(listOf("client-id-0"), gateway.sentClientMessageIds)
+    }
+
+    @Test
+    fun sendConfirmWatchdogFlipsAnUnconfirmedEntryToFailed() {
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        // Zero timeout so the watchdog runs inline on the Unconfined scope instead of the test
+        // sitting out the real 12 seconds.
+        val controller = controller(sendConfirmTimeoutMillis = 0L)
+        controller.loadInitialIfNeeded()
+        // The request neither returns nor throws — the black-holed-connection case the watchdog is
+        // the only recovery from.
+        gateway.sendMessageGate = CompletableDeferred()
+
+        controller.send("Ahoy!")
+
+        val state = controller.state.value
+        assertEquals(listOf("m1", "optimistic-client-id-0"), state.messages.map { it.id })
+        assertEquals(MessageSendStatus.Failed, state.sendStatusByClientMessageId["client-id-0"])
+        assertFalse(state.isSending)
+    }
+
+    @Test
+    fun sendConfirmTimeoutMatchesWebAndIos() {
+        // web: SEND_CONFIRM_TIMEOUT_MS = 12000; iOS: sendConfirmationTimeout = .seconds(12).
+        assertEquals(12_000L, ChatConversationController.SEND_CONFIRM_TIMEOUT_MILLIS)
+    }
+
+    @Test
+    fun aSecondSendWhileTheFirstIsInFlightIsNotSwallowed() {
+        // The old isSending early-return dropped it silently; with a bubble per send, sending two
+        // messages in a row is ordinary use.
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        gateway.sendMessageGate = CompletableDeferred()
+
+        controller.send("First")
+        controller.send("Second")
+
+        assertEquals(listOf("First", "Second"), controller.state.value.messages.drop(1).map { it.text })
+        assertEquals(listOf("client-id-0", "client-id-1"), gateway.sentClientMessageIds)
+        assertTrue(controller.state.value.isSending)
+    }
+
+    @Test
+    fun sendWithoutAResolvableAuthorFallsBackToTheNonOptimisticBehaviour() {
+        // The current user is not among the participants, so a bubble could only be attributed to
+        // the wrong person — no bubble is the better failure mode.
+        gateway.chat = testChat("chat-1", participants = listOf(testUser("other")))
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        val sendGate = CompletableDeferred<Unit>()
+        gateway.sendMessageGate = sendGate
+
+        controller.send("Ahoy!")
+
+        assertEquals(listOf("m1"), controller.state.value.messages.map { it.id })
+        assertTrue(controller.state.value.isSending)
+
+        sendGate.complete(Unit)
+
+        assertEquals(listOf("m1", "sent"), controller.state.value.messages.map { it.id })
+    }
+
+    @Test
+    fun catchUpConfirmingASendReplacesTheOptimisticBubble() {
+        gateway.messagePages = listOf(
+            messagesPage(listOf(testMessage("m1", createdAt = "2026-06-12T10:01:00Z")), total = 1),
+            messagesPage(
+                listOf(
+                    testMessage(
+                        "server-id",
+                        userId = "me",
+                        text = "Ahoy!",
+                        createdAt = "2026-06-12T10:02:00Z",
+                        clientMessageId = "client-id-0",
+                    ),
+                    testMessage("m1", createdAt = "2026-06-12T10:01:00Z"),
+                ),
+                total = 2,
+            ),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        gateway.sendMessageGate = CompletableDeferred()
+        controller.send("Ahoy!")
+
+        controller.catchUp()
+
+        assertEquals(listOf("m1", "server-id"), controller.state.value.messages.map { it.id })
+        assertEquals(
+            MessageSendStatus.Sent,
+            controller.state.value.sendStatusByClientMessageId["client-id-0"],
+        )
+        assertFalse(controller.state.value.isSending)
+        // The unconfirmed bubble is not a usable anchor — its id exists nowhere on the server — so
+        // the loop anchors on "m1" and the first page already overlaps.
+        assertEquals(listOf(0, 0), gateway.listMessagesOffsets)
     }
 
     @Test

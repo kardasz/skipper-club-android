@@ -381,6 +381,8 @@
     <string name="conversation_typing_one">%1$s is typing…</string>
     <string name="conversation_typing_multiple">Several people are typing…</string>
     <string name="conversation_seen">Seen</string>
+    <string name="conversation_send_failed">Not sent</string>
+    <string name="conversation_send_retry">Retry</string>
     <string name="presence_online">Online</string>
     <string name="presence_last_seen">Last seen %1$s</string>
     <string name="new_chat_title">New message</string>

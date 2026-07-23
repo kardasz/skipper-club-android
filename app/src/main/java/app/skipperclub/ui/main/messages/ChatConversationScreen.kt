@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -44,6 +45,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -151,6 +153,12 @@ fun ChatConversationScreen(
                     notificationHostState.show(errorAuthMessage, InAppNotificationType.Error)
 
                 ChatConversationEvent.MessageSent -> Unit
+
+                // Put the draft back so the text is never lost. Only into an input the user has
+                // not started refilling — the failed bubble keeps its own copy and its retry,
+                // so clobbering a newer draft would trade one lost message for another.
+                is ChatConversationEvent.SendFailed ->
+                    if (inputText.isBlank()) inputText = event.text
             }
         }
     }
@@ -280,10 +288,13 @@ fun ChatConversationScreen(
                 }
             },
             onSend = {
-                controller.send(inputText)
-                inputText = ""
+                // The draft is cleared only once the controller has accepted the send — and put
+                // back by ChatConversationEvent.SendFailed if the send then fails, so a failure
+                // can no longer silently destroy what the user typed.
+                if (controller.send(inputText) != null) inputText = ""
                 stopTyping()
             },
+            onRetrySend = controller::retrySend,
             onLoadMore = controller::loadMore,
             onRetry = controller::retry,
             onClose = onClose,
@@ -303,6 +314,7 @@ internal fun ChatConversationScreenContent(
     nowMillis: Long,
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
+    onRetrySend: (String) -> Unit,
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
     onClose: () -> Unit,
@@ -372,6 +384,7 @@ internal fun ChatConversationScreenContent(
                         currentUserId = currentUserId,
                         nowMillis = nowMillis,
                         onLoadMore = onLoadMore,
+                        onRetrySend = onRetrySend,
                     )
                 }
             }
@@ -497,6 +510,8 @@ private sealed interface ConversationRow {
         val message: ChatMessage,
         val isOwn: Boolean,
         val showHeader: Boolean,
+        /** Delivery state of an own optimistic send; null for anything already on the server. */
+        val sendStatus: MessageSendStatus?,
         override val key: String,
     ) : ConversationRow
 }
@@ -505,6 +520,7 @@ private fun buildRows(
     messages: List<ChatMessage>,
     currentUserId: String?,
     isGroupChat: Boolean,
+    sendStatusByClientMessageId: Map<String, MessageSendStatus>,
 ): List<ConversationRow> = buildList {
     var previousDay: LocalDate? = null
     var previousSenderId: String? = null
@@ -521,7 +537,15 @@ private fun buildRows(
                 message = message,
                 isOwn = isOwn,
                 showHeader = isGroupChat && !isOwn && message.user.id != previousSenderId,
-                key = message.id,
+                sendStatus = if (isOwn) {
+                    message.clientMessageId?.let { sendStatusByClientMessageId[it] }
+                } else {
+                    null
+                },
+                // Keyed on the client id where there is one, so the row survives the optimistic id
+                // being swapped for the server id — a changing key re-animates the bubble as if it
+                // were a brand new message.
+                key = message.clientMessageId ?: message.id,
             ),
         )
         previousSenderId = message.user.id
@@ -534,11 +558,17 @@ private fun MessagesList(
     currentUserId: String?,
     nowMillis: Long,
     onLoadMore: () -> Unit,
+    onRetrySend: (String) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val isGroupChat = state.chat?.type != ChatType.OneToOne
-    val rows = remember(state.messages, currentUserId, isGroupChat) {
-        buildRows(state.messages, currentUserId, isGroupChat).asReversed()
+    val rows = remember(state.messages, currentUserId, isGroupChat, state.sendStatusByClientMessageId) {
+        buildRows(
+            messages = state.messages,
+            currentUserId = currentUserId,
+            isGroupChat = isGroupChat,
+            sendStatusByClientMessageId = state.sendStatusByClientMessageId,
+        ).asReversed()
     }
 
     val shouldLoadMore by remember(state.hasMore) {
@@ -582,7 +612,7 @@ private fun MessagesList(
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
 
-                is ConversationRow.MessageRow -> MessageBubble(row = row)
+                is ConversationRow.MessageRow -> MessageBubble(row = row, onRetrySend = onRetrySend)
             }
         }
         if (state.isLoadingMore) {
@@ -601,7 +631,7 @@ private fun MessagesList(
 }
 
 @Composable
-private fun MessageBubble(row: ConversationRow.MessageRow) {
+private fun MessageBubble(row: ConversationRow.MessageRow, onRetrySend: (String) -> Unit) {
     val message = row.message
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -628,6 +658,9 @@ private fun MessageBubble(row: ConversationRow.MessageRow) {
         Box(
             modifier = Modifier
                 .widthIn(max = 300.dp)
+                // Subdued until the server confirms it, so a bubble that is only on this device
+                // never reads as delivered.
+                .alpha(if (row.sendStatus == MessageSendStatus.Sending) 0.5f else 1f)
                 .background(
                     color = if (row.isOwn) {
                         MaterialTheme.colorScheme.primary
@@ -684,6 +717,46 @@ private fun MessageBubble(row: ConversationRow.MessageRow) {
                 }
             }
         }
+        if (row.sendStatus == MessageSendStatus.Failed) {
+            SendFailedAffordance(
+                clientMessageId = message.clientMessageId,
+                onRetrySend = onRetrySend,
+            )
+        }
+    }
+}
+
+/**
+ * "Not sent · Retry" under a failed own bubble. The bubble itself keeps the message, so retrying
+ * re-sends it under the same `clientMessageId` — the server dedupes on that key, which is what
+ * makes a retry safe even when the original request did reach it.
+ */
+@Composable
+private fun SendFailedAffordance(clientMessageId: String?, onRetrySend: (String) -> Unit) {
+    if (clientMessageId == null) return
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        modifier = Modifier
+            .padding(top = 2.dp)
+            .testTag("message_failed_$clientMessageId"),
+    ) {
+        Text(
+            text = stringResource(R.string.conversation_send_failed),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+        TextButton(
+            onClick = { onRetrySend(clientMessageId) },
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            modifier = Modifier.testTag("message_retry_$clientMessageId"),
+        ) {
+            Text(
+                text = stringResource(R.string.conversation_send_retry),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
     }
 }
 
@@ -712,12 +785,18 @@ private fun MessageInputBar(
         )
         IconButton(
             onClick = onSend,
-            enabled = inputText.isNotBlank() && !isSending,
+            // Only a blank input disables sending. Gating on [isSending] too would block exactly
+            // the burst that optimistic bubbles are meant to support: the previous message is
+            // already rendered as its own pending bubble, so there is nothing to wait for.
+            enabled = inputText.isNotBlank(),
             modifier = Modifier
                 .padding(start = 4.dp)
                 .testTag("conversation_send"),
         ) {
-            if (isSending) {
+            // ...which is also why the in-flight spinner only shows while there is nothing to
+            // send: a user composing the next message needs an actionable send button, not a
+            // spinner reporting on the previous one.
+            if (isSending && inputText.isBlank()) {
                 CircularProgressIndicator(modifier = Modifier.size(22.dp))
             } else {
                 Icon(
@@ -771,6 +850,7 @@ private fun ChatConversationPreview() {
             nowMillis = 1_775_000_000_000,
             onInputChange = {},
             onSend = {},
+            onRetrySend = {},
             onLoadMore = {},
             onRetry = {},
             onClose = {},
@@ -794,6 +874,7 @@ private fun ChatConversationPreviewDark() {
             nowMillis = 1_775_000_000_000,
             onInputChange = {},
             onSend = {},
+            onRetrySend = {},
             onLoadMore = {},
             onRetry = {},
             onClose = {},
@@ -801,20 +882,40 @@ private fun ChatConversationPreviewDark() {
     }
 }
 
+/** Own bubble that only exists on this device yet — what [ChatConversationController.send] inserts. */
+private fun previewOptimisticMessage(
+    clientMessageId: String,
+    text: String,
+    createdAt: String,
+): ChatMessage = previewMessage(
+    id = ChatConversationController.OPTIMISTIC_ID_PREFIX + clientMessageId,
+    text = text,
+    userIndex = 0,
+    createdAt = createdAt,
+).copy(read = false, clientMessageId = clientMessageId)
+
 @Preview(showBackground = true, widthDp = 360, heightDp = 740, locale = "pl")
 @Composable
 private fun ChatConversationPreviewPl() {
     SkipperClubTheme {
         ChatConversationScreenContent(
             state = previewConversationState.copy(
+                messages = previewConversationState.messages +
+                    previewOptimisticMessage("cid-failed", "Spóźnię się 15 minut", "2026-06-12T08:07:00Z") +
+                    previewOptimisticMessage("cid-sending", "Już jestem w drodze", "2026-06-12T08:08:00Z"),
                 isSending = true,
                 typingUserIds = setOf(previewChatUsers[1].id),
+                sendStatusByClientMessageId = mapOf(
+                    "cid-failed" to MessageSendStatus.Failed,
+                    "cid-sending" to MessageSendStatus.Sending,
+                ),
             ),
             currentUserId = "u1",
             inputText = "Do zobaczenia na przystani!",
             nowMillis = 1_775_000_000_000,
             onInputChange = {},
             onSend = {},
+            onRetrySend = {},
             onLoadMore = {},
             onRetry = {},
             onClose = {},
@@ -843,6 +944,7 @@ private fun ChatConversationPreviewOnline() {
             otherParticipantPresence = UserPresence(isOnline = true),
             onInputChange = {},
             onSend = {},
+            onRetrySend = {},
             onLoadMore = {},
             onRetry = {},
             onClose = {},

@@ -3,6 +3,7 @@ package app.skipperclub.ui.main.messages
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -229,6 +230,7 @@ class MessagesScreensTest {
                     nowMillis = NOW,
                     onInputChange = { input = it },
                     onSend = { sent += Unit },
+                    onRetrySend = {},
                     onLoadMore = {},
                     onRetry = {},
                     onClose = {},
@@ -260,6 +262,7 @@ class MessagesScreensTest {
                     nowMillis = NOW,
                     onInputChange = {},
                     onSend = { sendCount++ },
+                    onRetrySend = {},
                     onLoadMore = {},
                     onRetry = {},
                     onClose = {},
@@ -269,6 +272,78 @@ class MessagesScreensTest {
 
         compose.onNodeWithTag("conversation_send").assertIsEnabled().performClick()
         assertEquals(1, sendCount)
+    }
+
+    @Test
+    fun conversationKeepsTheDraftAndOffersRetryWhenASendFails() {
+        // What the screen shows after ChatConversationEvent.SendFailed put the draft back: the
+        // failed bubble is still in the conversation with a retry affordance, and the text the user
+        // typed is still in the input rather than silently destroyed.
+        val retried = mutableListOf<String>()
+
+        compose.setContent {
+            SkipperClubTheme {
+                ChatConversationScreenContent(
+                    state = ChatConversationUiState(
+                        chat = oneToOneChat,
+                        messages = listOf(
+                            message("m1", "Are we still on?", jan),
+                            optimisticMessage("cid-1", "Ahoy!"),
+                        ),
+                        hasLoadedOnce = true,
+                        sendStatusByClientMessageId = mapOf("cid-1" to MessageSendStatus.Failed),
+                    ),
+                    currentUserId = "me",
+                    inputText = "Ahoy!",
+                    nowMillis = NOW,
+                    onInputChange = {},
+                    onSend = {},
+                    onRetrySend = { retried += it },
+                    onLoadMore = {},
+                    onRetry = {},
+                    onClose = {},
+                )
+            }
+        }
+
+        compose.onNodeWithTag("message_failed_cid-1").assertExists()
+        compose.onNodeWithText(text(R.string.conversation_send_failed)).assertExists()
+        // The draft survived the failure and the send button is actionable again.
+        compose.onNodeWithTag("conversation_input").assertTextContains("Ahoy!")
+        compose.onNodeWithTag("conversation_send").assertIsEnabled()
+
+        compose.onNodeWithTag("message_retry_cid-1").performClick()
+        assertEquals(listOf("cid-1"), retried)
+    }
+
+    @Test
+    fun conversationDoesNotOfferRetryWhileASendIsStillPending() {
+        compose.setContent {
+            SkipperClubTheme {
+                ChatConversationScreenContent(
+                    state = ChatConversationUiState(
+                        chat = oneToOneChat,
+                        messages = listOf(optimisticMessage("cid-1", "Ahoy!")),
+                        isSending = true,
+                        hasLoadedOnce = true,
+                        sendStatusByClientMessageId = mapOf("cid-1" to MessageSendStatus.Sending),
+                    ),
+                    currentUserId = "me",
+                    inputText = "",
+                    nowMillis = NOW,
+                    onInputChange = {},
+                    onSend = {},
+                    onRetrySend = {},
+                    onLoadMore = {},
+                    onRetry = {},
+                    onClose = {},
+                )
+            }
+        }
+
+        // The bubble renders immediately — just subdued — with nothing to retry yet.
+        compose.onNodeWithText("Ahoy!").assertExists()
+        compose.onNodeWithTag("message_failed_cid-1").assertDoesNotExist()
     }
 
     @Test
@@ -287,6 +362,7 @@ class MessagesScreensTest {
                     nowMillis = NOW,
                     onInputChange = {},
                     onSend = {},
+                    onRetrySend = {},
                     onLoadMore = {},
                     onRetry = {},
                     onClose = {},
@@ -309,6 +385,7 @@ class MessagesScreensTest {
                     nowMillis = NOW,
                     onInputChange = {},
                     onSend = {},
+                    onRetrySend = {},
                     onLoadMore = {},
                     onRetry = {},
                     onClose = {},
@@ -337,6 +414,7 @@ class MessagesScreensTest {
                     nowMillis = NOW,
                     onInputChange = {},
                     onSend = {},
+                    onRetrySend = {},
                     onLoadMore = {},
                     onRetry = {},
                     onClose = {},
@@ -362,6 +440,7 @@ class MessagesScreensTest {
                     otherParticipantPresence = UserPresence(isOnline = true),
                     onInputChange = {},
                     onSend = {},
+                    onRetrySend = {},
                     onLoadMore = {},
                     onRetry = {},
                     onClose = {},
@@ -431,6 +510,18 @@ class MessagesScreensTest {
             user = user,
             createdAt = "2026-06-12T10:00:00Z",
             updatedAt = "2026-06-12T10:00:00Z",
+        )
+
+        /** An own bubble that only exists on this device — what an optimistic send inserts. */
+        fun optimisticMessage(clientMessageId: String, textValue: String) = ChatMessage(
+            id = ChatConversationController.OPTIMISTIC_ID_PREFIX + clientMessageId,
+            chatId = "c1",
+            text = textValue,
+            read = false,
+            user = me,
+            createdAt = "2026-06-12T10:01:00Z",
+            updatedAt = "2026-06-12T10:01:00Z",
+            clientMessageId = clientMessageId,
         )
 
         val oneToOneChat = Chat(

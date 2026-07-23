@@ -395,6 +395,8 @@
     <string name="conversation_typing_one">%1$s pisze…</string>
     <string name="conversation_typing_multiple">Kilka osób pisze…</string>
     <string name="conversation_seen">Wyświetlono</string>
+    <string name="conversation_send_failed">Nie wysłano</string>
+    <string name="conversation_send_retry">Ponów</string>
     <string name="presence_online">Dostępny</string>
     <string name="presence_last_seen">Ostatnio widziano %1$s</string>
     <string name="new_chat_title">Nowa wiadomość</string>

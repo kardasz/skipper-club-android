@@ -2,6 +2,7 @@ package app.skipperclub.ui.main.messages
 
 import app.skipperclub.data.Chat
 import app.skipperclub.data.ChatMessage
+import app.skipperclub.data.ChatUser
 import app.skipperclub.data.ChatsError
 import app.skipperclub.data.SortOrder
 import app.skipperclub.data.WebSocketChatRealtimeClient
@@ -32,12 +33,32 @@ data class ChatConversationUiState(
     val hasLoadedOnce: Boolean = false,
     /** User IDs currently typing in this chat, per `chat:typing`; cleared on inactivity timeout. */
     val typingUserIds: Set<String> = emptySet(),
+    /**
+     * Delivery state of own sends, keyed by the `clientMessageId` of the message they belong to.
+     * The bubble itself is a normal entry in [messages] — this map only decorates it, so a status
+     * for a message that is not (or no longer) rendered simply goes unused.
+     */
+    val sendStatusByClientMessageId: Map<String, MessageSendStatus> = emptyMap(),
 )
+
+/**
+ * Delivery state of an own message, cross-client parity with web's `MessageSendStatus`
+ * (`lib/messages/types.ts`) and iOS's `MessageStatus`. iOS additionally models `delivered`; the
+ * backend emits no distinct delivery event, so Android stays on these three.
+ */
+enum class MessageSendStatus { Sending, Sent, Failed }
 
 sealed interface ChatConversationEvent {
     data class OperationFailed(val error: Exception) : ChatConversationEvent
     data object SessionExpired : ChatConversationEvent
     data object MessageSent : ChatConversationEvent
+
+    /**
+     * A send was rejected by the server (or never reached it) — carries the text back so the
+     * screen can put the draft into the input again. Keeps [ChatConversationUiState] free of the
+     * input state, which stays owned by the screen.
+     */
+    data class SendFailed(val clientMessageId: String, val text: String) : ChatConversationEvent
 }
 
 /**
@@ -54,6 +75,14 @@ class ChatConversationController(
     private val accessToken: suspend () -> String?,
     private val chatId: String,
     private val currentUserId: String? = null,
+    /**
+     * Author of optimistic bubbles. Left null in production: the chat — and with it the
+     * participant this [currentUserId] refers to — is not loaded yet when the screen constructs
+     * the controller, so [optimisticMessage] resolves the author from
+     * [ChatConversationUiState.chat] at send time instead. Kept as a parameter so a caller that
+     * already holds the [ChatUser] (and tests) can pin it.
+     */
+    private val currentUser: ChatUser? = null,
     private val gateway: ChatsGateway = RealChatsGateway,
     private val pageSize: Int = HISTORY_PAGE_SIZE,
     /** Catch-up page size; injectable so tests do not have to build 50-message pages. */
@@ -62,6 +91,11 @@ class ChatConversationController(
     private val catchUpMaxPages: Int = CATCHUP_MAX_PAGES,
     /** Safety net for a lost `isTyping:false`: clears a user's typing state if nothing follows. */
     private val typingExpiryMillis: Long = TYPING_RECEIVE_EXPIRY_MS,
+    /**
+     * How long an optimistic bubble may stay unconfirmed before it is shown as failed; injectable
+     * so tests do not have to wait out [SEND_CONFIRM_TIMEOUT_MILLIS].
+     */
+    private val sendConfirmTimeoutMillis: Long = SEND_CONFIRM_TIMEOUT_MILLIS,
     /** How long arrivals are coalesced before one mark-read goes out; see [scheduleMarkRead]. */
     private val readReceiptDebounceMillis: Long = READ_RECEIPT_DEBOUNCE_MILLIS,
     /**
@@ -70,7 +104,11 @@ class ChatConversationController(
      * starve mark-read; see [scheduleMarkRead].
      */
     private val readReceiptMaxLatencyMillis: Long = READ_RECEIPT_MAX_LATENCY_MILLIS,
-    /** Monotonic-enough clock for the max-latency bound; injectable so tests are deterministic. */
+    /**
+     * Monotonic-enough clock for the max-latency bound and for the `createdAt` an optimistic
+     * bubble carries until the server's own timestamp replaces it; injectable so tests are
+     * deterministic.
+     */
     private val nowMillis: () -> Long = System::currentTimeMillis,
     /**
      * `message:read` over the socket for the newest visible message, mirroring what iOS/Web send
@@ -95,10 +133,13 @@ class ChatConversationController(
 
     private val typingExpiryJobs = mutableMapOf<String, Job>()
 
+    /** Per-`clientMessageId` send-confirmation watchdogs; see [armSendWatchdog]. */
+    private val sendWatchdogJobs = mutableMapOf<String, Job>()
+
     /**
      * How many history rows this controller has fetched through *paged* requests — the offset the
      * next [loadMore] must use. Deliberately not derived from [ChatConversationUiState.messages],
-     * which also grows from realtime arrivals, catch-up and (later) optimistic bubbles: the server
+     * which also grows from realtime arrivals, catch-up and optimistic bubbles: the server
      * pages `created_at DESC` over its own list, so every row that entered ours by another route
      * shifts that window by one and silently skips an older message. Duplicates are filtered by id,
      * gaps have no signal at all (task_shared_catchup_contract.md §3.1).
@@ -193,13 +234,8 @@ class ChatConversationController(
                 // Advance by what the server actually returned, before any deduplication: the offset
                 // counts rows on the server's list, not rows we chose to keep.
                 historyOffset += page.messages.size
-                _state.update { state ->
-                    state.copy(
-                        messages = mergeMessages(state.messages, page.messages),
-                        hasMore = page.hasMore,
-                        isLoadingMore = false,
-                    )
-                }
+                mergeFetched(page.messages)
+                _state.update { it.copy(hasMore = page.hasMore, isLoadingMore = false) }
             } catch (error: ChatsError) {
                 _state.update { it.copy(isLoadingMore = false) }
                 _events.tryEmit(ChatConversationEvent.OperationFailed(error))
@@ -207,58 +243,244 @@ class ChatConversationController(
         }
     }
 
-    fun send(text: String) {
+    /**
+     * Sends [text] optimistically: the bubble is appended to [ChatConversationUiState.messages]
+     * before the request goes out and converges onto the server's message once it is confirmed,
+     * so a slow link no longer looks like the message was never sent.
+     *
+     * Returns the `clientMessageId` the send was accepted under, or `null` when there was nothing
+     * to send. The screen clears its input on a non-null result and leaves the draft alone
+     * otherwise, so a rejected send never destroys what the user typed.
+     *
+     * Deliberately **not** gated on [ChatConversationUiState.isSending] any more: with a bubble
+     * rendering per send, a second message typed while the first is still in flight is legitimate,
+     * and the old early return swallowed it without a trace. `isSending` survives only as the
+     * derived "at least one send in flight" flag that drives the input bar.
+     */
+    fun send(text: String): String? {
         val trimmed = text.trim()
-        if (trimmed.isEmpty() || _state.value.isSending) return
+        if (trimmed.isEmpty()) return null
         // One key per logical message, minted before the request goes out: if OkHttp (or any proxy)
         // retransmits the POST after a timeout, the server dedupes on it and returns the message it
-        // already created instead of a duplicate.
+        // already created instead of a duplicate. It doubles as the optimistic bubble's identity —
+        // isDuplicate already reconciles on it, so the bubble rides that existing dedup path.
         val clientMessageId = clientMessageIdProvider()
-        _state.update { it.copy(isSending = true) }
+        _state.update { state ->
+            val optimistic = optimisticMessage(state, clientMessageId, trimmed)
+            state
+                .copy(
+                    messages = if (optimistic == null) {
+                        state.messages
+                    } else {
+                        state.messages + optimistic
+                    },
+                )
+                .withSendStatus(clientMessageId, MessageSendStatus.Sending)
+        }
+        armSendWatchdog(clientMessageId)
+        dispatchSend(clientMessageId, trimmed)
+        return clientMessageId
+    }
+
+    /**
+     * Re-issues a send that ended up [MessageSendStatus.Failed], reusing the **same**
+     * `clientMessageId`: the backend dedupes on it (docs/api/messages/websocket.md, "Transport
+     * parity"), so a retry of a request that did reach the server returns the message it already
+     * created and emits no second event. Ignores anything that is not currently failed.
+     */
+    fun retrySend(clientMessageId: String) {
+        val current = _state.value
+        if (current.sendStatusByClientMessageId[clientMessageId] != MessageSendStatus.Failed) return
+        val text = current.messages.firstOrNull { it.clientMessageId == clientMessageId }?.text ?: return
+        _state.update { it.withSendStatus(clientMessageId, MessageSendStatus.Sending) }
+        armSendWatchdog(clientMessageId)
+        dispatchSend(clientMessageId, text)
+    }
+
+    /**
+     * The bubble rendered between the tap and the server's `201`. Built only when the author can be
+     * resolved — [currentUserId] alone is not enough to render an avatar and a name, and a bubble
+     * attributed to the wrong participant is worse than no bubble at all, so an unresolvable author
+     * falls back to the previous non-optimistic behaviour.
+     */
+    private fun optimisticMessage(
+        state: ChatConversationUiState,
+        clientMessageId: String,
+        text: String,
+    ): ChatMessage? {
+        val author = currentUser
+            ?: state.chat?.participants?.firstOrNull { it.id == currentUserId }
+            ?: return null
+        val createdAt = Instant.ofEpochMilli(nowMillis()).toString()
+        return ChatMessage(
+            id = OPTIMISTIC_ID_PREFIX + clientMessageId,
+            chatId = chatId,
+            text = text,
+            read = false,
+            user = author,
+            createdAt = createdAt,
+            updatedAt = createdAt,
+            clientMessageId = clientMessageId,
+        )
+    }
+
+    /** The POST itself, shared by [send] and [retrySend] so a retry is byte-for-byte the same call. */
+    private fun dispatchSend(clientMessageId: String, text: String) {
         scope.launch {
             val token = requireToken() ?: run {
-                _state.update { it.copy(isSending = false) }
+                failSend(clientMessageId, text)
                 return@launch
             }
             try {
-                val message = gateway.sendMessage(token, chatId, trimmed, clientMessageId)
-                _state.update { state ->
-                    state.copy(
-                        // The WS echo of this very send can land before the REST response does;
-                        // isDuplicate matches it by server id or by the echoed clientMessageId.
-                        messages = if (state.messages.any { isDuplicate(it, message) }) {
-                            state.messages
-                        } else {
-                            state.messages + message
-                        },
-                        isSending = false,
-                    )
-                }
+                val message = gateway.sendMessage(token, chatId, text, clientMessageId)
+                reconcileSent(clientMessageId, message)
                 _events.tryEmit(ChatConversationEvent.MessageSent)
             } catch (error: ChatsError) {
-                _state.update { it.copy(isSending = false) }
+                failSend(clientMessageId, text)
                 _events.tryEmit(ChatConversationEvent.OperationFailed(error))
             }
         }
     }
 
     /**
-     * Applies a message pushed over the socket for this chat: appends it when
-     * unseen and immediately marks incoming messages as read (the user is
-     * looking at the conversation).
+     * Converges the optimistic bubble onto the server's message. Replaced **in place** rather than
+     * removed and re-appended: the two `createdAt` values differ by the round trip, and re-sorting
+     * would make the bubble visibly jump. The next full load re-sorts anyway.
+     */
+    private fun reconcileSent(clientMessageId: String, message: ChatMessage) {
+        cancelSendWatchdog(clientMessageId)
+        _state.update { state ->
+            // The placeholder first: the server row for this same send may already sit in the list
+            // (WS echo, catch-up page) carrying the very same key, and that row must not be the one
+            // we rewrite or drop.
+            val pendingIndex = state.messages
+                .indexOfFirst { it.isOptimistic() && it.clientMessageId == clientMessageId }
+                .takeIf { it >= 0 }
+                ?: state.messages.indexOfFirst { it.clientMessageId == clientMessageId }
+            val heldElsewhere = state.messages
+                .filterIndexed { index, _ -> index != pendingIndex }
+                .any { isDuplicate(it, message) }
+            val messages = when {
+                // Already delivered by another route: drop the placeholder instead of leaving the
+                // same message in the list twice.
+                pendingIndex >= 0 && heldElsewhere && state.messages[pendingIndex].isOptimistic() ->
+                    state.messages.filterIndexed { index, _ -> index != pendingIndex }
+
+                pendingIndex >= 0 && !heldElsewhere ->
+                    state.messages.toMutableList().also { it[pendingIndex] = message }
+
+                pendingIndex >= 0 || heldElsewhere -> state.messages
+                else -> state.messages + message
+            }
+            state.copy(messages = messages).withSendStatus(clientMessageId, MessageSendStatus.Sent)
+        }
+    }
+
+    /**
+     * Marks a send as failed, keeping its bubble in the conversation so the user can retry from it,
+     * and hands the text back for the draft. Only a send still in flight can fail: a `Sent` entry
+     * whose REST call errors out afterwards was already confirmed over the socket.
+     */
+    private fun failSend(clientMessageId: String, text: String) {
+        cancelSendWatchdog(clientMessageId)
+        var failed = false
+        _state.update { state ->
+            if (state.sendStatusByClientMessageId[clientMessageId] != MessageSendStatus.Sending) {
+                state
+            } else {
+                failed = true
+                state.withSendStatus(clientMessageId, MessageSendStatus.Failed)
+            }
+        }
+        if (failed) _events.tryEmit(ChatConversationEvent.SendFailed(clientMessageId, text))
+    }
+
+    /**
+     * Flips a still-unconfirmed send to [MessageSendStatus.Failed] after
+     * [sendConfirmTimeoutMillis]. Without it a request that neither succeeds nor throws — a socket
+     * black-holed by a captive portal, a proxy holding the connection open — leaves the bubble
+     * spinning forever with no way back.
+     *
+     * Deliberately does not emit [ChatConversationEvent.SendFailed]: 12 seconds on, the input holds
+     * whatever the user has typed since, and the recovery affordance is the bubble's own retry.
+     */
+    private fun armSendWatchdog(clientMessageId: String) {
+        sendWatchdogJobs.remove(clientMessageId)?.cancel()
+        sendWatchdogJobs[clientMessageId] = scope.launch {
+            delay(sendConfirmTimeoutMillis)
+            sendWatchdogJobs.remove(clientMessageId)
+            _state.update { state ->
+                if (state.sendStatusByClientMessageId[clientMessageId] != MessageSendStatus.Sending) {
+                    state
+                } else {
+                    state.withSendStatus(clientMessageId, MessageSendStatus.Failed)
+                }
+            }
+        }
+    }
+
+    private fun cancelSendWatchdog(clientMessageId: String) {
+        sendWatchdogJobs.remove(clientMessageId)?.cancel()
+    }
+
+    /**
+     * Records [status] for [clientMessageId] and re-derives [ChatConversationUiState.isSending]
+     * from the map, which is what keeps the flag honest now that concurrent sends are allowed: it
+     * means "at least one send in flight", never "a send is in flight, so refuse the next one".
+     */
+    private fun ChatConversationUiState.withSendStatus(
+        clientMessageId: String,
+        status: MessageSendStatus,
+    ): ChatConversationUiState {
+        val statuses = sendStatusByClientMessageId + (clientMessageId to status)
+        return copy(
+            sendStatusByClientMessageId = statuses,
+            isSending = statuses.containsValue(MessageSendStatus.Sending),
+        )
+    }
+
+    /**
+     * Applies a message pushed over the socket for this chat: appends it when unseen and
+     * immediately marks incoming messages as read (the user is looking at the conversation).
+     *
+     * When the arrival is the echo of one of our own optimistic sends, the placeholder is
+     * **replaced** by it rather than the echo being discarded — discarding leaves the
+     * `optimistic-…` id in the list, so the row never picks up the server id and the send stays
+     * unconfirmed until the watchdog fires.
      */
     fun onRealtimeMessage(message: ChatMessage) {
         if (message.chatId != chatId) return
         if (!_state.value.hasLoadedOnce) return
         var appended = false
+        var confirmedClientMessageId: String? = null
         _state.update { state ->
-            if (state.messages.any { isDuplicate(it, message) }) {
-                state
-            } else {
-                appended = true
-                state.copy(messages = state.messages + message)
+            val existingIndex = state.messages.indexOfFirst { isDuplicate(it, message) }
+            val existing = state.messages.getOrNull(existingIndex)
+            when {
+                existing == null -> {
+                    appended = true
+                    confirmedClientMessageId = null
+                    state.copy(messages = state.messages + message)
+                }
+
+                existing.isOptimistic() -> {
+                    appended = false
+                    confirmedClientMessageId = existing.clientMessageId
+                    val messages = state.messages.toMutableList().also { it[existingIndex] = message }
+                    val replaced = state.copy(messages = messages)
+                    existing.clientMessageId
+                        ?.let { replaced.withSendStatus(it, MessageSendStatus.Sent) }
+                        ?: replaced
+                }
+
+                else -> {
+                    appended = false
+                    confirmedClientMessageId = null
+                    state
+                }
             }
         }
+        confirmedClientMessageId?.let { cancelSendWatchdog(it) }
         if (appended && message.user.id != currentUserId) {
             scheduleMarkRead()
         }
@@ -362,9 +584,10 @@ class ChatConversationController(
 
     private suspend fun runCatchUp(token: String) {
         // Anchor on the newest message we hold; the loop stops as soon as a page reaches back to it.
-        // (Once optimistic bubbles land, unconfirmed entries must be excluded here — they carry no
-        // server id for a page to overlap on.)
-        val anchorId = _state.value.messages.lastOrNull()?.id ?: return reloadFromScratch(token)
+        // Unconfirmed optimistic bubbles are skipped: their `optimistic-…` id exists only here, so
+        // no page could ever overlap on it and the loop would page back to the cap every time.
+        val anchorId = _state.value.messages.lastOrNull { !it.isOptimistic() }?.id
+            ?: return reloadFromScratch(token)
         var gainedMessages = false
         repeat(catchUpMaxPages) { pageIndex ->
             val page = gateway.listMessages(
@@ -406,37 +629,75 @@ class ChatConversationController(
         val known = _state.value.messages
         val gainedMessages = page.messages.any { candidate -> known.none { isDuplicate(it, candidate) } }
         historyOffset = page.messages.size
-        _state.update {
-            it.copy(messages = page.messages.sortedByCreationOrder(), hasMore = page.hasMore)
+        val confirmed = mutableSetOf<String>()
+        _state.update { state ->
+            // Optimistic bubbles exist only here, so a wholesale swap would silently drop a send
+            // that is still in flight. Carry over the ones this page does not already confirm.
+            val (reconciled, confirmedKeys) = reconcileOptimistic(state.messages, page.messages)
+            confirmed.clear()
+            confirmed += confirmedKeys
+            val pending = reconciled.filter { it.isOptimistic() }
+            confirmedKeys
+                .fold(state.copy(messages = (page.messages + pending).sortedByCreationOrder())) { acc, key ->
+                    acc.withSendStatus(key, MessageSendStatus.Sent)
+                }
+                .copy(hasMore = page.hasMore)
         }
+        confirmed.forEach { cancelSendWatchdog(it) }
         if (gainedMessages) scheduleMarkRead()
     }
 
-    /** Merges a fetched batch into the conversation; returns whether anything new landed. */
+    /**
+     * Merges a fetched batch into the conversation; returns whether anything new landed.
+     *
+     * Entries already held win over incoming duplicates — except optimistic ones, which the
+     * incoming server row *replaces*: a send confirmed by a catch-up page must pick up its server
+     * id here, or the placeholder would linger until the watchdog declared it failed.
+     */
     private fun mergeFetched(incoming: List<ChatMessage>): Boolean {
         var gainedMessages = false
+        val confirmed = mutableSetOf<String>()
         _state.update { state ->
-            val merged = mergeMessages(state.messages, incoming)
-            gainedMessages = merged.size > state.messages.size
-            if (merged == state.messages) state else state.copy(messages = merged)
+            val (reconciled, confirmedKeys) = reconcileOptimistic(state.messages, incoming)
+            val fresh = incoming.filterNot { candidate -> reconciled.any { isDuplicate(it, candidate) } }
+            gainedMessages = fresh.isNotEmpty()
+            confirmed.clear()
+            confirmed += confirmedKeys
+            if (fresh.isEmpty() && confirmedKeys.isEmpty()) {
+                state
+            } else {
+                confirmedKeys
+                    .fold(state.copy(messages = (reconciled + fresh).sortedByCreationOrder())) { acc, key ->
+                        acc.withSendStatus(key, MessageSendStatus.Sent)
+                    }
+            }
         }
+        confirmed.forEach { cancelSendWatchdog(it) }
         return gainedMessages
     }
 
     /**
-     * Union of what we hold and a fetched batch, in creation order. Entries already held win over
-     * incoming duplicates, and [isDuplicate] matches the echoed `clientMessageId` as well as the
-     * server id — so a message delivered by catch-up reconciles an in-flight send instead of
-     * appearing twice next to it.
+     * Swaps every optimistic entry of [existing] for the [incoming] server row that carries its
+     * `clientMessageId`, and reports the keys that were confirmed so their watchdogs can be
+     * cancelled and their status flipped to [MessageSendStatus.Sent].
      */
-    private fun mergeMessages(
+    private fun reconcileOptimistic(
         existing: List<ChatMessage>,
         incoming: List<ChatMessage>,
-    ): List<ChatMessage> {
-        val fresh = incoming.filterNot { candidate -> existing.any { isDuplicate(it, candidate) } }
-        if (fresh.isEmpty()) return existing
-        return (existing + fresh).sortedByCreationOrder()
+    ): Pair<List<ChatMessage>, Set<String>> {
+        if (existing.none { it.isOptimistic() }) return existing to emptySet()
+        val confirmed = mutableSetOf<String>()
+        val reconciled = existing.map { held ->
+            if (!held.isOptimistic()) return@map held
+            val server = incoming.firstOrNull { isDuplicate(held, it) } ?: return@map held
+            held.clientMessageId?.let { confirmed += it }
+            server
+        }
+        return reconciled to confirmed
     }
+
+    /** A bubble inserted by [send] that the server has not confirmed yet. */
+    private fun ChatMessage.isOptimistic(): Boolean = id.startsWith(OPTIMISTIC_ID_PREFIX)
 
     private fun markRead(token: String, hadUnread: Boolean) {
         if (!hadUnread) return
@@ -544,6 +805,21 @@ class ChatConversationController(
          * still-typing peer's keepalive always lands before this expiry fires.
          */
         const val TYPING_RECEIVE_EXPIRY_MS = 5_000L
+
+        /**
+         * How long an optimistic bubble may stay unconfirmed before it is shown as failed. Pinned
+         * across the three clients — web's `SEND_CONFIRM_TIMEOUT_MS = 12000`
+         * (`lib/messages/constants.ts`) and iOS's `sendConfirmationTimeout = .seconds(12)` — so a
+         * flaky link reports the same way everywhere.
+         */
+        const val SEND_CONFIRM_TIMEOUT_MILLIS = 12_000L
+
+        /**
+         * Id prefix of a bubble that exists only on this device. The suffix is the send's
+         * `clientMessageId`, which is what actually reconciles it with the server's message; the
+         * prefix just makes an unconfirmed row recognisable wherever a server id is expected.
+         */
+        const val OPTIMISTIC_ID_PREFIX = "optimistic-"
 
         /**
          * How long arrivals are coalesced before one mark-read goes out. Short enough that the
