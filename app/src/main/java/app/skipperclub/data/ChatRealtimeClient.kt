@@ -63,6 +63,16 @@ sealed interface ChatRealtimeEvent {
     data class ServerError(val type: String, val message: String, val timestamp: String) :
         ChatRealtimeEvent
 
+    /**
+     * A `chat:join` was acknowledged with `chat:joined` — the room is live on this connection.
+     *
+     * Distinct from [Connected] on purpose: [Connected] only means the socket is up, and the join
+     * replay runs *after* it, so a message created between a REST snapshot taken on [Connected] and
+     * the server processing our `chat:join` reaches neither path. Anything that must not miss a
+     * message (the conversation's catch-up) keys off this event instead.
+     */
+    data class ChatJoined(val chatId: String) : ChatRealtimeEvent
+
     data object Connected : ChatRealtimeEvent
     data object Disconnected : ChatRealtimeEvent
 }
@@ -485,8 +495,9 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
      * The buffer is sized well past any plausible burst, and overflow drops the *oldest* event: a
      * dropped frame is unavoidable at that point, and losing the stalest one keeps the live tail
      * of the conversation intact rather than discarding exactly the newest message. Anything lost
-     * is still recoverable — [ChatRealtimeEvent.Connected] triggers a REST catch-up, and the chat
-     * list refetches on open.
+     * is still recoverable — [ChatRealtimeEvent.ChatJoined] triggers a REST catch-up for the open
+     * conversation, [ChatRealtimeEvent.Connected] refreshes the chat list, and the list refetches on
+     * open.
      */
     private val _events = MutableSharedFlow<ChatRealtimeEvent>(
         extraBufferCapacity = EVENT_BUFFER_CAPACITY,
@@ -766,7 +777,11 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         webSocket?.takeIf { _isConnected.value }?.send(encodeRealtimeFrame(event, data))
     }
 
-    private fun handleFrame(text: String) {
+    /** Whether a `chat:join` for [chatId] is still awaiting its ack. Test seam over the tracker. */
+    internal fun isJoinPending(chatId: String): Boolean = joinAckTracker.isPending(chatId)
+
+    /** Internal rather than private so tests can drive the dispatch without a live transport. */
+    internal fun handleFrame(text: String) {
         val frame = decodeRealtimeFrame(text) ?: run {
             debugLog("dropped malformed frame")
             return
@@ -793,8 +808,9 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
     }
 
     /**
-     * A `chat:joined` ack: stop the join-retry timer for its chat. A malformed payload is left
-     * pending so the timeout path retries it, and never crashes the dispatch loop.
+     * A `chat:joined` ack: stop the join-retry timer for its chat and publish the room as live. A
+     * malformed payload is left pending so the timeout path retries it, and never crashes the
+     * dispatch loop — and emits nothing, since an unidentified room is not one we can report joined.
      */
     private fun confirmJoin(data: JsonElement) {
         val chatId = parseChatJoinedChatId(data.toString()) ?: run {
@@ -802,6 +818,7 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
             return
         }
         joinAckTracker.resolve(chatId)
+        _events.tryEmit(ChatRealtimeEvent.ChatJoined(chatId))
         debugLog("chat:join acknowledged for $chatId")
     }
 

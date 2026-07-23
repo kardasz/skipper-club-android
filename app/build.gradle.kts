@@ -105,6 +105,14 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions {
+        unitTests {
+            // android.util.Log & friends return 0/null in JVM tests instead of throwing "not
+            // mocked", so realtime frame dispatch (which debug-logs on every branch) can be
+            // exercised end-to-end from unit tests.
+            isReturnDefaultValues = true
+        }
+    }
     lint {
         disable += setOf(
             "AndroidGradlePluginVersion",

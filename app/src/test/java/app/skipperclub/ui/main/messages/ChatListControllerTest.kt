@@ -129,6 +129,47 @@ class ChatListControllerTest {
     }
 
     @Test
+    fun loadMoreOffsetIgnoresRealtimePrepends() {
+        // Same rule as the conversation's history offset: the offset counts rows fetched by paged
+        // requests, never the size of the rendered list. A bumped or freshly created chat sitting at
+        // the top would otherwise shift the server's window and skip exactly one older chat.
+        gateway.chatPages = listOf(
+            chatsPage(listOf(testChat("c1"), testChat("c2")), total = 9),
+            chatsPage(listOf(testChat("c3"), testChat("c4")), total = 9, offset = 2),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.onRealtimeMessage(testMessage("m1", chatId = "c2"), isChatOpen = false)
+        controller.onChatCreated(testChat("c-new"))
+        controller.loadMore()
+
+        assertEquals(2, gateway.listChatsQueries.last().offset)
+        assertEquals(listOf("c-new", "c2", "c1", "c3", "c4"), controller.state.value.chats.map { it.id })
+    }
+
+    @Test
+    fun reloadResetsTheLoadMoreOffset() {
+        gateway.chatPages = listOf(
+            chatsPage(listOf(testChat("c1"), testChat("c2")), total = 9),
+            chatsPage(listOf(testChat("c3"), testChat("c4")), total = 9, offset = 2),
+            chatsPage(listOf(testChat("c1"), testChat("c2")), total = 9),
+            chatsPage(listOf(testChat("c3"), testChat("c4")), total = 9, offset = 2),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        controller.loadMore()
+        assertEquals(2, gateway.listChatsQueries.last().offset)
+
+        // The reload replaces `chats` wholesale, so the cursor restarts from the fresh page.
+        controller.refresh()
+        assertEquals(0, gateway.listChatsQueries.last().offset)
+        controller.loadMore()
+
+        assertEquals(2, gateway.listChatsQueries.last().offset)
+    }
+
+    @Test
     fun loadMoreIsNoopWithoutMorePages() {
         gateway.chatPages = listOf(chatsPage(listOf(testChat("c1"))))
         val controller = controller()

@@ -13,6 +13,7 @@ import app.skipperclub.data.SortOrder
 import app.skipperclub.data.UserSearchQuery
 import app.skipperclub.data.UsersPage
 import java.util.Collections
+import kotlinx.coroutines.CompletableDeferred
 
 internal fun testUser(id: String, name: String = "User $id") = ChatUser(id = id, name = name)
 
@@ -66,6 +67,15 @@ internal class FakeChatsGateway : ChatsGateway {
     var messagePages: List<MessagesPage> = listOf(messagesPage(emptyList()))
     var listMessagesError: ChatsError? = null
     val listMessagesOffsets = mutableListOf<Int>()
+    val listMessagesLimits = mutableListOf<Int>()
+
+    /**
+     * When set, `listMessages`/`sendMessage` park on it after recording the call, so a test can hold
+     * a request in flight and observe what the controller does meanwhile. Everything else stays
+     * non-suspending, which is what keeps the Unconfined-scope tests synchronous.
+     */
+    var listMessagesGate: CompletableDeferred<Unit>? = null
+    var sendMessageGate: CompletableDeferred<Unit>? = null
 
     var chat: Chat = testChat("chat-1")
     var getChatError: ChatsError? = null
@@ -125,6 +135,8 @@ internal class FakeChatsGateway : ChatsGateway {
     ): MessagesPage {
         calls += "listMessages:$chatId:$offset:${order.wireValue}"
         listMessagesOffsets += offset
+        listMessagesLimits += limit
+        listMessagesGate?.await()
         listMessagesError?.let { throw it }
         val page = messagePages[minOf(listMessagesCallCount, messagePages.lastIndex)]
         listMessagesCallCount++
@@ -139,6 +151,7 @@ internal class FakeChatsGateway : ChatsGateway {
     ): ChatMessage {
         calls += "sendMessage:$chatId:$text"
         sentClientMessageIds += clientMessageId
+        sendMessageGate?.await()
         mutationError?.let { throw it }
         return sentMessage ?: testMessage("sent", chatId = chatId, text = text, userId = "me")
     }

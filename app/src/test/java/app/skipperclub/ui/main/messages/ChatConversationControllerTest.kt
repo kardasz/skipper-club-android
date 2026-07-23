@@ -1,6 +1,7 @@
 package app.skipperclub.ui.main.messages
 
 import app.skipperclub.data.ChatsError
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -24,6 +25,10 @@ class ChatConversationControllerTest {
 
     private fun controller(
         token: String? = "token",
+        // Scaled-down mirrors of the shared contract's 30 / 50 / 5 so pages stay readable here.
+        pageSize: Int = 2,
+        catchUpLimit: Int = 2,
+        catchUpMaxPages: Int = 3,
         typingExpiryMillis: Long = ChatConversationController.TYPING_RECEIVE_EXPIRY_MS,
         // No debounce by default: `delay(0)` never suspends, so on Dispatchers.Unconfined the
         // mark-read runs inline and these tests stay synchronous. The coalescing behaviour itself
@@ -38,7 +43,9 @@ class ChatConversationControllerTest {
             chatId = "chat-1",
             currentUserId = "me",
             gateway = gateway,
-            pageSize = 2,
+            pageSize = pageSize,
+            catchUpLimit = catchUpLimit,
+            catchUpMaxPages = catchUpMaxPages,
             typingExpiryMillis = typingExpiryMillis,
             readReceiptDebounceMillis = readReceiptDebounceMillis,
             readReceiptMaxLatencyMillis = readReceiptMaxLatencyMillis,
@@ -199,7 +206,7 @@ class ChatConversationControllerTest {
     }
 
     @Test
-    fun refreshNewMessagesAppendsOnlyUnseenAndMarksRead() {
+    fun catchUpAppendsOnlyUnseenAndMarksRead() {
         gateway.messagePages = listOf(
             messagesPage(listOf(testMessage("m1")), total = 1),
             messagesPage(
@@ -213,31 +220,366 @@ class ChatConversationControllerTest {
         val controller = controller()
         controller.loadInitialIfNeeded()
 
-        controller.refreshNewMessages()
+        controller.catchUp()
 
         assertEquals(listOf("m1", "m2"), controller.state.value.messages.map { it.id })
         assertTrue(gateway.calls.contains("markChatsRead:chat-1"))
     }
 
     @Test
-    fun refreshNewMessagesWithoutNewsDoesNotMarkRead() {
+    fun catchUpWithoutNewsDoesNotMarkRead() {
         gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
         val controller = controller()
         controller.loadInitialIfNeeded()
 
-        controller.refreshNewMessages()
+        controller.catchUp()
 
         assertEquals(listOf("m1"), controller.state.value.messages.map { it.id })
         assertFalse(gateway.calls.any { it.startsWith("markChatsRead") })
     }
 
     @Test
-    fun refreshNewMessagesBeforeInitialLoadIsNoop() {
+    fun catchUpBeforeInitialLoadIsNoop() {
         val controller = controller()
 
-        controller.refreshNewMessages()
+        controller.catchUp()
 
         assertTrue(gateway.calls.isEmpty())
+    }
+
+    @Test
+    fun catchUpPagesBackUntilItOverlapsTheNewestKnownMessage() {
+        // The outage left a gap of five messages — deeper than one page. A single-page catch-up
+        // (the old behaviour) would append m5/m6 and leave m2..m4 unreachable forever, because
+        // loadMore pages backwards from the *oldest* row.
+        gateway.messagePages = listOf(
+            messagesPage(listOf(testMessage("m1", createdAt = "2026-06-12T10:01:00Z")), total = 1),
+            messagesPage(
+                listOf(
+                    testMessage("m6", createdAt = "2026-06-12T10:06:00Z"),
+                    testMessage("m5", createdAt = "2026-06-12T10:05:00Z"),
+                ),
+                total = 6,
+            ),
+            messagesPage(
+                listOf(
+                    testMessage("m4", createdAt = "2026-06-12T10:04:00Z"),
+                    testMessage("m3", createdAt = "2026-06-12T10:03:00Z"),
+                ),
+                total = 6,
+                offset = 2,
+            ),
+            messagesPage(
+                listOf(
+                    testMessage("m2", createdAt = "2026-06-12T10:02:00Z"),
+                    testMessage("m1", createdAt = "2026-06-12T10:01:00Z"),
+                ),
+                total = 6,
+                offset = 4,
+            ),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.catchUp()
+
+        val messages = controller.state.value.messages
+        assertEquals(listOf("m1", "m2", "m3", "m4", "m5", "m6"), messages.map { it.id })
+        assertEquals(messages.size, messages.distinctBy { it.id }.size)
+        // Initial load, then three catch-up pages walking back to the overlap.
+        assertEquals(listOf(0, 0, 2, 4), gateway.listMessagesOffsets)
+    }
+
+    @Test
+    fun catchUpStopsOnTheFirstOverlappingPage() {
+        gateway.messagePages = listOf(
+            messagesPage(
+                listOf(
+                    testMessage("m2", createdAt = "2026-06-12T10:02:00Z"),
+                    testMessage("m1", createdAt = "2026-06-12T10:01:00Z"),
+                ),
+                total = 2,
+            ),
+            messagesPage(
+                listOf(
+                    testMessage("m3", createdAt = "2026-06-12T10:03:00Z"),
+                    testMessage("m2", createdAt = "2026-06-12T10:02:00Z"),
+                ),
+                total = 3,
+            ),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.catchUp()
+
+        assertEquals(listOf("m1", "m2", "m3"), controller.state.value.messages.map { it.id })
+        // One page only: the batch reached back to "m2", so the gap is closed.
+        assertEquals(2, gateway.calls.count { it.startsWith("listMessages") })
+    }
+
+    @Test
+    fun catchUpUsesTheContractPageSizeNotTheHistoryPageSize() {
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1")), total = 1))
+        val controller = controller(pageSize = 30, catchUpLimit = 50)
+        controller.loadInitialIfNeeded()
+
+        controller.catchUp()
+
+        assertEquals(listOf(30, 50), gateway.listMessagesLimits)
+    }
+
+    @Test
+    fun catchUpDeeperThanThePageCapReloadsInsteadOfMergingPartially() {
+        // Nothing overlaps within catchUpMaxPages, so the merged window would be an island floating
+        // above the local history. The contract calls for a visible full reload instead.
+        val farPage = { first: String, second: String ->
+            messagesPage(
+                listOf(testMessage(first, createdAt = "2026-06-12T11:00:00Z"), testMessage(second)),
+                total = 99,
+            )
+        }
+        gateway.messagePages = listOf(
+            messagesPage(listOf(testMessage("m1", createdAt = "2026-06-12T10:01:00Z")), total = 1),
+            farPage("m9", "m8"),
+            farPage("m7", "m6"),
+            farPage("m5", "m4"),
+            messagesPage(
+                listOf(
+                    testMessage("m9", createdAt = "2026-06-12T10:09:00Z"),
+                    testMessage("m8", createdAt = "2026-06-12T10:08:00Z"),
+                ),
+                total = 9,
+            ),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.catchUp()
+
+        // Only the fresh page survives — no partial merge, no hole.
+        assertEquals(listOf("m8", "m9"), controller.state.value.messages.map { it.id })
+        assertTrue(controller.state.value.hasMore)
+        assertEquals(listOf(0, 0, 2, 4, 0), gateway.listMessagesOffsets)
+    }
+
+    @Test
+    fun catchUpWithNothingLocalToAnchorOnReloadsFromPageZero() {
+        gateway.messagePages = listOf(
+            messagesPage(emptyList(), total = 0),
+            messagesPage(listOf(testMessage("m1")), total = 1),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.catchUp()
+
+        assertEquals(listOf("m1"), controller.state.value.messages.map { it.id })
+        assertEquals(listOf(0, 0), gateway.listMessagesOffsets)
+    }
+
+    @Test
+    fun catchUpDoesNotChangeHasMore() {
+        // An offset-0 page describes the newest window, not the older history the user is paging
+        // through: writing hasMore from it would strand pagination in the middle of the backlog.
+        gateway.messagePages = listOf(
+            messagesPage(
+                listOf(
+                    testMessage("m2", createdAt = "2026-06-12T10:02:00Z"),
+                    testMessage("m1", createdAt = "2026-06-12T10:01:00Z"),
+                ),
+                total = 10,
+            ),
+            messagesPage(
+                listOf(
+                    testMessage("m3", createdAt = "2026-06-12T10:03:00Z"),
+                    testMessage("m2", createdAt = "2026-06-12T10:02:00Z"),
+                ),
+                total = 2,
+            ),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        assertTrue(controller.state.value.hasMore)
+
+        controller.catchUp()
+
+        assertTrue(controller.state.value.hasMore)
+    }
+
+    @Test
+    fun catchUpRunsWhileASendIsInFlightAndReconcilesItByClientMessageId() {
+        // The old isSending guard silently dropped a reconnect's catch-up whenever a send happened
+        // to be in flight, and nothing re-armed it. The race it guarded against is handled by the
+        // clientMessageId match instead.
+        gateway.messagePages = listOf(
+            messagesPage(listOf(testMessage("m1", createdAt = "2026-06-12T10:01:00Z")), total = 1),
+            messagesPage(
+                listOf(
+                    testMessage(
+                        "server-id",
+                        userId = "me",
+                        text = "Ahoy!",
+                        createdAt = "2026-06-12T10:02:00Z",
+                        clientMessageId = "client-id-0",
+                    ),
+                    testMessage("m1", createdAt = "2026-06-12T10:01:00Z"),
+                ),
+                total = 2,
+            ),
+        )
+        gateway.sentMessage = testMessage(
+            "server-id",
+            userId = "me",
+            text = "Ahoy!",
+            createdAt = "2026-06-12T10:02:00Z",
+            clientMessageId = "client-id-0",
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        val sendGate = CompletableDeferred<Unit>()
+        gateway.sendMessageGate = sendGate
+        controller.send("Ahoy!")
+        assertTrue(controller.state.value.isSending)
+
+        controller.catchUp()
+
+        // The catch-up ran and delivered the very message still being sent.
+        assertEquals(listOf("m1", "server-id"), controller.state.value.messages.map { it.id })
+
+        // ...and the REST response, landing afterwards, is reconciled rather than duplicated.
+        sendGate.complete(Unit)
+        assertFalse(controller.state.value.isSending)
+        assertEquals(listOf("m1", "server-id"), controller.state.value.messages.map { it.id })
+    }
+
+    @Test
+    fun concurrentCatchUpTriggersCoalesceIntoTheLoopInFlight() {
+        // A poll tick landing on top of a chat:joined must not stack a second page-back loop.
+        gateway.messagePages = listOf(
+            messagesPage(listOf(testMessage("m1")), total = 1),
+            messagesPage(listOf(testMessage("m1")), total = 1),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        val gate = CompletableDeferred<Unit>()
+        gateway.listMessagesGate = gate
+
+        controller.catchUp()
+        controller.catchUp()
+        gate.complete(Unit)
+
+        assertEquals(2, gateway.calls.count { it.startsWith("listMessages") })
+    }
+
+    @Test
+    fun loadMoreOffsetIgnoresRealtimeArrivalsAndCatchUp() {
+        // The offset counts *history* rows this controller fetched, never the size of the rendered
+        // list: every realtime arrival would otherwise shift the server-side window by one and skip
+        // exactly one older message per arrival.
+        gateway.messagePages = listOf(
+            messagesPage(
+                listOf(
+                    testMessage("m5", createdAt = "2026-06-12T10:05:00Z"),
+                    testMessage("m4", createdAt = "2026-06-12T10:04:00Z"),
+                ),
+                total = 10,
+            ),
+            // The catch-up page confirms both live arrivals, so it overlaps the anchor at once.
+            messagesPage(
+                listOf(
+                    testMessage("m9", createdAt = "2026-06-12T10:09:00Z"),
+                    testMessage("m8", createdAt = "2026-06-12T10:08:00Z"),
+                ),
+                total = 10,
+            ),
+            messagesPage(
+                listOf(
+                    testMessage("m3", createdAt = "2026-06-12T10:03:00Z"),
+                    testMessage("m2", createdAt = "2026-06-12T10:02:00Z"),
+                ),
+                total = 10,
+                offset = 2,
+            ),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.onRealtimeMessage(testMessage("m8", createdAt = "2026-06-12T10:08:00Z"))
+        controller.onRealtimeMessage(testMessage("m9", createdAt = "2026-06-12T10:09:00Z"))
+        controller.catchUp()
+        controller.loadMore()
+
+        // Two history rows fetched so far, so the older page starts at 2 — not at the list size (4).
+        assertEquals(listOf(0, 0, 2), gateway.listMessagesOffsets)
+        assertEquals(
+            listOf("m2", "m3", "m4", "m5", "m8", "m9"),
+            controller.state.value.messages.map { it.id },
+        )
+    }
+
+    @Test
+    fun retryResetsTheHistoryOffset() {
+        gateway.messagePages = listOf(
+            messagesPage(
+                listOf(
+                    testMessage("m2", createdAt = "2026-06-12T10:02:00Z"),
+                    testMessage("m1", createdAt = "2026-06-12T10:01:00Z"),
+                ),
+                total = 10,
+            ),
+            messagesPage(
+                listOf(
+                    testMessage("m0", createdAt = "2026-06-12T10:00:00Z"),
+                    testMessage("m00", createdAt = "2026-06-11T10:00:00Z"),
+                ),
+                total = 10,
+                offset = 2,
+            ),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        controller.loadMore()
+
+        controller.retry()
+        controller.loadMore()
+
+        // The reload restarts the cursor: 0 (initial), 2 (loadMore), 0 (retry), 2 (loadMore again).
+        assertEquals(listOf(0, 2, 0, 2), gateway.listMessagesOffsets)
+    }
+
+    @Test
+    fun messagesWithTheSameTimestampKeepAStableIdOrderAcrossMerges() {
+        // The API omits fractional seconds, so ties are common; the contract breaks them on the
+        // (UUIDv7) id so repeated merges cannot reshuffle the conversation.
+        val tie = "2026-06-12T10:00:00Z"
+        gateway.messagePages = listOf(
+            messagesPage(listOf(testMessage("b", createdAt = tie)), total = 3),
+            messagesPage(
+                listOf(
+                    testMessage("c", createdAt = tie),
+                    testMessage("b", createdAt = tie),
+                    testMessage("a", createdAt = tie),
+                ),
+                total = 3,
+            ),
+        )
+        val controller = controller(catchUpLimit = 3)
+        controller.loadInitialIfNeeded()
+
+        controller.catchUp()
+        controller.catchUp()
+
+        assertEquals(listOf("a", "b", "c"), controller.state.value.messages.map { it.id })
+    }
+
+    @Test
+    fun sharedCatchUpConstantsMatchTheCrossClientContract() {
+        // task_shared_catchup_contract.md §3.5 — changing any of these means changing web and iOS
+        // in the same sprint.
+        assertEquals(30, ChatConversationController.HISTORY_PAGE_SIZE)
+        assertEquals(50, ChatConversationController.CATCHUP_LIMIT)
+        assertEquals(5, ChatConversationController.CATCHUP_MAX_PAGES)
     }
 
     @Test

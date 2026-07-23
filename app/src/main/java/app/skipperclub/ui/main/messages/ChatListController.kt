@@ -67,6 +67,15 @@ class ChatListController(
     private var searchJob: Job? = null
     private var reloadJob: Job? = null
 
+    /**
+     * How many rows this controller has fetched through paged requests — the offset the next
+     * [loadMore] must use. Not derived from [ChatListUiState.chats]: that list also grows from
+     * [onRealtimeMessage] and [onChatCreated] prepends, and every such row would shift the server's
+     * `updatedAt DESC` window by one and silently skip a chat on the next page. Same rule as the
+     * conversation's history offset (task_shared_catchup_contract.md §3.1).
+     */
+    private var listOffset: Int = 0
+
     fun loadInitialIfNeeded() {
         val current = _state.value
         if (current.hasLoadedOnce || current.isLoading) return
@@ -103,11 +112,13 @@ class ChatListController(
                 return@launch
             }
             try {
-                val snapshot = _state.value
                 val page = gateway.listChats(
                     token,
-                    snapshot.toQuery(limit = pageSize, offset = snapshot.chats.size),
+                    _state.value.toQuery(limit = pageSize, offset = listOffset),
                 )
+                // Advance by the raw row count, before deduplication: the offset counts rows on the
+                // server's list, not the ones we chose to keep.
+                listOffset += page.chats.size
                 _state.update { state ->
                     val knownIds = state.chats.mapTo(mutableSetOf()) { it.id }
                     state.copy(
@@ -249,6 +260,8 @@ class ChatListController(
                     token,
                     _state.value.toQuery(limit = pageSize, offset = 0),
                 )
+                // A reload replaces `chats` wholesale, so the paging cursor restarts from this page.
+                listOffset = page.chats.size
                 _state.update {
                     it.copy(
                         chats = page.chats,

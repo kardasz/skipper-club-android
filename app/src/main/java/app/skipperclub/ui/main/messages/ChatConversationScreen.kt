@@ -206,8 +206,14 @@ fun ChatConversationScreen(
             when (event) {
                 is ChatRealtimeEvent.MessageNew -> controller.onRealtimeMessage(event.message)
                 is ChatRealtimeEvent.MessageReceived -> controller.onRealtimeMessage(event.message)
-                // Catch up on anything missed while the socket was down.
-                ChatRealtimeEvent.Connected -> controller.refreshNewMessages()
+                // Catch up on anything missed while the socket was down — keyed off the room ack,
+                // not off Connected. The join replay runs after Connected, so a message created
+                // between a Connected-triggered fetch and the server processing our `chat:join`
+                // would be in neither: too new for the page, too old for the room.
+                is ChatRealtimeEvent.ChatJoined -> if (event.chatId == chatId) controller.catchUp()
+                // The socket being up says nothing about this room being joined; MessagesScreen
+                // still uses it to refresh the chat list.
+                ChatRealtimeEvent.Connected -> Unit
                 ChatRealtimeEvent.Disconnected -> Unit
                 // Consumed app-wide by UnreadNotificationsStore (badge) and by the
                 // notification center while it is open; nothing to do in a conversation.
@@ -226,12 +232,13 @@ fun ChatConversationScreen(
             }
         }
     }
-    // REST poll as a fallback while the socket is down.
+    // REST poll as a fallback while the socket is down. Same entry point as the rejoin catch-up —
+    // a poll tick is just a catch-up whose first page usually overlaps immediately.
     LaunchedEffect(controller, realtimeConnected) {
         if (!realtimeConnected) {
             while (true) {
                 delay(POLL_INTERVAL_MILLIS)
-                controller.refreshNewMessages()
+                controller.catchUp()
             }
         }
     }

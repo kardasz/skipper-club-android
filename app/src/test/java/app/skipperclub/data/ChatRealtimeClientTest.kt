@@ -585,6 +585,66 @@ class ChatRealtimeClientTest {
     }
 
     @Test
+    fun chatJoinedFrameEmitsTheEventAndStillResolvesThePendingJoin() = runBlocking {
+        // `chat:joined` is the only reliable "this room is live" signal, so it now drives the
+        // conversation's catch-up as well as the join-retry timer — the timer must not regress.
+        withParkedConnection { events ->
+            WebSocketChatRealtimeClient.joinChat("chat-1")
+            assertTrue(WebSocketChatRealtimeClient.isJoinPending("chat-1"))
+
+            WebSocketChatRealtimeClient.handleFrame(
+                """{"event":"chat:joined","data":{"chatId":"chat-1"}}""",
+            )
+
+            yield()
+            assertEquals(listOf(ChatRealtimeEvent.ChatJoined("chat-1")), events)
+            assertFalse(WebSocketChatRealtimeClient.isJoinPending("chat-1"))
+        }
+    }
+
+    @Test
+    fun malformedChatJoinedFrameEmitsNothingAndLeavesTheJoinPending() = runBlocking {
+        // An unidentified room is not one we can report as joined; the retry timeout stays armed.
+        withParkedConnection { events ->
+            WebSocketChatRealtimeClient.joinChat("chat-1")
+
+            WebSocketChatRealtimeClient.handleFrame("""{"event":"chat:joined","data":{"foo":"bar"}}""")
+
+            yield()
+            assertTrue(events.isEmpty())
+            assertTrue(WebSocketChatRealtimeClient.isJoinPending("chat-1"))
+        }
+    }
+
+    /**
+     * Runs [block] against a client whose connect is parked inside the token provider: there is a
+     * live connection scope (so joins are tracked and frames dispatch) but no socket, hence no real
+     * transport. Collected events are passed in; the connection is always torn down afterwards.
+     */
+    private suspend fun withParkedConnection(block: suspend (List<ChatRealtimeEvent>) -> Unit) {
+        val events = mutableListOf<ChatRealtimeEvent>()
+        val collector = CoroutineScope(coroutineContext + Job()).launch(
+            start = CoroutineStart.UNDISPATCHED,
+        ) {
+            WebSocketChatRealtimeClient.events.collect { events += it }
+        }
+        val providerEntered = CompletableDeferred<Unit>()
+        WebSocketChatRealtimeClient.connect(
+            accessTokenProvider = {
+                providerEntered.complete(Unit)
+                awaitCancellation()
+            },
+        )
+        providerEntered.await()
+        try {
+            block(events)
+        } finally {
+            collector.cancel()
+            WebSocketChatRealtimeClient.disconnect()
+        }
+    }
+
+    @Test
     fun ackedJoinIsNotRetried() = runBlocking {
         // Join → ack within the timeout → no retry, no failure. Jobs run on this runBlocking event
         // loop (single-threaded) via a cancelable child scope, so the fakes need no synchronization.
