@@ -411,6 +411,25 @@ internal class ReconnectBackoffGate {
     }
 }
 
+/**
+ * Server frames that acknowledge a request of ours but are not correlated to it: sends go over REST
+ * on Android (their acks are unused) and typing/read are fire-and-forget with REST backstops. Logged
+ * in debug so they are visible rather than invisibly dropped.
+ */
+internal val SERVER_ACK_EVENTS =
+    setOf("chat:left", "message:sent", "message:read:confirmed", "chat:typing:sent")
+
+/**
+ * Server frames that are known and deliberately produce no output at all.
+ *
+ * `heartbeat` (`{ts}`) is pushed to every connection every 30 seconds
+ * (docs/api/messages/websocket.md, "Server to client events"). It carries no state change we act
+ * on — OkHttp's own [PING_INTERVAL_SECONDS] ping/pong is the liveness watchdog — and logging it,
+ * whether as an unhandled frame (which it used to be) or as an ack, would put a line in the debug
+ * log twice a minute and bury the genuinely unknown events that log exists for.
+ */
+internal val SILENT_EVENTS = setOf("heartbeat")
+
 /** How long to wait for a `chat:joined` ack before re-sending the `chat:join` frame. */
 internal const val JOIN_ACK_TIMEOUT_MILLIS = 10_000L
 
@@ -797,12 +816,8 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
             // The one ack we correlate: a positive `chat:joined` stops the join-retry timer for that
             // chat (see [JoinAckTracker]). Its payload is `{chatId}`.
             "chat:joined" -> confirmJoin(frame.data)
-            // The remaining acks are not correlated to their requests: sends go over REST on Android
-            // (their acks are unused) and typing/read are fire-and-forget with REST backstops. Log
-            // them in debug so they are visible rather than invisibly dropped.
-            "chat:left", "message:sent", "message:read:confirmed", "chat:typing:sent" ->
-                debugLog("server ack: ${frame.event}")
-
+            in SERVER_ACK_EVENTS -> debugLog("server ack: ${frame.event}")
+            in SILENT_EVENTS -> Unit
             else -> debugLog("unhandled frame: ${frame.event}")
         }
     }

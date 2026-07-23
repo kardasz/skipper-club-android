@@ -603,6 +603,25 @@ class ChatRealtimeClientTest {
     }
 
     @Test
+    fun heartbeatFrameIsKnownAndSilentRatherThanUnhandled() = runBlocking {
+        // The backend pushes `heartbeat {ts}` to every connection every 30s. Routed to the
+        // unknown-event branch it put a spurious "unhandled frame" line in the debug log twice a
+        // minute and buried the events that log exists for. OkHttp's own pingInterval is the
+        // liveness watchdog, so there is nothing to do with it — not even an ack log.
+        assertTrue("heartbeat" in SILENT_EVENTS)
+        assertFalse("heartbeat" in SERVER_ACK_EVENTS)
+
+        withParkedConnection { events ->
+            WebSocketChatRealtimeClient.handleFrame(
+                """{"event":"heartbeat","data":{"ts":"2026-07-21T10:00:00Z"}}""",
+            )
+
+            yield()
+            assertTrue(events.isEmpty())
+        }
+    }
+
+    @Test
     fun malformedChatJoinedFrameEmitsNothingAndLeavesTheJoinPending() = runBlocking {
         // An unidentified room is not one we can report as joined; the retry timeout stays armed.
         withParkedConnection { events ->
