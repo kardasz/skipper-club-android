@@ -311,6 +311,72 @@ class ChatListControllerTest {
     }
 
     @Test
+    fun outOfOrderRealtimeMessageDoesNotOverwriteANewerPreview() {
+        // The message:new / message:received pair for one message, plus a catch-up burst after a
+        // reconnect, can arrive out of order. Writing the preview unconditionally let an older
+        // message replace a newer one and walk the row's timestamp backwards.
+        gateway.chatPages = listOf(chatsPage(listOf(testChat("c1"))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        controller.onRealtimeMessage(
+            testMessage("newer", chatId = "c1", text = "Newest", createdAt = "2026-06-12T11:00:00Z"),
+            isChatOpen = false,
+        )
+
+        controller.onRealtimeMessage(
+            testMessage("older", chatId = "c1", text = "Stale", createdAt = "2026-06-12T10:30:00Z"),
+            isChatOpen = false,
+        )
+
+        val updated = controller.state.value.chats.first()
+        assertEquals("newer", updated.lastMessage?.id)
+        assertEquals("Newest", updated.lastMessage?.text)
+        assertEquals("2026-06-12T11:00:00Z", updated.updatedAt)
+        // The unread bookkeeping is untouched by the ordering rule: both were genuinely new.
+        assertEquals(2, updated.unreadCount)
+    }
+
+    @Test
+    fun outOfOrderComparisonIgnoresLexicographicTimestampOrder() {
+        // The API omits fractional seconds when they are zero, and "…:00.500Z" sorts *before*
+        // "…:00Z" as text ('.' < 'Z') — so the comparison has to parse, not compare strings.
+        gateway.chatPages = listOf(chatsPage(listOf(testChat("c1"))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        controller.onRealtimeMessage(
+            testMessage("half", chatId = "c1", createdAt = "2026-06-12T10:00:00.500Z"),
+            isChatOpen = false,
+        )
+
+        controller.onRealtimeMessage(
+            testMessage("whole", chatId = "c1", createdAt = "2026-06-12T10:00:00Z"),
+            isChatOpen = false,
+        )
+
+        assertEquals("half", controller.state.value.chats.first().lastMessage?.id)
+    }
+
+    @Test
+    fun realtimeMessageWithAnUnparseableTimestampStillWins() {
+        // Matching the previous unconditional behaviour: for a preview, showing the arrival is a
+        // better failure mode than freezing the row on a timestamp we could not compare.
+        gateway.chatPages = listOf(chatsPage(listOf(testChat("c1"))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        controller.onRealtimeMessage(
+            testMessage("first", chatId = "c1", createdAt = "2026-06-12T11:00:00Z"),
+            isChatOpen = false,
+        )
+
+        controller.onRealtimeMessage(
+            testMessage("broken", chatId = "c1", createdAt = "not-a-timestamp"),
+            isChatOpen = false,
+        )
+
+        assertEquals("broken", controller.state.value.chats.first().lastMessage?.id)
+    }
+
+    @Test
     fun realtimeMessageForOpenChatKeepsUnreadAtZero() {
         gateway.chatPages = listOf(chatsPage(listOf(testChat("c1", unreadCount = 0))))
         val controller = controller()

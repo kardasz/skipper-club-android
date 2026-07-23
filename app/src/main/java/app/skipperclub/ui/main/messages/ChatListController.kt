@@ -6,6 +6,7 @@ import app.skipperclub.data.ChatMessage
 import app.skipperclub.data.ChatType
 import app.skipperclub.data.ChatsError
 import app.skipperclub.data.UnreadMessagesStore
+import java.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -193,6 +194,11 @@ class ChatListController(
      * `message:received` to every participant except the sender, regardless of room
      * membership, so the update is idempotent by [ChatMessage.id]: a message already shown
      * as the last one is re-applied without incrementing the unread count again.
+     *
+     * That same pair — plus a catch-up burst after a reconnect — can also be delivered *out of
+     * order*, so the preview and the row timestamp are only overwritten when the arrival is
+     * genuinely newer than what the row already shows. Writing unconditionally let an older
+     * message replace a newer preview and walk the row's `updatedAt` backwards.
      */
     fun onRealtimeMessage(message: ChatMessage, isChatOpen: Boolean) {
         val snapshot = _state.value
@@ -206,10 +212,12 @@ class ChatListController(
             return
         }
         val alreadyApplied = existing.lastMessage?.id == message.id
+        val isNewerThanPreview = existing.lastMessage
+            ?.let { isNewerTimestamp(message.createdAt, it.createdAt) } ?: true
         _state.update { state ->
             val updated = existing.copy(
-                lastMessage = message,
-                updatedAt = message.createdAt,
+                lastMessage = if (isNewerThanPreview) message else existing.lastMessage,
+                updatedAt = if (isNewerThanPreview) message.createdAt else existing.updatedAt,
                 unreadCount = when {
                     isChatOpen -> 0
                     alreadyApplied -> existing.unreadCount
@@ -303,4 +311,19 @@ class ChatListController(
         if (token == null) _events.tryEmit(ChatListEvent.SessionExpired)
         return token
     }
+}
+
+/**
+ * Whether [incoming] is strictly newer than [existing] as ISO-8601 instants.
+ *
+ * Parsed rather than compared as text, for the reason spelled out in [sortedByCreationOrder]: the
+ * API omits fractional seconds when they are zero, and `"…:00.500Z"` sorts *before* `"…:00Z"`
+ * lexicographically. A timestamp that fails to parse yields `true`, preferring the incoming
+ * message — that is the unconditional behaviour this replaced, and for a preview it is the safer
+ * failure mode than freezing the row on an unparseable one.
+ */
+private fun isNewerTimestamp(incoming: String, existing: String): Boolean {
+    val incomingAt = runCatching { Instant.parse(incoming) }.getOrNull() ?: return true
+    val existingAt = runCatching { Instant.parse(existing) }.getOrNull() ?: return true
+    return incomingAt.isAfter(existingAt)
 }
