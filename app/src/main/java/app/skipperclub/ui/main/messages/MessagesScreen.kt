@@ -81,6 +81,7 @@ import app.skipperclub.ui.notification.InAppNotificationType
 import app.skipperclub.ui.notification.rememberInAppNotificationHostState
 import app.skipperclub.ui.theme.SkipperClubTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 
 /** Bottom inset that keeps the list clear of the floating [SkipperBottomBar]. */
 private val ListBottomInset = 120.dp
@@ -144,39 +145,29 @@ fun MessagesScreen(modifier: Modifier = Modifier) {
     // logged in), so it outlives this tab. Here we only consume events to keep the list live while
     // it is on screen; the conversation dialog joins/leaves its chat room on the same connection.
     val realtime = remember { WebSocketChatRealtimeClient }
+    val realtimeConnected by realtime.isConnected.collectAsState()
     val currentOpenChatId by rememberUpdatedState(openChatId)
-    LaunchedEffect(controller, realtime) {
-        realtime.events.collect { event ->
-            val message = when (event) {
-                is ChatRealtimeEvent.MessageNew -> event.message
-                is ChatRealtimeEvent.MessageReceived -> event.message
-                else -> null
-            }
-            if (message != null) {
-                controller.onRealtimeMessage(
-                    message = message,
-                    isChatOpen = message.chatId == currentOpenChatId,
-                )
-            }
-            // Catch up on messages missed during the outage: the open conversation refreshes itself
-            // (ChatConversationScreen) and the badge reconciles (UnreadMessagesStore), but the list's
-            // previews/counts would otherwise stay stale until a manual refresh.
-            if (event is ChatRealtimeEvent.Connected) {
-                controller.onRealtimeReconnected()
-            }
-            // This screen stays composed underneath the conversation dialog for as long as the
-            // socket lives, so it is the one lightweight place to surface a server-side WS failure
-            // (rate limiting, access denied on chat:join, ...) — it is already logged unconditionally
-            // in ChatRealtimeClient; this just makes it visible to the user too.
-            //
-            // The server's own text is deliberately not shown: it is English-only protocol wording
-            // ("Rate limit exceeded", "Chat not found or access denied") aimed at developers, and
-            // the app is localized. The detail stays in the log for whoever is debugging.
-            if (event is ChatRealtimeEvent.ServerError) {
-                notificationHostState.show(errorRealtimeMessage, InAppNotificationType.Error)
-            }
-        }
-    }
+    ChatListRealtimeEffect(
+        events = realtime.events,
+        onRealtimeMessage = { message ->
+            controller.onRealtimeMessage(
+                message = message,
+                isChatOpen = message.chatId == currentOpenChatId,
+            )
+        },
+        onReconnected = controller::onRealtimeReconnected,
+        // This screen stays composed underneath the conversation dialog for as long as the socket
+        // lives, so it is the one lightweight place to surface a server-side WS failure (rate
+        // limiting, access denied on chat:join, ...) — it is already logged unconditionally in
+        // ChatRealtimeClient; this just makes it visible to the user too.
+        //
+        // The server's own text is deliberately not shown: it is English-only protocol wording
+        // ("Rate limit exceeded", "Chat not found or access denied") aimed at developers, and the
+        // app is localized. The detail stays in the log for whoever is debugging.
+        onServerError = {
+            notificationHostState.show(errorRealtimeMessage, InAppNotificationType.Error)
+        },
+    )
 
     // Online/offline indicator on chat-list rows; app-wide cache, see PresenceStore.
     val presenceByUserId by PresenceStore.presence.collectAsState()
@@ -260,8 +251,11 @@ fun MessagesScreen(modifier: Modifier = Modifier) {
                 currentUserId = currentUserId,
                 onClose = {
                     openChatId = null
-                    // Pick up the new lastMessage/ordering produced while chatting.
-                    if (state.hasLoadedOnce) controller.refresh()
+                    // Pick up the new lastMessage/ordering produced while chatting — but only as
+                    // the socket-down fallback, see shouldRefreshListOnConversationClose.
+                    if (shouldRefreshListOnConversationClose(state.hasLoadedOnce, realtimeConnected)) {
+                        controller.refresh()
+                    }
                 },
             )
         }
@@ -287,6 +281,68 @@ fun MessagesScreen(modifier: Modifier = Modifier) {
         }
     }
 }
+
+/**
+ * The chat list's side of the shared socket: applies live messages, catches the list up after a
+ * **re**connect, and surfaces server-side failures.
+ *
+ * Extracted from [MessagesScreen] for the first-connect guard, which is the whole reason this is
+ * its own composable: on a cold start `loadInitialIfNeeded()` and the socket's first `Connected`
+ * fire within milliseconds of each other, so treating that first one as a reconnect fetched the
+ * list twice and flashed the pull-to-refresh spinner for nothing. The guard lives here rather than
+ * in [ChatListController] because the controller has no notion of socket lifecycle — and here it is
+ * drivable from a test without a live transport.
+ *
+ * If the initial load itself failed, skipping this reload costs nothing: `loadFailed` still offers
+ * retry, and the next genuine reconnect reloads anyway.
+ */
+@Composable
+internal fun ChatListRealtimeEffect(
+    events: Flow<ChatRealtimeEvent>,
+    onRealtimeMessage: (ChatMessage) -> Unit,
+    onReconnected: () -> Unit,
+    onServerError: () -> Unit,
+) {
+    val currentOnRealtimeMessage by rememberUpdatedState(onRealtimeMessage)
+    val currentOnReconnected by rememberUpdatedState(onReconnected)
+    val currentOnServerError by rememberUpdatedState(onServerError)
+    LaunchedEffect(events) {
+        var hasConnectedOnce = false
+        events.collect { event ->
+            when (event) {
+                is ChatRealtimeEvent.MessageNew -> currentOnRealtimeMessage(event.message)
+                is ChatRealtimeEvent.MessageReceived -> currentOnRealtimeMessage(event.message)
+
+                // Catch up on messages missed during the outage: the open conversation refreshes
+                // itself (ChatConversationScreen) and the badge reconciles (UnreadMessagesStore),
+                // but the list's previews/counts would otherwise stay stale until a manual refresh.
+                ChatRealtimeEvent.Connected -> {
+                    if (hasConnectedOnce) currentOnReconnected()
+                    hasConnectedOnce = true
+                }
+
+                is ChatRealtimeEvent.ServerError -> currentOnServerError()
+                else -> Unit
+            }
+        }
+    }
+}
+
+/**
+ * Whether closing the conversation should reload the whole chat list.
+ *
+ * While the socket is up it should not: the row is already kept live by
+ * [ChatListController.onRealtimeMessage] as the messages arrive, and [ChatListController.onChatOpened]
+ * cleared the badge locally when the conversation was opened — so the reload refetched a list that
+ * was already correct, on every single conversation close. It stays as the fallback for the
+ * socket-down case, where nothing kept the row live. The reconnect catch-up
+ * ([ChatListController.onRealtimeReconnected]) remains the backstop for events dropped on buffer
+ * overflow while connected.
+ */
+internal fun shouldRefreshListOnConversationClose(
+    hasLoadedOnce: Boolean,
+    realtimeConnected: Boolean,
+): Boolean = hasLoadedOnce && !realtimeConnected
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

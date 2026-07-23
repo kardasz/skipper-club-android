@@ -14,10 +14,12 @@ import androidx.compose.ui.test.longClick
 import app.skipperclub.R
 import app.skipperclub.data.Chat
 import app.skipperclub.data.ChatMessage
+import app.skipperclub.data.ChatRealtimeEvent
 import app.skipperclub.data.ChatType
 import app.skipperclub.data.ChatUser
 import app.skipperclub.data.UserPresence
 import app.skipperclub.ui.theme.SkipperClubTheme
+import kotlinx.coroutines.flow.MutableSharedFlow
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -491,6 +493,49 @@ class MessagesScreensTest {
         compose.onNodeWithTag("new_chat_create").assertIsNotEnabled()
         compose.onNodeWithTag("new_chat_group_name").performTextInput("Crew")
         compose.onNodeWithTag("new_chat_create").assertIsEnabled()
+    }
+
+    @Test
+    fun firstConnectDoesNotTriggerASecondListLoad() {
+        // On a cold start loadInitialIfNeeded() and the socket's first Connected fire within
+        // milliseconds of each other; treating that first one as a reconnect fetched the list twice
+        // and flashed the pull-to-refresh spinner for nothing.
+        val events = MutableSharedFlow<ChatRealtimeEvent>(extraBufferCapacity = 16)
+        var reconnects = 0
+
+        compose.setContent {
+            SkipperClubTheme {
+                ChatListRealtimeEffect(
+                    events = events,
+                    onRealtimeMessage = {},
+                    onReconnected = { reconnects++ },
+                    onServerError = {},
+                )
+            }
+        }
+
+        compose.runOnUiThread { events.tryEmit(ChatRealtimeEvent.Connected) }
+        compose.waitForIdle()
+        assertEquals(0, reconnects)
+
+        // A genuine reconnect still reloads.
+        compose.runOnUiThread {
+            events.tryEmit(ChatRealtimeEvent.Disconnected)
+            events.tryEmit(ChatRealtimeEvent.Connected)
+        }
+        compose.waitUntil(timeoutMillis = 5_000) { reconnects == 1 }
+        assertEquals(1, reconnects)
+    }
+
+    @Test
+    fun closingAConversationWhileConnectedDoesNotRefetchTheList() {
+        // The row is kept live by ChatListController.onRealtimeMessage while the socket is up, and
+        // onChatOpened() already cleared the badge, so the reload refetched a correct list on every
+        // single conversation close. It survives only as the socket-down fallback.
+        assertEquals(false, shouldRefreshListOnConversationClose(hasLoadedOnce = true, realtimeConnected = true))
+        assertEquals(true, shouldRefreshListOnConversationClose(hasLoadedOnce = true, realtimeConnected = false))
+        // ...and never before the list has loaded at all.
+        assertEquals(false, shouldRefreshListOnConversationClose(hasLoadedOnce = false, realtimeConnected = false))
     }
 
     private fun text(id: Int): String = compose.activity.getString(id)
