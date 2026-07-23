@@ -229,8 +229,11 @@ fun ChatConversationScreen(
                 is ChatRealtimeEvent.TypingUpdate ->
                     controller.onRealtimeTyping(event.chatId, event.userId, event.isTyping)
 
+                // `readAt` matters: receipts cascade, and the anchor message is often one we never
+                // loaded — the timestamp is then the only thing that says which own bubbles were
+                // seen (ChatConversationController.onRealtimeMessageRead).
                 is ChatRealtimeEvent.MessageRead ->
-                    controller.onRealtimeMessageRead(event.messageId, event.userId)
+                    controller.onRealtimeMessageRead(event.messageId, event.userId, event.readAt)
 
                 // Presence is app-wide (PresenceStore); this screen only reads it below.
                 is ChatRealtimeEvent.PresenceUpdate -> Unit

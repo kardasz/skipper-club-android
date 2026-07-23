@@ -755,25 +755,49 @@ class ChatConversationController(
      * [ChatMessage.read] for the "seen" indicator — not just the exact match, which would leave
      * older bubbles stuck on "sent" when the receipt only targets the newest message. Only own
      * messages are flipped (the indicator renders on own bubbles only, and the flag on the other
-     * side's messages means *we* read them). A receipt for a message we have not loaded is ignored.
-     * Our own read receipts are echoed back to the room too, so they are ignored here.
+     * side's messages means *we* read them). Our own read receipts are echoed back to the room too,
+     * so they are ignored here.
+     *
+     * The anchor is frequently a message we never loaded — the peer read a backlog older than our
+     * first page, or the receipt targets a message that arrived while we were scrolled into
+     * history. Ignoring those (the previous behaviour) left every own bubble on "sent" forever, so
+     * an absent anchor falls back to [readAt]: every own message created no later than the receipt
+     * is flipped. A `readAt` that does not parse is dropped rather than throwing inside the socket
+     * dispatch loop, and a message whose own `createdAt` does not parse is left alone rather than
+     * being flipped on a timestamp we could not compare.
      */
-    fun onRealtimeMessageRead(messageId: String, userId: String) {
+    fun onRealtimeMessageRead(messageId: String, userId: String, readAt: String) {
         if (userId == currentUserId) return
         _state.update { state ->
             val readUpToIndex = state.messages.indexOfFirst { it.id == messageId }
-            if (readUpToIndex < 0) return@update state
-            state.copy(
-                messages = state.messages.mapIndexed { index, message ->
-                    if (index <= readUpToIndex && !message.read && message.user.id == currentUserId) {
-                        message.copy(read = true)
-                    } else {
-                        message
-                    }
-                },
-            )
+            if (readUpToIndex >= 0) {
+                state.copy(
+                    messages = state.messages.mapIndexed { index, message ->
+                        if (index <= readUpToIndex && message.isUnreadOwn()) {
+                            message.copy(read = true)
+                        } else {
+                            message
+                        }
+                    },
+                )
+            } else {
+                val readAtInstant = parseMessageInstantOrNull(readAt) ?: return@update state
+                state.copy(
+                    messages = state.messages.map { message ->
+                        val createdAt = parseMessageInstantOrNull(message.createdAt)
+                        if (message.isUnreadOwn() && createdAt != null && !createdAt.isAfter(readAtInstant)) {
+                            message.copy(read = true)
+                        } else {
+                            message
+                        }
+                    },
+                )
+            }
         }
     }
+
+    /** An own bubble the "seen" indicator has not been switched on for yet. */
+    private fun ChatMessage.isUnreadOwn(): Boolean = !read && user.id == currentUserId
 
     private suspend fun requireToken(): String? {
         val token = runCatching { accessToken() }.getOrNull()
@@ -855,8 +879,16 @@ internal fun List<ChatMessage>.sortedByCreationOrder(): List<ChatMessage> =
         .map { it.first }
 
 private fun parseMessageInstant(isoTimestamp: String): Instant =
+    parseMessageInstantOrNull(isoTimestamp) ?: Instant.EPOCH
+
+/**
+ * Strict variant for callers that must distinguish "unparseable" from "very old" — the cascading
+ * read-receipt fallback in [ChatConversationController.onRealtimeMessageRead], where the
+ * [Instant.EPOCH] substitution above would silently mark a malformed row as read.
+ */
+private fun parseMessageInstantOrNull(isoTimestamp: String): Instant? =
     try {
         Instant.parse(isoTimestamp)
     } catch (_: DateTimeParseException) {
-        Instant.EPOCH
+        null
     }

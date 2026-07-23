@@ -1212,7 +1212,7 @@ class ChatConversationControllerTest {
         val controller = controller()
         controller.loadInitialIfNeeded()
 
-        controller.onRealtimeMessageRead("m1", userId = "other")
+        controller.onRealtimeMessageRead("m1", userId = "other", readAt = "2026-06-12T10:00:00Z")
 
         assertTrue(controller.state.value.messages.first { it.id == "m1" }.read)
     }
@@ -1234,7 +1234,7 @@ class ChatConversationControllerTest {
         val controller = controller()
         controller.loadInitialIfNeeded()
 
-        controller.onRealtimeMessageRead("m3", userId = "other")
+        controller.onRealtimeMessageRead("m3", userId = "other", readAt = "2026-06-12T10:03:00Z")
 
         assertTrue(controller.state.value.messages.all { it.read })
     }
@@ -1254,7 +1254,7 @@ class ChatConversationControllerTest {
         val controller = controller()
         controller.loadInitialIfNeeded()
 
-        controller.onRealtimeMessageRead("m2", userId = "other")
+        controller.onRealtimeMessageRead("m2", userId = "other", readAt = "2026-06-12T10:02:00Z")
 
         val byId = controller.state.value.messages.associateBy { it.id }
         assertTrue(byId.getValue("m1").read)
@@ -1280,7 +1280,7 @@ class ChatConversationControllerTest {
         val controller = controller()
         controller.loadInitialIfNeeded()
 
-        controller.onRealtimeMessageRead("m3", userId = "other")
+        controller.onRealtimeMessageRead("m3", userId = "other", readAt = "2026-06-12T10:03:00Z")
 
         val byId = controller.state.value.messages.associateBy { it.id }
         assertTrue(byId.getValue("m1").read)
@@ -1288,15 +1288,91 @@ class ChatConversationControllerTest {
         assertFalse(byId.getValue("m3").read)
     }
 
+    /** Own messages a minute apart, oldest first once loaded: m1 10:01, m2 10:02, m3 10:03. */
+    private fun ownMessagesPage() = messagesPage(
+        listOf(
+            testMessage("m3", userId = "me", createdAt = "2026-06-12T10:03:00Z"),
+            testMessage("m2", userId = "me", createdAt = "2026-06-12T10:02:00Z"),
+            testMessage("m1", userId = "me", createdAt = "2026-06-12T10:01:00Z"),
+        ),
+        total = 3,
+    )
+
     @Test
-    fun realtimeMessageReadForUnknownMessageIsIgnored() {
-        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1", userId = "me"))))
+    fun realtimeMessageReadWithAnUnloadedAnchorCascadesByReadAt() {
+        // The anchor is frequently a message we never loaded — the peer read a backlog older than
+        // our first page, or the receipt targets something that arrived while we were scrolled into
+        // history. Ignoring those (the old behaviour) left every own bubble on "sent" forever.
+        // The boundary is inclusive: "m2" was created at exactly readAt.
+        gateway.messagePages = listOf(ownMessagesPage())
         val controller = controller()
         controller.loadInitialIfNeeded()
 
-        controller.onRealtimeMessageRead("not-loaded", userId = "other")
+        controller.onRealtimeMessageRead(
+            "never-loaded",
+            userId = "other",
+            readAt = "2026-06-12T10:02:00Z",
+        )
 
-        assertFalse(controller.state.value.messages.first { it.id == "m1" }.read)
+        val byId = controller.state.value.messages.associateBy { it.id }
+        assertTrue(byId.getValue("m1").read)
+        assertTrue(byId.getValue("m2").read)
+        assertFalse(byId.getValue("m3").read)
+    }
+
+    @Test
+    fun realtimeMessageReadWithAnUnloadedAnchorFlipsOnlyOwnMessages() {
+        // The flag on the other side's messages means *we* read them, so a peer's receipt must
+        // never touch them — the fallback is no different from the anchored cascade here.
+        gateway.messagePages = listOf(
+            messagesPage(
+                listOf(
+                    testMessage("m2", userId = "other", createdAt = "2026-06-12T10:02:00Z"),
+                    testMessage("m1", userId = "me", createdAt = "2026-06-12T10:01:00Z"),
+                ),
+                total = 2,
+            ),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.onRealtimeMessageRead(
+            "never-loaded",
+            userId = "other",
+            readAt = "2026-06-12T10:09:00Z",
+        )
+
+        val byId = controller.state.value.messages.associateBy { it.id }
+        assertTrue(byId.getValue("m1").read)
+        assertFalse(byId.getValue("m2").read)
+    }
+
+    @Test
+    fun realtimeMessageReadWithAnUnparseableReadAtIsANoop() {
+        // Dropped rather than thrown: this runs inside the socket's dispatch loop, and one
+        // malformed receipt must not take the collector down with it.
+        gateway.messagePages = listOf(ownMessagesPage())
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.onRealtimeMessageRead("never-loaded", userId = "other", readAt = "not-a-timestamp")
+
+        assertTrue(controller.state.value.messages.none { it.read })
+    }
+
+    @Test
+    fun realtimeMessageReadWithAnUnloadedAnchorOlderThanEverythingFlipsNothing() {
+        gateway.messagePages = listOf(ownMessagesPage())
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.onRealtimeMessageRead(
+            "never-loaded",
+            userId = "other",
+            readAt = "2026-06-12T09:00:00Z",
+        )
+
+        assertTrue(controller.state.value.messages.none { it.read })
     }
 
     @Test
@@ -1305,7 +1381,7 @@ class ChatConversationControllerTest {
         val controller = controller()
         controller.loadInitialIfNeeded()
 
-        controller.onRealtimeMessageRead("m1", userId = "me")
+        controller.onRealtimeMessageRead("m1", userId = "me", readAt = "2026-06-12T10:00:00Z")
 
         assertFalse(controller.state.value.messages.first { it.id == "m1" }.read)
     }
