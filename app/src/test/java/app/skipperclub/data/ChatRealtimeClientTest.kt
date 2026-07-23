@@ -5,10 +5,13 @@ import kotlin.random.Random
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -517,6 +520,51 @@ class ChatRealtimeClientTest {
         val elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000
 
         assertTrue("expected a full wait, got ${elapsedMillis}ms", elapsedMillis >= 150)
+    }
+
+    @Test
+    fun backoffGateSkipRacingTheEndOfAWaitDoesNotShortenTheNextWait() = runBlocking {
+        // The interleaving the instance monitor and the identity-compared teardown exist for: a
+        // skip landing while one wait is tearing down must neither latch for the next wait nor
+        // disarm it. Repeated so the race window is actually hit rather than hoped for.
+        val gate = ReconnectBackoffGate()
+        val skipper = launch(Dispatchers.Default) {
+            while (isActive) {
+                gate.skip()
+                Thread.sleep(1)
+            }
+        }
+        repeat(20) { gate.awaitBackoff(5) }
+        skipper.cancelAndJoin()
+
+        val startedAt = System.nanoTime()
+        gate.awaitBackoff(200)
+        val elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000
+
+        assertTrue("expected a full wait, got ${elapsedMillis}ms", elapsedMillis >= 150)
+    }
+
+    @Test
+    fun backoffGateStillSkipsAWaitArmedAfterAnEarlierOneToreDown() {
+        // The other half of the same race: an earlier wait's teardown must not clear the deferred
+        // its successor installed, or that successor becomes silently un-skippable for its full
+        // (up to 30s) duration.
+        val gate = ReconnectBackoffGate()
+        runBlocking { gate.awaitBackoff(1) }
+
+        val startedAt = System.nanoTime()
+        runBlocking {
+            val waiter = launch { gate.awaitBackoff(10_000) }
+            withTimeout(5_000) {
+                while (!waiter.isCompleted) {
+                    gate.skip()
+                    delay(10)
+                }
+            }
+        }
+        val elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000
+
+        assertTrue("expected the wait to be skipped, took ${elapsedMillis}ms", elapsedMillis < 5_000)
     }
 
     @Test

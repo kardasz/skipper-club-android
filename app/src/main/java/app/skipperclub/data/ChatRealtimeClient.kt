@@ -391,23 +391,44 @@ internal fun reconnectPolicyForClose(code: Int): ReconnectPolicy = when (code) {
  * retries immediately instead of sitting out the remainder of an up-to-30s backoff. A skip with no
  * wait in flight is dropped rather than latched: connectivity flapping while connected must not
  * silently shorten some future backoff.
+ *
+ * `pendingSkip` is guarded by this instance's monitor rather than merely `@Volatile`. Volatile makes
+ * each read and write atomic on its own, but the sequence still raced: a wait's teardown running
+ * late could null out the field a *successor* wait had already installed, silently making that
+ * successor un-skippable for its full (up to 30s) duration. The teardown therefore only clears the
+ * field while it still holds its own deferred, compared by identity.
+ *
+ * The suspension itself stays **outside** the monitor — holding a lock across [withTimeoutOrNull]
+ * would block every [skip] caller for the length of the backoff, which is the one thing this class
+ * exists to avoid.
  */
 internal class ReconnectBackoffGate {
-    @Volatile
     private var pendingSkip: CompletableDeferred<Unit>? = null
 
     suspend fun awaitBackoff(millis: Long) {
         val skipSignal = CompletableDeferred<Unit>()
-        pendingSkip = skipSignal
+        arm(skipSignal)
         try {
             withTimeoutOrNull(millis) { skipSignal.await() }
         } finally {
-            pendingSkip = null
+            disarm(skipSignal)
         }
     }
 
+    @Synchronized
     fun skip() {
         pendingSkip?.complete(Unit)
+    }
+
+    @Synchronized
+    private fun arm(skipSignal: CompletableDeferred<Unit>) {
+        pendingSkip = skipSignal
+    }
+
+    /** Identity comparison: a late teardown must not disarm the wait that superseded it. */
+    @Synchronized
+    private fun disarm(skipSignal: CompletableDeferred<Unit>) {
+        if (pendingSkip === skipSignal) pendingSkip = null
     }
 }
 
