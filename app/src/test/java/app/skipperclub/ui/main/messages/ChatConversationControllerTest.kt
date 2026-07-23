@@ -37,6 +37,8 @@ class ChatConversationControllerTest {
         // is covered by markReadCoalescesABurstOfArrivals below, which sets a real window.
         readReceiptDebounceMillis: Long = 0L,
         readReceiptMaxLatencyMillis: Long = ChatConversationController.READ_RECEIPT_MAX_LATENCY_MILLIS,
+        // Zero grace so `close()` tears the flush scope down inline instead of after the real 10s.
+        markReadFlushGraceMillis: Long = 0L,
         nowMillis: () -> Long = System::currentTimeMillis,
     ): ChatConversationController {
         val controller = ChatConversationController(
@@ -52,6 +54,7 @@ class ChatConversationControllerTest {
             sendConfirmTimeoutMillis = sendConfirmTimeoutMillis,
             readReceiptDebounceMillis = readReceiptDebounceMillis,
             readReceiptMaxLatencyMillis = readReceiptMaxLatencyMillis,
+            markReadFlushGraceMillis = markReadFlushGraceMillis,
             nowMillis = nowMillis,
             sendReadReceipt = { chatId, messageId -> readReceipts += chatId to messageId },
             clientMessageIdProvider = { "client-id-${nextClientMessageId++}" },
@@ -951,6 +954,45 @@ class ChatConversationControllerTest {
 
         assertFalse(gateway.calls.any { it.startsWith("markChatsRead") })
         assertTrue(readReceipts.isEmpty())
+    }
+
+    @Test
+    fun closeCancelsTheFlushScope() {
+        // The flush scope is detached from the screen's by design, so nothing else ever cancelled
+        // it: a mark-read black-holed by a captive portal stayed pending for the whole process.
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        val controller = controller(readReceiptDebounceMillis = 60_000L)
+        controller.loadInitialIfNeeded()
+        controller.onRealtimeMessage(testMessage("m2", userId = "other"))
+        gateway.calls.clear()
+        readReceipts.clear()
+
+        controller.close()
+        controller.flushPendingMarkRead()
+
+        // The synchronous WS receipt still goes out — it does not run on that scope — but the REST
+        // call, which does, no longer has a scope to run on.
+        assertEquals(listOf("chat-1" to "m2"), readReceipts)
+        assertFalse(gateway.calls.any { it.startsWith("markChatsRead") })
+    }
+
+    @Test
+    fun closeAfterTheDisposeTimeFlushStillLetsTheMarkReadCommit() {
+        // The ordering the screen's onDispose relies on: flush first (it launches the REST call on
+        // the surviving scope), then close(), which only arms the grace timer on it.
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        val controller = controller(readReceiptDebounceMillis = 60_000L)
+        controller.loadInitialIfNeeded()
+        controller.onRealtimeMessage(testMessage("m2", userId = "other"))
+        gateway.calls.clear()
+
+        controller.flushPendingMarkRead()
+        controller.close()
+
+        assertEquals(
+            listOf("markChatsRead:chat-1"),
+            gateway.calls.filter { it.startsWith("markChatsRead") },
+        )
     }
 
     @Test

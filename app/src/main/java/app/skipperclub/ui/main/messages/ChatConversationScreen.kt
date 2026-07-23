@@ -207,6 +207,10 @@ fun ChatConversationScreen(
             // the receipt.
             controller.flushPendingMarkRead()
             realtime.leaveChat(chatId)
+            // Last: the flush above is already launched on the controller's own surviving scope,
+            // and close() only arms a grace timer on it — so the REST mark-read still commits,
+            // while the scope no longer outlives the screen indefinitely.
+            controller.close()
         }
     }
     LaunchedEffect(controller, realtime) {

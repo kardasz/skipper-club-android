@@ -11,6 +11,7 @@ import java.time.format.DateTimeParseException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -104,6 +105,11 @@ class ChatConversationController(
      * starve mark-read; see [scheduleMarkRead].
      */
     private val readReceiptMaxLatencyMillis: Long = READ_RECEIPT_MAX_LATENCY_MILLIS,
+    /**
+     * Grace period [close] gives an in-flight dispose-time flush before tearing
+     * [markReadFlushScope] down; injectable so tests do not have to wait it out.
+     */
+    private val markReadFlushGraceMillis: Long = MARK_READ_FLUSH_GRACE_MILLIS,
     /**
      * Monotonic-enough clock for the max-latency bound and for the `createdAt` an optimistic
      * bubble carries until the server's own timestamp replaces it; injectable so tests are
@@ -603,6 +609,27 @@ class ChatConversationController(
     }
 
     /**
+     * Releases [markReadFlushScope] once the screen is gone. Called from the conversation's
+     * `onDispose`, **after** [flushPendingMarkRead] and the `chat:leave`.
+     *
+     * That scope is detached from [scope] by design — it is what lets the dispose-time flush
+     * outlive the screen — which also means nothing else ever cancels it: a mark-read black-holed
+     * by a captive portal used to stay pending for the rest of the process.
+     *
+     * The cancellation runs *inside* the scope after [markReadFlushGraceMillis] rather than
+     * immediately, because the flush this is meant to protect was launched microseconds earlier and
+     * a synchronous cancel would kill exactly the REST mark-read that now carries the read receipt
+     * (see [markRead]). A flush that already committed leaves nothing to cancel; a stuck one is
+     * bounded instead of leaked.
+     */
+    fun close() {
+        markReadFlushScope.launch {
+            delay(markReadFlushGraceMillis)
+            markReadFlushScope.cancel()
+        }
+    }
+
+    /**
      * Reconciles the conversation with the server: the bounded page-back catch-up of
      * task_shared_catchup_contract.md §3.2.
      *
@@ -943,6 +970,13 @@ class ChatConversationController(
          * the burst lasts.
          */
         const val READ_RECEIPT_MAX_LATENCY_MILLIS = 1_500L
+
+        /**
+         * How long [close] lets a dispose-time flush finish before cancelling the scope it runs on.
+         * Generous enough for a REST round trip on a slow link, short enough that a request nothing
+         * will ever answer does not outlive the screen by anything noticeable.
+         */
+        const val MARK_READ_FLUSH_GRACE_MILLIS = 10_000L
 
         /**
          * Cap on realtime arrivals held while the initial page is still loading
