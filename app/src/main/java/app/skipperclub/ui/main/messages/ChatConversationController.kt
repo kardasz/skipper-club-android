@@ -111,9 +111,9 @@ class ChatConversationController(
      */
     private val nowMillis: () -> Long = System::currentTimeMillis,
     /**
-     * `message:read` over the socket for the newest visible message, mirroring what iOS/Web send
-     * (see the transport-parity table in docs/api/messages/websocket.md). Injectable so tests don't
-     * need a real socket.
+     * `message:read` over the socket for the newest visible message. Sent only from
+     * [flushPendingMarkRead] — see [markRead] for why the REST bulk call is the sole receipt source
+     * everywhere else. Injectable so tests don't need a real socket.
      */
     private val sendReadReceipt: (chatId: String, messageId: String) -> Unit = { id, messageId ->
         WebSocketChatRealtimeClient.sendMessageRead(id, messageId)
@@ -699,17 +699,33 @@ class ChatConversationController(
     /** A bubble inserted by [send] that the server has not confirmed yet. */
     private fun ChatMessage.isOptimistic(): Boolean = id.startsWith(OPTIMISTIC_ID_PREFIX)
 
+    /**
+     * Clears the unread state for this chat over **one** transport: the REST bulk mark-read.
+     *
+     * This used to fire the WS `message:read` frame as well, for "parity". It is not parity — per
+     * the transport-parity table in docs/api/messages/websocket.md the REST `mark-read` broadcasts
+     * a `message:read` receipt to the chat room for every chat where something was newly marked,
+     * so the peers' "seen" indicators already update from it. Sending both delivered two identical
+     * receipts per read and spent two of the server's 10 events/second inbound slots. The REST call
+     * is the one kept because it is also what actually clears the unread counters.
+     *
+     * The gap the WS frame covered — "nothing was newly marked, so REST emits no receipt" — is not
+     * a gap: with nothing newly marked, no receipt is the correct outcome. The single place the
+     * synchronous frame is still required is [flushPendingMarkRead], where it has to reach the
+     * server before the caller's `chat:leave`.
+     */
     private fun markRead(token: String, hadUnread: Boolean) {
         if (!hadUnread) return
-        sendNewestReadReceiptFromOthers()
         scope.launch { markChatsReadViaRest(token) }
     }
 
     /**
-     * WS parity: send a live per-message receipt for the newest visible message from *another*
-     * participant so their "seen" indicators update immediately, in addition to the REST bulk
-     * mark-read (which the backend does not broadcast per-message events for). Skipping our own
-     * newest message avoids emitting a nonsensical read receipt for a message we authored.
+     * The live per-message receipt for the newest visible message from *another* participant.
+     *
+     * Used only by [flushPendingMarkRead]: everywhere else the REST bulk mark-read's own broadcast
+     * is the receipt (see [markRead]), but at dispose time the REST call cannot be awaited before
+     * `chat:leave` goes out, so the frame is sent synchronously as well. Skipping our own newest
+     * message avoids emitting a nonsensical read receipt for a message we authored.
      */
     private fun sendNewestReadReceiptFromOthers() {
         _state.value.messages.lastOrNull { it.user.id != currentUserId }?.let { newest ->

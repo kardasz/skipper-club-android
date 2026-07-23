@@ -840,9 +840,9 @@ class ChatConversationControllerTest {
 
     @Test
     fun markReadCoalescesABurstOfArrivals() {
-        // Receipts cascade, so a burst needs exactly one receipt (for the newest message) and one
-        // bulk mark-read. One per arrival — the old behaviour — walks a busy chat straight through
-        // the server's 10 events/second inbound limit and comes back as `Rate limit exceeded`.
+        // Receipts cascade, so a burst needs exactly one bulk mark-read. One per arrival — the old
+        // behaviour — walks a busy chat straight through the server's 10 events/second inbound
+        // limit and comes back as `Rate limit exceeded`.
         gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
         val controller = controller(readReceiptDebounceMillis = 50L)
         controller.loadInitialIfNeeded()
@@ -857,7 +857,30 @@ class ChatConversationControllerTest {
         runBlocking { delay(300) }
 
         assertEquals(listOf("markChatsRead:chat-1"), gateway.calls.filter { it.startsWith("markChatsRead") })
-        assertEquals(listOf("chat-1" to "m11"), readReceipts)
+        assertTrue(readReceipts.isEmpty())
+    }
+
+    @Test
+    fun exactlyOneMarkReadTransportFiresPerRead() {
+        // The REST bulk mark-read already broadcasts a `message:read` receipt to the chat room for
+        // every chat where something was newly marked, so the WS frame on top of it delivered every
+        // receipt to the peers twice and spent two of the server's 10 events/second inbound slots.
+        gateway.chat = testChat("chat-1", unreadCount = 2)
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1", userId = "other"))))
+        val controller = controller()
+
+        controller.loadInitialIfNeeded()
+        controller.onRealtimeMessage(
+            testMessage("m2", userId = "other", createdAt = "2026-06-12T10:02:00Z"),
+        )
+
+        // Two reads, two REST calls...
+        assertEquals(
+            listOf("markChatsRead:chat-1", "markChatsRead:chat-1"),
+            gateway.calls.filter { it.startsWith("markChatsRead") },
+        )
+        // ...and not a single duplicate WS receipt alongside them.
+        assertTrue(readReceipts.isEmpty())
     }
 
     @Test
@@ -955,7 +978,7 @@ class ChatConversationControllerTest {
         controller.onRealtimeMessage(testMessage("m4", userId = "other", createdAt = "2026-06-12T10:04:00Z"))
 
         assertEquals(listOf("markChatsRead:chat-1"), gateway.calls.filter { it.startsWith("markChatsRead") })
-        assertEquals(listOf("chat-1" to "m4"), readReceipts)
+        assertTrue(readReceipts.isEmpty())
     }
 
     @Test
@@ -1087,7 +1110,7 @@ class ChatConversationControllerTest {
     }
 
     @Test
-    fun initialLoadSendsWsReadReceiptForNewestMessageWhenUnread() {
+    fun initialLoadUsesTheRestBulkMarkReadAsItsOnlyReceiptTransport() {
         gateway.chat = testChat("chat-1", unreadCount = 2)
         gateway.messagePages = listOf(
             messagesPage(
@@ -1102,25 +1125,26 @@ class ChatConversationControllerTest {
 
         controller.loadInitialIfNeeded()
 
-        // Messages are kept oldest-first, so "m2" (the API's newest) is the last/most recent one.
-        assertEquals(listOf("chat-1" to "m2"), readReceipts)
+        assertTrue(gateway.calls.contains("markChatsRead:chat-1"))
+        assertTrue(readReceipts.isEmpty())
     }
 
     @Test
-    fun initialLoadSkipsWsReadReceiptWhenNothingUnread() {
+    fun initialLoadSkipsMarkReadEntirelyWhenNothingUnread() {
         gateway.chat = testChat("chat-1", unreadCount = 0)
         val controller = controller()
 
         controller.loadInitialIfNeeded()
 
+        assertFalse(gateway.calls.any { it.startsWith("markChatsRead") })
         assertTrue(readReceipts.isEmpty())
     }
 
     @Test
-    fun initialLoadWsReadReceiptSkipsOwnNewestMessageAndTargetsNewestFromOthers() {
-        gateway.chat = testChat("chat-1", unreadCount = 2)
-        // The API's newest ("m2") is our own; the receipt must target "m1", the newest from someone
-        // else, never our own message.
+    fun flushWsReceiptSkipsOwnNewestMessageAndTargetsNewestFromOthers() {
+        // The dispose-time flush is the one place the synchronous WS frame survives (it has to beat
+        // the caller's chat:leave). The newest message there is our own, so the receipt must target
+        // "m1" — the newest from someone else — never a message we authored.
         gateway.messagePages = listOf(
             messagesPage(
                 listOf(
@@ -1130,26 +1154,42 @@ class ChatConversationControllerTest {
                 total = 2,
             ),
         )
-        val controller = controller()
-
+        val controller = controller(readReceiptDebounceMillis = 60_000L)
         controller.loadInitialIfNeeded()
+        controller.onRealtimeMessage(testMessage("m3", userId = "other", createdAt = "2026-06-12T10:06:00Z"))
+        // Our own reply lands last, so the newest message overall is one we authored.
+        controller.onRealtimeMessage(testMessage("m4", userId = "me", createdAt = "2026-06-12T10:07:00Z"))
+        readReceipts.clear()
 
-        assertEquals(listOf("chat-1" to "m1"), readReceipts)
+        controller.flushPendingMarkRead()
+
+        assertEquals(listOf("chat-1" to "m3"), readReceipts)
     }
 
     @Test
-    fun initialLoadSkipsWsReadReceiptWhenAllMessagesAreOwnButStillBulkMarksRead() {
-        gateway.chat = testChat("chat-1", unreadCount = 1)
+    fun flushSkipsTheWsReceiptWhenEveryMessageIsOwnButStillBulkMarksRead() {
+        // A catch-up that gained messages schedules the mark-read whoever authored them. With
+        // nothing from another participant there is no message a receipt could sensibly point at,
+        // so only the REST bulk call goes out.
         gateway.messagePages = listOf(
             messagesPage(listOf(testMessage("m1", userId = "me")), total = 1),
+            messagesPage(
+                listOf(
+                    testMessage("m2", userId = "me", createdAt = "2026-06-12T10:02:00Z"),
+                    testMessage("m1", userId = "me"),
+                ),
+                total = 2,
+            ),
         )
-        val controller = controller()
-
+        val controller = controller(readReceiptDebounceMillis = 60_000L)
         controller.loadInitialIfNeeded()
+        controller.catchUp()
+        gateway.calls.clear()
+        readReceipts.clear()
 
-        // No non-own message exists, so no per-message WS receipt is emitted...
+        controller.flushPendingMarkRead()
+
         assertTrue(readReceipts.isEmpty())
-        // ...but the REST bulk mark-read is unchanged.
         assertTrue(gateway.calls.contains("markChatsRead:chat-1"))
     }
 
