@@ -818,6 +818,21 @@ class ChatConversationController(
     }
 
     /**
+     * Clears every received typing indicator because the socket went down.
+     *
+     * A peer who was typing when the connection dropped never gets to send its `isTyping:false`,
+     * and the per-user [typingExpiryJobs] safety net is not a reliable backstop here: it lives on
+     * the screen's [scope], so a recomposition that rebuilds the controller loses the armed timers
+     * and the indicator sticks indefinitely. Even when the timers do survive, leaving "X is
+     * typing…" up for the full [typingExpiryMillis] after the connection is visibly gone is wrong.
+     */
+    fun onRealtimeDisconnected() {
+        typingExpiryJobs.values.forEach { it.cancel() }
+        typingExpiryJobs.clear()
+        _state.update { it.copy(typingUserIds = emptySet()) }
+    }
+
+    /**
      * Applies a `message:read` receipt pushed over the socket. Receipts are cumulative: reading
      * [messageId] means the participant has read it **and every earlier message** in the chat, so
      * every own message up to and including that position (list order == createdAt order) flips

@@ -1317,6 +1317,44 @@ class ChatConversationControllerTest {
     }
 
     @Test
+    fun realtimeDisconnectedClearsEveryTypingIndicator() {
+        // A peer typing when the socket dropped never gets to send `isTyping:false`.
+        val controller = controller()
+        controller.onRealtimeTyping("chat-1", "other", isTyping = true)
+        controller.onRealtimeTyping("chat-1", "third", isTyping = true)
+
+        controller.onRealtimeDisconnected()
+
+        assertTrue(controller.state.value.typingUserIds.isEmpty())
+    }
+
+    @Test
+    fun realtimeDisconnectedCancelsTheTypingExpiryTimers() = runBlocking {
+        // A timer left armed across the disconnect fires against the *next* typing burst and clears
+        // an indicator that is legitimately live. The check below lands after the cancelled timer's
+        // deadline but before the re-armed one's, so only a real cancellation passes it.
+        val controller = controller(typingExpiryMillis = 400L)
+        controller.onRealtimeTyping("chat-1", "other", isTyping = true)
+
+        controller.onRealtimeDisconnected()
+        assertTrue(controller.state.value.typingUserIds.isEmpty())
+
+        delay(250)
+        controller.onRealtimeTyping("chat-1", "other", isTyping = true)
+        delay(250) // ~500ms in: past the cancelled timer's 400ms, well before the fresh one's 650ms
+        assertTrue(controller.state.value.typingUserIds.contains("other"))
+    }
+
+    @Test
+    fun realtimeDisconnectedWithNobodyTypingIsANoop() {
+        val controller = controller()
+
+        controller.onRealtimeDisconnected()
+
+        assertTrue(controller.state.value.typingUserIds.isEmpty())
+    }
+
+    @Test
     fun realtimeTypingFromSelfIsIgnored() {
         val controller = controller()
 

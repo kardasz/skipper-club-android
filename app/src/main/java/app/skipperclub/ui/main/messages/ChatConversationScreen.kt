@@ -222,7 +222,9 @@ fun ChatConversationScreen(
                 // The socket being up says nothing about this room being joined; MessagesScreen
                 // still uses it to refresh the chat list.
                 ChatRealtimeEvent.Connected -> Unit
-                ChatRealtimeEvent.Disconnected -> Unit
+                // A peer typing when the socket dropped never gets to send `isTyping:false`, and
+                // the receive-expiry timers are not a dependable backstop across a recomposition.
+                ChatRealtimeEvent.Disconnected -> controller.onRealtimeDisconnected()
                 // Consumed app-wide by UnreadNotificationsStore (badge) and by the
                 // notification center while it is open; nothing to do in a conversation.
                 is ChatRealtimeEvent.NotificationNew -> Unit
