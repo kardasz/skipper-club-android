@@ -2,6 +2,7 @@ package app.skipperclub.data
 
 import android.util.Log
 import app.skipperclub.BuildConfig
+import java.time.Instant
 import java.util.Collections
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
@@ -451,6 +452,21 @@ internal val SERVER_ACK_EVENTS =
  */
 internal val SILENT_EVENTS = setOf("heartbeat")
 
+/**
+ * The synthetic [ChatRealtimeEvent.ServerError] for a `chat:join` the server never acknowledged.
+ *
+ * Carries a real ISO-8601 [ChatRealtimeEvent.ServerError.timestamp] like every genuine `error`
+ * frame does: this is the only event of that type the client mints itself, and an empty string
+ * would be the one value a consumer parsing the field ever chokes on. A named factory so the shape
+ * is testable without driving a 30-second join-retry cycle.
+ */
+internal fun joinFailedEvent(chatId: String): ChatRealtimeEvent.ServerError =
+    ChatRealtimeEvent.ServerError(
+        type = "join_failed",
+        message = "chat:join for $chatId was not acknowledged",
+        timestamp = Instant.now().toString(),
+    )
+
 /** How long to wait for a `chat:joined` ack before re-sending the `chat:join` frame. */
 internal const val JOIN_ACK_TIMEOUT_MILLIS = 10_000L
 
@@ -866,13 +882,7 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
      */
     private fun emitJoinFailed(chatId: String) {
         Log.w(TAG, "chat:join for $chatId not acknowledged after $MAX_JOIN_ATTEMPTS attempts; giving up until next reconnect")
-        _events.tryEmit(
-            ChatRealtimeEvent.ServerError(
-                type = "join_failed",
-                message = "chat:join for $chatId was not acknowledged",
-                timestamp = "",
-            ),
-        )
+        _events.tryEmit(joinFailedEvent(chatId))
     }
 
     private fun emitNotification(data: JsonElement) {

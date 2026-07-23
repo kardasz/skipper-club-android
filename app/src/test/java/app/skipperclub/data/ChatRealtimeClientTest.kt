@@ -670,6 +670,18 @@ class ChatRealtimeClientTest {
     }
 
     @Test
+    fun joinFailedEventCarriesAParseableTimestamp() {
+        // The one ServerError the client mints itself. Every real `error` frame carries an ISO-8601
+        // timestamp, so an empty string here would be the single value a consumer parsing the field
+        // ever chokes on.
+        val event = joinFailedEvent("chat-1")
+
+        assertEquals("join_failed", event.type)
+        assertTrue(event.timestamp.isNotEmpty())
+        java.time.Instant.parse(event.timestamp)
+    }
+
+    @Test
     fun malformedChatJoinedFrameEmitsNothingAndLeavesTheJoinPending() = runBlocking {
         // An unidentified room is not one we can report as joined; the retry timeout stays armed.
         withParkedConnection { events ->
