@@ -25,7 +25,7 @@ interface ChatsGateway {
         accessToken: String,
         chatId: String,
         limit: Int,
-        offset: Int,
+        before: String?,
         order: SortOrder,
     ): MessagesPage
 
@@ -58,9 +58,9 @@ object RealChatsGateway : ChatsGateway {
         accessToken: String,
         chatId: String,
         limit: Int,
-        offset: Int,
+        before: String?,
         order: SortOrder,
-    ): MessagesPage = ChatsApi.listMessages(accessToken, chatId, limit, offset, order)
+    ): MessagesPage = ChatsApi.listMessages(accessToken, chatId, limit, before, order)
 
     override suspend fun sendMessage(
         accessToken: String,

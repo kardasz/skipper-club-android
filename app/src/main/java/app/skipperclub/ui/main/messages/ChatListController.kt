@@ -213,7 +213,7 @@ class ChatListController(
         }
         val alreadyApplied = existing.lastMessage?.id == message.id
         val isNewerThanPreview = existing.lastMessage
-            ?.let { isNewerTimestamp(message.createdAt, it.createdAt) } ?: true
+            ?.let { isNewerTimestamp(message.createdAt, message.id, it.createdAt, it.id) } ?: true
         _state.update { state ->
             val updated = existing.copy(
                 lastMessage = if (isNewerThanPreview) message else existing.lastMessage,
@@ -314,16 +314,28 @@ class ChatListController(
 }
 
 /**
- * Whether [incoming] is strictly newer than [existing] as ISO-8601 instants.
+ * Whether [incoming] is strictly newer than [existing] as the `(createdAt, id)` tuple, so a
+ * same-second arrival still advances the preview.
  *
- * Parsed rather than compared as text, for the reason spelled out in [sortedByCreationOrder]: the
- * API omits fractional seconds when they are zero, and `"…:00.500Z"` sorts *before* `"…:00Z"`
- * lexicographically. A timestamp that fails to parse yields `true`, preferring the incoming
- * message — that is the unconditional behaviour this replaced, and for a preview it is the safer
- * failure mode than freezing the row on an unparseable one.
+ * Timestamps are parsed rather than compared as text, for the reason spelled out in
+ * [sortedByCreationOrder]: the API omits fractional seconds when they are zero, and `"…:00.500Z"`
+ * sorts *before* `"…:00Z"` lexicographically. Equal instants are common for that same reason, so the
+ * tie is broken on the UUIDv7 id — whose byte order matches creation order — instead of freezing the
+ * row on the older message when two messages share a whole-second timestamp (AN-8). A timestamp that
+ * fails to parse yields `true`, preferring the incoming message — the safer failure mode for a
+ * preview than freezing the row on an unparseable one.
  */
-private fun isNewerTimestamp(incoming: String, existing: String): Boolean {
+private fun isNewerTimestamp(
+    incoming: String,
+    incomingId: String,
+    existing: String,
+    existingId: String,
+): Boolean {
     val incomingAt = runCatching { Instant.parse(incoming) }.getOrNull() ?: return true
     val existingAt = runCatching { Instant.parse(existing) }.getOrNull() ?: return true
-    return incomingAt.isAfter(existingAt)
+    return when {
+        incomingAt.isAfter(existingAt) -> true
+        existingAt.isAfter(incomingAt) -> false
+        else -> incomingId > existingId
+    }
 }

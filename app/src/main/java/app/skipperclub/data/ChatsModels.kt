@@ -81,9 +81,16 @@ data class MessagesPage(
     val total: Int,
     val limit: Int,
     val offset: Int,
+    /**
+     * Opaque keyset cursor built from the last message of this page: pass it back as
+     * `before` to fetch the next older page. `null` on the last page — which is exactly
+     * how [hasMore] is derived, never from a post-dedupe count
+     * (task_shared_catchup_contract.md §3.1).
+     */
+    val nextCursor: String? = null,
 ) {
     val hasMore: Boolean
-        get() = offset + messages.size < total
+        get() = nextCursor != null
 }
 
 @Serializable
@@ -199,6 +206,7 @@ internal data class MessagesListDto(
     val total: Int = 0,
     val limit: Int = 0,
     val offset: Int = 0,
+    val nextCursor: String? = null,
 ) {
     fun toDomain(): MessagesPage =
         MessagesPage(
@@ -206,6 +214,7 @@ internal data class MessagesListDto(
             total = total,
             limit = limit,
             offset = offset,
+            nextCursor = nextCursor,
         )
 }
 

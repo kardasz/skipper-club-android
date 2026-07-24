@@ -96,12 +96,12 @@ class ChatsApiTest {
     }
 
     @Test
-    fun listMessagesRequestIncludesPaginationAndOrder() {
+    fun listMessagesRequestIncludesCursorAndOrder() {
         val request = ChatsApi.listMessagesRequest(
             accessToken = "token",
             chatId = "chat-1",
             limit = 30,
-            offset = 60,
+            before = "cursor-abc",
             order = SortOrder.Desc,
         )
 
@@ -110,7 +110,25 @@ class ChatsApiTest {
         assertEquals("/v1/chats/chat-1/messages", url.encodedPath)
         assertEquals("desc", url.queryParameter("order"))
         assertEquals("30", url.queryParameter("limit"))
-        assertEquals("60", url.queryParameter("offset"))
+        assertEquals("cursor-abc", url.queryParameter("before"))
+        // Keyset paging never sends an offset.
+        assertNull(url.queryParameter("offset"))
+    }
+
+    @Test
+    fun listMessagesRequestOmitsBeforeForTheNewestPage() {
+        val request = ChatsApi.listMessagesRequest(
+            accessToken = "token",
+            chatId = "chat-1",
+            limit = 30,
+            before = null,
+            order = SortOrder.Desc,
+        )
+
+        val url = request.url
+        assertEquals("30", url.queryParameter("limit"))
+        assertNull(url.queryParameter("before"))
+        assertNull(url.queryParameter("offset"))
     }
 
     @Test

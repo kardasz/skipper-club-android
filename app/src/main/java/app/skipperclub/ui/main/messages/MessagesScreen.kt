@@ -149,6 +149,11 @@ fun MessagesScreen(modifier: Modifier = Modifier) {
     val currentOpenChatId by rememberUpdatedState(openChatId)
     ChatListRealtimeEffect(
         events = realtime.events,
+        // Seed the first-connect guard from the live socket state (AN-3): when this effect restarts
+        // with the socket already connected — a tab switch disposes and recomposes it — the first
+        // `Connected` it then sees is a genuine reconnect and must reload, not be swallowed as the
+        // initial connect.
+        initiallyConnected = realtimeConnected,
         onRealtimeMessage = { message ->
             controller.onRealtimeMessage(
                 message = message,
@@ -302,12 +307,18 @@ internal fun ChatListRealtimeEffect(
     onRealtimeMessage: (ChatMessage) -> Unit,
     onReconnected: () -> Unit,
     onServerError: () -> Unit,
+    /**
+     * Whether the socket is already connected as this effect (re)starts. Seeds the first-connect
+     * guard so a `Connected` seen while already online is treated as the reconnect it is, rather than
+     * swallowed as the initial connect — the AN-3 stale-previews-after-tab-switch bug.
+     */
+    initiallyConnected: Boolean = false,
 ) {
     val currentOnRealtimeMessage by rememberUpdatedState(onRealtimeMessage)
     val currentOnReconnected by rememberUpdatedState(onReconnected)
     val currentOnServerError by rememberUpdatedState(onServerError)
     LaunchedEffect(events) {
-        var hasConnectedOnce = false
+        var hasConnectedOnce = initiallyConnected
         events.collect { event ->
             when (event) {
                 is ChatRealtimeEvent.MessageNew -> currentOnRealtimeMessage(event.message)

@@ -96,7 +96,7 @@ object ChatsApi {
         accessToken: String,
         chatId: String,
         limit: Int,
-        offset: Int,
+        before: String?,
         order: SortOrder,
     ): Request {
         val url = chatsUrl().newBuilder()
@@ -104,7 +104,10 @@ object ChatsApi {
             .addPathSegment("messages")
             .addQueryParameter("order", order.wireValue)
             .addQueryParameter("limit", limit.toString())
-            .addQueryParameter("offset", offset.toString())
+            // Keyset paging: the `before` cursor addresses a fixed `(createdAt, id)`
+            // position, so it never skips a row the way `offset` does over a growing
+            // chat (task_shared_catchup_contract.md). No message request sends `offset`.
+            .apply { before?.let { addQueryParameter("before", it) } }
             .build()
         return baseRequest(accessToken).url(url).get().build()
     }
@@ -113,11 +116,11 @@ object ChatsApi {
         accessToken: String,
         chatId: String,
         limit: Int = 20,
-        offset: Int = 0,
+        before: String? = null,
         order: SortOrder = SortOrder.Desc,
     ): MessagesPage =
         executeAndDecode<MessagesListDto, MessagesPage>(
-            listMessagesRequest(accessToken, chatId, limit, offset, order),
+            listMessagesRequest(accessToken, chatId, limit, before, order),
         ) { it.toDomain() }
 
     internal fun sendMessageRequest(

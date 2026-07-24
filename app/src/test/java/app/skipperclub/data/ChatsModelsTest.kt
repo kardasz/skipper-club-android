@@ -106,7 +106,28 @@ class ChatsModelsTest {
 
         assertEquals("Hello", page.messages.single().text)
         assertFalse(page.messages.single().read)
+        // No nextCursor in the payload → last page → hasMore false.
         assertFalse(page.hasMore)
+        assertNull(page.nextCursor)
+    }
+
+    @Test
+    fun messagesListDerivesHasMoreFromNextCursor() {
+        val payload = """
+            {
+              "messages": [],
+              "total": 50,
+              "limit": 20,
+              "offset": 0,
+              "nextCursor": "MjAyNi0wNy0yMlQxMDoxNQ"
+            }
+        """.trimIndent()
+
+        val page = json.decodeFromString<MessagesListDto>(payload).toDomain()
+
+        // hasMore now follows the cursor, never a post-merge count.
+        assertEquals("MjAyNi0wNy0yMlQxMDoxNQ", page.nextCursor)
+        assertTrue(page.hasMore)
     }
 
     @Test

@@ -343,6 +343,12 @@ internal const val CLOSE_CODE_TOKEN_EXPIRED = 4401
 /** Close code the server uses when an inbound frame we sent exceeded the 32 KiB limit. */
 internal const val CLOSE_CODE_MESSAGE_TOO_BIG = 1009
 
+/**
+ * How many consecutive auth rejections the client refresh-and-retries before giving up on
+ * auto-reconnect. Kept at 3 to match web (`MAX_CONSECUTIVE_AUTH_FAILURES`) and iOS.
+ */
+internal const val MAX_CONSECUTIVE_AUTH_FAILURES = 3
+
 /** HTTP status the upgrade handshake returns when the bearer token is rejected. */
 internal const val HTTP_UNAUTHORIZED = 401
 
@@ -605,6 +611,16 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
     /** Retries `chat:join` frames the server never acks with `chat:joined`; see [JoinAckTracker]. */
     private val joinAckTracker = JoinAckTracker()
 
+    /**
+     * Consecutive auth rejections (1008/4401 close, or a 401 upgrade failure) since the last socket
+     * that actually opened. After [MAX_CONSECUTIVE_AUTH_FAILURES] the client stops auto-reconnecting
+     * instead of refresh-and-retrying forever every 15–30s — the credentials are the problem and
+     * hammering the refresh/upgrade endpoints cannot fix them (AN-C2, parity with web/iOS). Written
+     * under the object monitor like the other connection-state transitions.
+     */
+    @Volatile
+    private var consecutiveAuthFailures = 0
+
     @Synchronized
     override fun connect(
         accessTokenProvider: suspend () -> String?,
@@ -635,7 +651,7 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         // app-backgrounding too, not only on server-side drops. No double emission when the
         // socket's close callback fires later: handleClose/handleFailure bail out because `scope`
         // is already null.
-        markDisconnected()
+        markDisconnected(force = true)
     }
 
     /**
@@ -728,20 +744,29 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         webSocket = openedSocket
         _isConnected.value = true
         // The server accepted the upgrade — any earlier 403 is stale, so the next failure starts
-        // from the fast backoff tier again.
+        // from the fast backoff tier again, and the auth breaker resets (this open proves the
+        // credentials work).
         lastFailureWasForbidden = false
+        consecutiveAuthFailures = 0
         _events.tryEmit(ChatRealtimeEvent.Connected)
         return true
     }
 
-    private fun markDisconnected() {
+    /**
+     * @param force emit Disconnected even when the socket was not open — for [disconnect] (logout /
+     * backgrounding), where consumers must clear stale state regardless. A failed *reconnect attempt*
+     * passes `false`, so it only emits on a real connected→disconnected transition rather than on
+     * every backoff tick (AN-9).
+     */
+    private fun markDisconnected(force: Boolean) {
+        val wasConnected = _isConnected.value
         _isConnected.value = false
         // Stop retrying joins across the outage: pending timers would otherwise fire spurious
         // re-sends (dropped while disconnected) and a bogus failure event before the reconnect. The
         // onOpen replay re-arms them through joinChat. Reached under the object monitor from every
         // disconnect path (disconnect / markDisconnectedIfCurrent), and JoinAckTracker locks its own.
         joinAckTracker.clear()
-        _events.tryEmit(ChatRealtimeEvent.Disconnected)
+        if (force || wasConnected) _events.tryEmit(ChatRealtimeEvent.Disconnected)
     }
 
     /**
@@ -761,8 +786,27 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
     @Synchronized
     private fun markDisconnectedIfCurrent(ownerScope: CoroutineScope): Boolean {
         if (scope !== ownerScope) return false
-        markDisconnected()
+        markDisconnected(force = false)
         return true
+    }
+
+    /**
+     * Counts a consecutive auth rejection and reports whether the client should now GIVE UP
+     * reconnecting. After [MAX_CONSECUTIVE_AUTH_FAILURES] refresh-and-retry rounds the credentials
+     * are the problem and hammering the refresh/upgrade endpoints cannot fix them, so stop —
+     * matching the bounded auth breaker on web and iOS. A socket that actually opens resets the
+     * count (see [publishOpenIfCurrent]). Guarded on the current scope so a superseded attempt
+     * neither counts nor blocks the live one.
+     */
+    @Synchronized
+    private fun registerAuthFailureAndGaveUp(ownerScope: CoroutineScope): Boolean {
+        if (scope !== ownerScope) return true
+        consecutiveAuthFailures += 1
+        if (consecutiveAuthFailures > MAX_CONSECUTIVE_AUTH_FAILURES) {
+            Log.w(TAG, "auth rejected $consecutiveAuthFailures× in a row; giving up on auto-reconnect")
+            return true
+        }
+        return false
     }
 
     private fun scheduleReconnect(ownerScope: CoroutineScope, attempt: Int) {
@@ -799,6 +843,7 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
 
         when (reconnectPolicyForClose(code)) {
             ReconnectPolicy.RefreshToken -> ownerScope.launch {
+                if (registerAuthFailureAndGaveUp(ownerScope)) return@launch
                 runCatching { authCloseHandler?.invoke() }
                 scheduleReconnect(ownerScope, attempt)
             }
@@ -821,6 +866,7 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         recordForbiddenFailure(isForbiddenUpgradeFailure(httpCode))
         if (shouldRefreshTokenForHttpFailure(httpCode)) {
             ownerScope.launch {
+                if (registerAuthFailureAndGaveUp(ownerScope)) return@launch
                 runCatching { authCloseHandler?.invoke() }
                 scheduleReconnect(ownerScope, attempt)
             }

@@ -41,6 +41,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ProcessLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -251,11 +254,19 @@ fun ChatConversationScreen(
     }
     // REST poll as a fallback while the socket is down. Same entry point as the rejoin catch-up —
     // a poll tick is just a catch-up whose first page usually overlaps immediately.
+    //
+    // Gated on the app being foregrounded (AN-2): a LaunchedEffect keeps running while the Activity
+    // is stopped, so without this the socket-down poll would keep firing catch-up — and its
+    // mark-read — in the background, draining battery/network and marking messages the user never
+    // saw as "seen" for the peer. repeatOnLifecycle pauses the loop below STARTED and resumes it on
+    // foreground; ProcessLifecycleOwner tracks the whole app, matching the socket's own lifecycle.
     LaunchedEffect(controller, realtimeConnected) {
         if (!realtimeConnected) {
-            while (true) {
-                delay(POLL_INTERVAL_MILLIS)
-                controller.catchUp()
+            ProcessLifecycleOwner.get().lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    delay(POLL_INTERVAL_MILLIS)
+                    controller.catchUp()
+                }
             }
         }
     }

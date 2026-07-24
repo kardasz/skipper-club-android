@@ -55,8 +55,15 @@ internal fun testChat(
 internal fun chatsPage(chats: List<Chat>, total: Int = chats.size, offset: Int = 0) =
     ChatsPage(chats = chats, total = total, limit = 20, offset = offset)
 
-internal fun messagesPage(messages: List<ChatMessage>, total: Int = messages.size, offset: Int = 0) =
-    MessagesPage(messages = messages, total = total, limit = 20, offset = offset)
+internal fun messagesPage(
+    messages: List<ChatMessage>,
+    total: Int = messages.size,
+    offset: Int = 0,
+    // Preserve the pre-cursor "has more" intent (offset + size < total) by mapping it onto a
+    // non-null nextCursor, so tests keep expressing "more pages" via `total` while the client now
+    // reads `hasMore` from the cursor.
+    nextCursor: String? = if (offset + messages.size < total) "cursor-${offset + messages.size}" else null,
+) = MessagesPage(messages = messages, total = total, limit = 20, offset = offset, nextCursor = nextCursor)
 
 /** Configurable in-memory [ChatsGateway]; records calls for assertions. */
 internal class FakeChatsGateway : ChatsGateway {
@@ -66,7 +73,8 @@ internal class FakeChatsGateway : ChatsGateway {
 
     var messagePages: List<MessagesPage> = listOf(messagesPage(emptyList()))
     var listMessagesError: ChatsError? = null
-    val listMessagesOffsets = mutableListOf<Int>()
+    /** The `before` keyset cursor each `listMessages` call carried; `null` for a first/newest page. */
+    val listMessagesBefores = mutableListOf<String?>()
     val listMessagesLimits = mutableListOf<Int>()
 
     /**
@@ -130,17 +138,22 @@ internal class FakeChatsGateway : ChatsGateway {
         accessToken: String,
         chatId: String,
         limit: Int,
-        offset: Int,
+        before: String?,
         order: SortOrder,
     ): MessagesPage {
-        calls += "listMessages:$chatId:$offset:${order.wireValue}"
-        listMessagesOffsets += offset
+        calls += "listMessages:$chatId:$before:${order.wireValue}"
+        listMessagesBefores += before
         listMessagesLimits += limit
         listMessagesGate?.await()
         listMessagesError?.let { throw it }
-        val page = messagePages[minOf(listMessagesCallCount, messagePages.lastIndex)]
+        val servedIndex = listMessagesCallCount
+        val basePage = messagePages[minOf(listMessagesCallCount, messagePages.lastIndex)]
         listMessagesCallCount++
-        return page
+        // Give every "has more" page a distinct, call-indexed cursor so the controller threads a
+        // distinct `before` on the next call (the fake serves pages by call order, not by cursor, so
+        // without this every page would hand back the same cursor and the threaded sequence would be
+        // indistinguishable). A last page keeps its null cursor.
+        return if (basePage.nextCursor != null) basePage.copy(nextCursor = "cursor-$servedIndex") else basePage
     }
 
     override suspend fun sendMessage(

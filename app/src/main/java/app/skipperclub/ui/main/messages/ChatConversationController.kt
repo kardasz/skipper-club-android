@@ -157,19 +157,24 @@ class ChatConversationController(
     private val pendingRealtimeMessages = mutableListOf<ChatMessage>()
 
     /**
-     * How many history rows this controller has fetched through *paged* requests — the offset the
-     * next [loadMore] must use. Deliberately not derived from [ChatConversationUiState.messages],
-     * which also grows from realtime arrivals, catch-up and optimistic bubbles: the server
-     * pages `created_at DESC` over its own list, so every row that entered ours by another route
-     * shifts that window by one and silently skips an older message. Duplicates are filtered by id,
-     * gaps have no signal at all (task_shared_catchup_contract.md §3.1).
-     *
-     * Advanced only by the initial load, [loadMore] and [reloadFromScratch]; reset by [retry].
+     * Opaque `before` keyset cursor for the next older history page — the [MessagesPage.nextCursor]
+     * of the last history page fetched, `null` before any page has loaded or once the server reports
+     * no older messages. A cursor names a fixed `(createdAt, id)` position, so unlike an offset it
+     * cannot be shifted by realtime arrivals, catch-up or optimistic bubbles growing the local list
+     * (task_shared_catchup_contract.md §3.1). Advanced only by the initial load, [loadMore] and
+     * [reloadFromScratch]; reset by [retry].
      */
-    private var historyOffset: Int = 0
+    private var historyCursor: String? = null
 
     /** The catch-up loop in flight, so a second trigger coalesces into it instead of stacking. */
     private var catchUpJob: Job? = null
+
+    /**
+     * A catch-up requested while [catchUpJob] was still running. Instead of dropping that trigger —
+     * which lost the reconnect's reconciliation entirely (AN-4 / contract §3.4) — the loop runs one
+     * more pass when it finishes.
+     */
+    private var catchUpRerunRequested: Boolean = false
 
     /** In-flight debounced mark-read, cancelled and restarted by each new arrival. */
     private var markReadJob: Job? = null
@@ -190,6 +195,15 @@ class ChatConversationController(
      */
     private val markReadFlushScope = CoroutineScope(scope.coroutineContext + SupervisorJob())
 
+    /**
+     * Detached from [scope] (same dispatcher, own [SupervisorJob]) so a send in flight survives the
+     * screen scope being cancelled the instant the user taps back after sending: on [scope] the POST
+     * was cancelled mid-flight — the OkHttp call aborted, the bubble gone with the screen, no retry
+     * state left — so the message could silently never leave the device (AN-1). Bounded by [close]'s
+     * grace like [markReadFlushScope], and by the send watchdog, so nothing long-lived leaks.
+     */
+    private val sendDispatchScope = CoroutineScope(scope.coroutineContext + SupervisorJob())
+
     fun loadInitialIfNeeded() {
         val current = _state.value
         if (current.hasLoadedOnce || current.isLoading) return
@@ -205,10 +219,10 @@ class ChatConversationController(
                     token,
                     chatId,
                     limit = pageSize,
-                    offset = 0,
+                    before = null,
                     order = SortOrder.Desc,
                 )
-                historyOffset = page.messages.size
+                historyCursor = page.nextCursor
                 _state.update {
                     it.copy(
                         chat = chat,
@@ -237,7 +251,7 @@ class ChatConversationController(
     }
 
     fun retry() {
-        historyOffset = 0
+        historyCursor = null
         // The buffer belongs to the load that failed: the retry re-reads page 0, which already
         // contains everything the server has, so replaying stale arrivals on top only risks
         // resurrecting a message that was meanwhile deleted.
@@ -250,6 +264,8 @@ class ChatConversationController(
     fun loadMore() {
         val current = _state.value
         if (!current.hasMore || current.isLoading || current.isLoadingMore) return
+        // `hasMore` and the cursor are written together, so this is unreachable; kept consistent.
+        val cursor = historyCursor ?: run { _state.update { it.copy(hasMore = false) }; return }
         _state.update { it.copy(isLoadingMore = true) }
         scope.launch {
             val token = requireToken() ?: run {
@@ -261,12 +277,12 @@ class ChatConversationController(
                     token,
                     chatId,
                     limit = pageSize,
-                    offset = historyOffset,
+                    before = cursor,
                     order = SortOrder.Desc,
                 )
-                // Advance by what the server actually returned, before any deduplication: the offset
-                // counts rows on the server's list, not rows we chose to keep.
-                historyOffset += page.messages.size
+                // Advance to the next page's cursor; `hasMore` follows from it, never from a
+                // post-dedupe count (a fully-overlapping page would otherwise stop paging).
+                historyCursor = page.nextCursor
                 mergeFetched(page.messages)
                 _state.update { it.copy(hasMore = page.hasMore, isLoadingMore = false) }
             } catch (error: ChatsError) {
@@ -310,7 +326,7 @@ class ChatConversationController(
                 )
                 .withSendStatus(clientMessageId, MessageSendStatus.Sending)
         }
-        armSendWatchdog(clientMessageId)
+        armSendWatchdog(clientMessageId, trimmed)
         dispatchSend(clientMessageId, trimmed)
         return clientMessageId
     }
@@ -326,7 +342,7 @@ class ChatConversationController(
         if (current.sendStatusByClientMessageId[clientMessageId] != MessageSendStatus.Failed) return
         val text = current.messages.firstOrNull { it.clientMessageId == clientMessageId }?.text ?: return
         _state.update { it.withSendStatus(clientMessageId, MessageSendStatus.Sending) }
-        armSendWatchdog(clientMessageId)
+        armSendWatchdog(clientMessageId, text)
         dispatchSend(clientMessageId, text)
     }
 
@@ -359,7 +375,9 @@ class ChatConversationController(
 
     /** The POST itself, shared by [send] and [retrySend] so a retry is byte-for-byte the same call. */
     private fun dispatchSend(clientMessageId: String, text: String) {
-        scope.launch {
+        // On [sendDispatchScope], not [scope]: a back-tap right after sending cancels the screen
+        // scope, and with it a POST launched there — the message would never reach the server (AN-1).
+        sendDispatchScope.launch {
             val token = requireToken() ?: run {
                 failSend(clientMessageId, text)
                 return@launch
@@ -437,17 +455,27 @@ class ChatConversationController(
      * Deliberately does not emit [ChatConversationEvent.SendFailed]: 12 seconds on, the input holds
      * whatever the user has typed since, and the recovery affordance is the bubble's own retry.
      */
-    private fun armSendWatchdog(clientMessageId: String) {
+    private fun armSendWatchdog(clientMessageId: String, text: String) {
         sendWatchdogJobs.remove(clientMessageId)?.cancel()
-        sendWatchdogJobs[clientMessageId] = scope.launch {
+        // On the detached [sendDispatchScope] so it outlives a screen dispose alongside the POST it
+        // guards — otherwise a send that survives dispose (AN-1) would lose its only timeout.
+        sendWatchdogJobs[clientMessageId] = sendDispatchScope.launch {
             delay(sendConfirmTimeoutMillis)
             sendWatchdogJobs.remove(clientMessageId)
+            var failedWithoutBubble = false
             _state.update { state ->
                 if (state.sendStatusByClientMessageId[clientMessageId] != MessageSendStatus.Sending) {
                     state
                 } else {
+                    // When the author was unresolvable at send time (chat metadata not loaded yet)
+                    // no optimistic bubble was rendered, so the user has no visible bubble to retry
+                    // from. Hand the draft back rather than losing the text silently (AN-6).
+                    failedWithoutBubble = state.messages.none { it.clientMessageId == clientMessageId }
                     state.withSendStatus(clientMessageId, MessageSendStatus.Failed)
                 }
+            }
+            if (failedWithoutBubble) {
+                _events.tryEmit(ChatConversationEvent.SendFailed(clientMessageId, text))
             }
         }
     }
@@ -627,6 +655,12 @@ class ChatConversationController(
             delay(markReadFlushGraceMillis)
             markReadFlushScope.cancel()
         }
+        // Same grace for in-flight sends (AN-1): a send launched microseconds before dispose gets
+        // the window to reach the server, then the detached scope is torn down so nothing leaks.
+        sendDispatchScope.launch {
+            delay(markReadFlushGraceMillis)
+            sendDispatchScope.cancel()
+        }
     }
 
     /**
@@ -651,14 +685,23 @@ class ChatConversationController(
     fun catchUp() {
         val current = _state.value
         if (!current.hasLoadedOnce || current.isLoading) return
-        if (catchUpJob?.isActive == true) return
+        if (catchUpJob?.isActive == true) {
+            // Queue exactly one re-run instead of dropping the trigger: a poll tick or a rejoin
+            // arriving mid-loop must not lose its reconciliation (AN-4 / contract §3.4).
+            catchUpRerunRequested = true
+            return
+        }
         catchUpJob = scope.launch {
             val token = runCatching { accessToken() }.getOrNull() ?: return@launch
-            try {
-                runCatchUp(token)
-            } catch (_: ChatsError) {
-                // Background reconciliation: stay quiet, the next poll tick or rejoin retries.
-            }
+            do {
+                catchUpRerunRequested = false
+                try {
+                    runCatchUp(token)
+                } catch (_: ChatsError) {
+                    // Background reconciliation: stay quiet, the next poll tick or rejoin retries.
+                    break
+                }
+            } while (catchUpRerunRequested)
         }
     }
 
@@ -669,22 +712,25 @@ class ChatConversationController(
         val anchorId = _state.value.messages.lastOrNull { !it.isOptimistic() }?.id
             ?: return reloadFromScratch(token)
         var gainedMessages = false
-        repeat(catchUpMaxPages) { pageIndex ->
+        var cursor: String? = null
+        repeat(catchUpMaxPages) {
             val page = gateway.listMessages(
                 token,
                 chatId,
                 limit = catchUpLimit,
-                offset = pageIndex * catchUpLimit,
+                before = cursor,
                 order = SortOrder.Desc,
             )
             gainedMessages = mergeFetched(page.messages) || gainedMessages
             // Overlap reached, or the start of history — the gap is closed either way. Deliberately
-            // no `hasMore` write: an offset-0 page describes the newest window, not the older
-            // history the user is paging through.
-            if (page.messages.any { it.id == anchorId } || page.messages.size < catchUpLimit) {
+            // no `hasMore` write: catch-up pages the newest window, not the older history the user
+            // is paging through. The cursor names a fixed position, so a message arriving mid-loop
+            // can't shift the window; the anchor overlap plus id dedupe make it at worst a re-fetch.
+            if (page.messages.any { it.id == anchorId } || page.nextCursor == null) {
                 if (gainedMessages) scheduleMarkRead()
                 return
             }
+            cursor = page.nextCursor
         }
         // The outage ran deeper than the page cap. Merging what we fetched would leave an invisible
         // hole between that window and the local history, so throw the window away and reload.
@@ -703,12 +749,12 @@ class ChatConversationController(
             token,
             chatId,
             limit = pageSize,
-            offset = 0,
+            before = null,
             order = SortOrder.Desc,
         )
         val known = _state.value.messages
         val gainedMessages = page.messages.any { candidate -> known.none { isDuplicate(it, candidate) } }
-        historyOffset = page.messages.size
+        historyCursor = page.nextCursor
         val confirmed = mutableSetOf<String>()
         _state.update { state ->
             // Optimistic bubbles exist only here, so a wholesale swap would silently drop a send
@@ -721,7 +767,9 @@ class ChatConversationController(
                 .fold(state.copy(messages = (page.messages + pending).sortedByCreationOrder())) { acc, key ->
                     acc.withSendStatus(key, MessageSendStatus.Sent)
                 }
-                .copy(hasMore = page.hasMore)
+                // Clear a stale `loadFailed` too: a poll/rejoin reload that succeeds after the
+                // initial load failed must drop the "Retry" state, not leave it stuck (AN-7).
+                .copy(hasMore = page.hasMore, loadFailed = false)
         }
         confirmed.forEach { cancelSendWatchdog(it) }
         if (gainedMessages) scheduleMarkRead()

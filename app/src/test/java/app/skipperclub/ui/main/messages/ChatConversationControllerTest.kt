@@ -141,7 +141,8 @@ class ChatConversationControllerTest {
         val state = controller.state.value
         assertEquals(listOf("m1", "m2", "m3", "m4"), state.messages.map { it.id })
         assertFalse(state.hasMore)
-        assertEquals(listOf(0, 2), gateway.listMessagesOffsets)
+        // Load-older threads the cursor from page 1, never an offset over the array.
+        assertEquals(listOf<String?>(null, "cursor-0"), gateway.listMessagesBefores)
     }
 
     @Test
@@ -448,8 +449,8 @@ class ChatConversationControllerTest {
         )
         assertFalse(controller.state.value.isSending)
         // The unconfirmed bubble is not a usable anchor — its id exists nowhere on the server — so
-        // the loop anchors on "m1" and the first page already overlaps.
-        assertEquals(listOf(0, 0), gateway.listMessagesOffsets)
+        // the loop anchors on "m1" and the first (newest, no cursor) page already overlaps.
+        assertEquals(listOf<String?>(null, null), gateway.listMessagesBefores)
     }
 
     @Test
@@ -533,8 +534,9 @@ class ChatConversationControllerTest {
         val messages = controller.state.value.messages
         assertEquals(listOf("m1", "m2", "m3", "m4", "m5", "m6"), messages.map { it.id })
         assertEquals(messages.size, messages.distinctBy { it.id }.size)
-        // Initial load, then three catch-up pages walking back to the overlap.
-        assertEquals(listOf(0, 0, 2, 4), gateway.listMessagesOffsets)
+        // Initial load (null), then three catch-up pages: the first is the newest window (null),
+        // the next two thread the cursor from the prior page back to the overlap.
+        assertEquals(listOf<String?>(null, null, "cursor-1", "cursor-2"), gateway.listMessagesBefores)
     }
 
     @Test
@@ -607,7 +609,12 @@ class ChatConversationControllerTest {
         // Only the fresh page survives — no partial merge, no hole.
         assertEquals(listOf("m8", "m9"), controller.state.value.messages.map { it.id })
         assertTrue(controller.state.value.hasMore)
-        assertEquals(listOf(0, 0, 2, 4, 0), gateway.listMessagesOffsets)
+        // Initial (null), three cursor-threaded catch-up pages that never overlap, then a full
+        // reload from the newest page (null).
+        assertEquals(
+            listOf<String?>(null, null, "cursor-1", "cursor-2", null),
+            gateway.listMessagesBefores,
+        )
     }
 
     @Test
@@ -622,7 +629,8 @@ class ChatConversationControllerTest {
         controller.catchUp()
 
         assertEquals(listOf("m1"), controller.state.value.messages.map { it.id })
-        assertEquals(listOf(0, 0), gateway.listMessagesOffsets)
+        // Nothing local to anchor on, so catch-up reloads the newest page — both requests cursor-less.
+        assertEquals(listOf<String?>(null, null), gateway.listMessagesBefores)
     }
 
     @Test
@@ -701,8 +709,10 @@ class ChatConversationControllerTest {
     }
 
     @Test
-    fun concurrentCatchUpTriggersCoalesceIntoTheLoopInFlight() {
-        // A poll tick landing on top of a chat:joined must not stack a second page-back loop.
+    fun aCatchUpTriggeredWhileOneRunsQueuesExactlyOneRerun() {
+        // AN-4 / contract §3.4: a poll tick landing on top of a chat:joined must not be dropped
+        // (which lost the reconnect's reconciliation) nor stack a second concurrent loop — it queues
+        // exactly one more pass that runs when the current loop finishes.
         gateway.messagePages = listOf(
             messagesPage(listOf(testMessage("m1")), total = 1),
             messagesPage(listOf(testMessage("m1")), total = 1),
@@ -712,11 +722,12 @@ class ChatConversationControllerTest {
         val gate = CompletableDeferred<Unit>()
         gateway.listMessagesGate = gate
 
-        controller.catchUp()
-        controller.catchUp()
+        controller.catchUp() // starts the loop; its first page parks on the gate
+        controller.catchUp() // queued as a re-run, not dropped, not stacked
         gate.complete(Unit)
 
-        assertEquals(2, gateway.calls.count { it.startsWith("listMessages") })
+        // Initial load + the first catch-up pass + exactly one queued re-run pass.
+        assertEquals(3, gateway.calls.count { it.startsWith("listMessages") })
     }
 
     @Test
@@ -757,8 +768,9 @@ class ChatConversationControllerTest {
         controller.catchUp()
         controller.loadMore()
 
-        // Two history rows fetched so far, so the older page starts at 2 — not at the list size (4).
-        assertEquals(listOf(0, 0, 2), gateway.listMessagesOffsets)
+        // Load-older threads the history cursor from page 1 ("cursor-0"), untouched by the realtime
+        // arrivals or the catch-up (which page the newest window, cursor-less) in between.
+        assertEquals(listOf<String?>(null, null, "cursor-0"), gateway.listMessagesBefores)
         assertEquals(
             listOf("m2", "m3", "m4", "m5", "m8", "m9"),
             controller.state.value.messages.map { it.id },
@@ -791,8 +803,9 @@ class ChatConversationControllerTest {
         controller.retry()
         controller.loadMore()
 
-        // The reload restarts the cursor: 0 (initial), 2 (loadMore), 0 (retry), 2 (loadMore again).
-        assertEquals(listOf(0, 2, 0, 2), gateway.listMessagesOffsets)
+        // The reload restarts the cursor: null (initial), threaded (loadMore), null (retry reloads
+        // the newest page), threaded (loadMore again).
+        assertEquals(listOf<String?>(null, "cursor-0", null, "cursor-2"), gateway.listMessagesBefores)
     }
 
     @Test
