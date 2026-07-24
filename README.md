@@ -198,6 +198,14 @@ adb shell am start -W -a android.intent.action.VIEW \
 | [`docs/api/index.md`](./docs/api/index.md)           | API overview + OpenAPI 3.1 + AsyncAPI 3.0 contracts.                            |
 | [`docs/ux/`](./docs/ux/)                             | Screen specs and flow diagrams.                                                 |
 
+### Backend compatibility (deploy order)
+
+Message-history pagination is keyset-based: the client sends the opaque `before` cursor and reads
+`nextCursor` from `GET /v1/chats/{chatId}/messages`, treating a missing/`null` `nextCursor` as
+"no older messages". Against a backend that does not emit `nextCursor` yet (pre-cursor API, or a
+proxy stripping unknown fields) history pagination therefore stops after the first page. **Deploy
+the backend (API ≥ v1.9.0, cursor fields) before shipping this app version.**
+
 ---
 
 ## Contributing
