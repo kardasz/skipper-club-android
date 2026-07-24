@@ -218,38 +218,17 @@ fun ChatConversationScreen(
     }
     LaunchedEffect(controller, realtime) {
         realtime.events.collect { event ->
-            when (event) {
-                is ChatRealtimeEvent.MessageNew -> controller.onRealtimeMessage(event.message)
-                is ChatRealtimeEvent.MessageReceived -> controller.onRealtimeMessage(event.message)
-                // Catch up on anything missed while the socket was down — keyed off the room ack,
-                // not off Connected. The join replay runs after Connected, so a message created
-                // between a Connected-triggered fetch and the server processing our `chat:join`
-                // would be in neither: too new for the page, too old for the room.
-                is ChatRealtimeEvent.ChatJoined -> if (event.chatId == chatId) controller.catchUp()
-                // The socket being up says nothing about this room being joined; MessagesScreen
-                // still uses it to refresh the chat list.
-                ChatRealtimeEvent.Connected -> Unit
-                // A peer typing when the socket dropped never gets to send `isTyping:false`, and
-                // the receive-expiry timers are not a dependable backstop across a recomposition.
-                ChatRealtimeEvent.Disconnected -> controller.onRealtimeDisconnected()
-                // Consumed app-wide by UnreadNotificationsStore (badge) and by the
-                // notification center while it is open; nothing to do in a conversation.
-                is ChatRealtimeEvent.NotificationNew -> Unit
-                is ChatRealtimeEvent.TypingUpdate ->
-                    controller.onRealtimeTyping(event.chatId, event.userId, event.isTyping)
-
-                // `readAt` matters: receipts cascade, and the anchor message is often one we never
-                // loaded — the timestamp is then the only thing that says which own bubbles were
-                // seen (ChatConversationController.onRealtimeMessageRead).
-                is ChatRealtimeEvent.MessageRead ->
-                    controller.onRealtimeMessageRead(event.messageId, event.userId, event.readAt)
-
-                // Presence is app-wide (PresenceStore); this screen only reads it below.
-                is ChatRealtimeEvent.PresenceUpdate -> Unit
-                // Logged in ChatRealtimeClient; surfaced to the user from MessagesScreen, which
-                // stays composed underneath this dialog for the lifetime of the socket.
-                is ChatRealtimeEvent.ServerError -> Unit
-            }
+            applyConversationRealtimeEvent(
+                event = event,
+                chatId = chatId,
+                controller = controller,
+                // Skipped only when a `chat:join` for this room is already awaiting its ack — the
+                // client's onOpen replay got there first (server-side drop, where the joined set
+                // survives). That pending join either acks (its ChatJoined runs the catch-up) or
+                // exhausts into a retried-on-next-reconnect failure, so the skip never loses the
+                // trigger — it only avoids sending the same join twice and running two catch-ups.
+                rejoinChat = { id -> if (!realtime.isJoinPending(id)) realtime.joinChat(id) },
+            )
         }
     }
     // REST poll as a fallback while the socket is down. Same entry point as the rejoin catch-up —
@@ -323,6 +302,58 @@ fun ChatConversationScreen(
             hostState = notificationHostState,
             modifier = Modifier.align(Alignment.TopCenter),
         )
+    }
+}
+
+/**
+ * Applies one realtime event to the open conversation. Extracted from [ChatConversationScreen]'s
+ * collector so the reconnect → rejoin → `chat:joined` → catch-up cycle is unit-testable without
+ * composition (same reason [ChatListRealtimeEffect] exists for the list).
+ *
+ * [rejoinChat] is invoked on every [ChatRealtimeEvent.Connected]. A deliberate `disconnect()`
+ * (app backgrounded, logout) clears the client's joined-room set, so the client's own onOpen
+ * replay cannot restore this room after a background→foreground cycle — without this call the
+ * conversation would never re-join, never receive `ChatJoined`, and therefore never catch up on
+ * messages sent while the app was in the background (C-AN-1/D-AN-1). `joinChat` is idempotent and
+ * ack-tracked, and it is the resulting [ChatRealtimeEvent.ChatJoined] — not `Connected` itself —
+ * that drives the catch-up: the join replay runs after `Connected`, so a message created between
+ * a Connected-triggered fetch and the server processing our `chat:join` would be in neither.
+ */
+internal fun applyConversationRealtimeEvent(
+    event: ChatRealtimeEvent,
+    chatId: String,
+    controller: ChatConversationController,
+    rejoinChat: (String) -> Unit,
+) {
+    when (event) {
+        is ChatRealtimeEvent.MessageNew -> controller.onRealtimeMessage(event.message)
+        is ChatRealtimeEvent.MessageReceived -> controller.onRealtimeMessage(event.message)
+        // Catch up on anything missed while the socket was down — keyed off the room ack,
+        // not off Connected; see the kdoc above.
+        is ChatRealtimeEvent.ChatJoined -> if (event.chatId == chatId) controller.catchUp()
+        // The socket being up says nothing about this room being joined — and after a deliberate
+        // disconnect nothing else re-joins it — so ensure membership here; see the kdoc above.
+        ChatRealtimeEvent.Connected -> rejoinChat(chatId)
+        // A peer typing when the socket dropped never gets to send `isTyping:false`, and
+        // the receive-expiry timers are not a dependable backstop across a recomposition.
+        ChatRealtimeEvent.Disconnected -> controller.onRealtimeDisconnected()
+        // Consumed app-wide by UnreadNotificationsStore (badge) and by the
+        // notification center while it is open; nothing to do in a conversation.
+        is ChatRealtimeEvent.NotificationNew -> Unit
+        is ChatRealtimeEvent.TypingUpdate ->
+            controller.onRealtimeTyping(event.chatId, event.userId, event.isTyping)
+
+        // `readAt` matters: receipts cascade, and the anchor message is often one we never
+        // loaded — the timestamp is then the only thing that says which own bubbles were
+        // seen (ChatConversationController.onRealtimeMessageRead).
+        is ChatRealtimeEvent.MessageRead ->
+            controller.onRealtimeMessageRead(event.messageId, event.userId, event.readAt)
+
+        // Presence is app-wide (PresenceStore); this screen only reads it.
+        is ChatRealtimeEvent.PresenceUpdate -> Unit
+        // Logged in ChatRealtimeClient; surfaced to the user from MessagesScreen, which
+        // stays composed underneath this dialog for the lifetime of the socket.
+        is ChatRealtimeEvent.ServerError -> Unit
     }
 }
 
