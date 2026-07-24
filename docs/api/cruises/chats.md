@@ -46,7 +46,8 @@ flowchart TD
     subgraph ParticipantLeave["Participant Leaves"]
         H["Accepted participant removed/leaves"]:::trigger --> I["Commit state and accepted count"]:::state
         I --> J["Best-effort RemoveGroupChatMember"]:::negative
-        J --> K[Messages remain in chat]:::state
+        J --> J2["Evict their WS connections from the chat room"]:::state
+        J2 --> K[Messages remain in chat]:::state
     end
 
     classDef trigger fill:#3B82F6,stroke:#1E40AF,color:#FFFFFF
@@ -70,6 +71,14 @@ against the organizer + accepted participants, and issues the same idempotent
 gap. It is safe to re-run at any time — an already-consistent cruise reports
 no changes — mirroring `alerts sync-posts`'s reconciliation for the
 alert↔post projection.
+
+Removing a member — from either path — also evicts that user's WebSocket
+connections from the group chat's room on every running API instance, so they
+stop receiving the chat's `message:new` and `chat:typing` immediately (see
+[WebSocket](../messages/websocket.md)). Because `sync-chats` is a removal path
+too, it requires Redis: the command connects to it at startup and **fails
+outright if Redis is unreachable**, rather than reconciling membership while
+silently leaving ex-participants on the chat's real-time traffic.
 
 ### Access Rules
 
@@ -451,6 +460,9 @@ This ensures historical conversations are preserved for reference.
 When a participant is removed from the group chat:
 
 - They lose access to the chat
+- Their open WebSocket connections are evicted from the chat's room on every
+  API instance, so real-time delivery stops with the access; no event
+  announces it, and the client learns of the loss on its next REST fetch
 - Their previous messages remain visible to other participants
 - The organizer always retains access
 

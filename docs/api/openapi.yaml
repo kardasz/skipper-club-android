@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: SkipperClub API
   description: API for the SkipperClub social platform – connecting skippers and sailing enthusiasts.
-  version: 1.2.2
+  version: 1.9.0
   contact:
     name: SkipperClub Team
     email: contact@skipperclub.com
@@ -1468,7 +1468,14 @@ paths:
       tags:
         - messages
       summary: Get chat messages
-      description: Returns messages from chat. If chat was previously deleted by user, history is not visible.
+      description: |
+        Returns messages from chat. If chat was previously deleted by user, history is not visible.
+
+        Two paging modes are available and must not be mixed: classic
+        `offset` paging, and keyset paging with the `before`/`after` cursors.
+        Keyset paging is stable while the chat keeps growing — `offset`
+        paging silently skips one older message per message that arrives
+        between two page fetches.
       parameters:
         - name: chatId
           in: path
@@ -1476,6 +1483,30 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: after
+          in: query
+          schema:
+            type: string
+          description: >-
+            Keyset cursor. Returns only messages strictly newer than the
+            referenced one, using (createdAt, id) tuple ordering. Opaque —
+            pass back the `nextCursor` value of a previous response verbatim.
+            Mutually exclusive with `before` and with `offset`, and not
+            supported together with `sort=updatedAt` (the cursor is built on
+            `createdAt`); any of those combinations, or a malformed cursor,
+            is a 400.
+        - name: before
+          in: query
+          schema:
+            type: string
+          description: >-
+            Keyset cursor. Returns only messages strictly older than the
+            referenced one, using (createdAt, id) tuple ordering. Opaque —
+            pass back the `nextCursor` value of a previous response verbatim.
+            Mutually exclusive with `after` and with `offset`, and not
+            supported together with `sort=updatedAt` (the cursor is built on
+            `createdAt`); any of those combinations, or a malformed cursor,
+            is a 400.
         - name: fromDate
           in: query
           schema:
@@ -1521,6 +1552,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessagesList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '403':
           description: User is not a participant in this chat
           headers:
@@ -1571,6 +1604,12 @@ paths:
         WebSocket events as the WS `message:send` operation: `message:new` to
         the chat room and `message:received` to every other participant's
         personal room (see api/asyncapi.yaml).
+
+        The optional `clientMessageId` makes the send idempotent per (chat,
+        sender): retrying with the same key returns 201 with the
+        already-created message and emits no second round of WebSocket
+        events, so clients can safely retry after a network failure without
+        duplicating the message.
       parameters:
         - name: chatId
           in: path
@@ -1653,8 +1692,10 @@ paths:
       description: |
         Update a specific message (e.g., mark as read). Marking as read
         (`read: true`) broadcasts the same `message:read` receipt to the chat
-        room as the WS `message:read` operation; marking as unread emits no
-        WebSocket event (see api/asyncapi.yaml).
+        room as the WS `message:read` operation — receipts are cascading: a
+        receipt for message M means the reader has read M and every earlier
+        message in the chat. Marking as unread emits no WebSocket event (see
+        api/asyncapi.yaml).
       parameters:
         - name: chatId
           in: path
@@ -1752,6 +1793,14 @@ paths:
       tags:
         - messages
       summary: Perform bulk actions on chats (delete or mark messages as read)
+      description: |
+        Applies the action to each chat in turn. For `mark-read`, the server
+        broadcasts one WebSocket `message:read` receipt to each chat's room
+        where at least one message actually transitioned unread→read, carrying
+        the newest such message — receipts are cascading: a receipt for
+        message M means the reader has read M and every earlier message in
+        that chat. Chats with nothing newly marked emit no event. The `delete`
+        action emits no WebSocket events (see api/asyncapi.yaml).
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
@@ -8576,6 +8625,16 @@ components:
           type: string
           format: date-time
           description: When the message was last updated
+        clientMessageId:
+          type: string
+          format: uuid
+          description: >-
+            The idempotency key of the send that created this message, echoed
+            back so a REST sender can match the server-assigned message to its
+            optimistic entry — the same value the real-time WebSocket events
+            carry. Present only on the send response (`POST /chats/{chatId}/messages`);
+            omitted on list and read paths, which do not resolve it.
+          example: 018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b2e
     MessageCreate:
       type: object
       required:
@@ -8591,10 +8650,15 @@ components:
           type: string
           format: uuid
           description: >-
-            Optional client-generated idempotency key (UUID, any version). Repeating the request
-            with the same clientMessageId returns the already-created message (same id) instead of
-            creating a duplicate, so timeout-driven retries cannot double-post.
-          example: 0d3ee1a5-51f0-4be9-9e1c-7e0e2f7f8b10
+            Optional client-generated idempotency key, unique per (chat,
+            sender). Any UUID version is accepted — it is a client identifier,
+            not a server entity id, so the UUIDv7 convention for server ids
+            does not apply. Retrying a send with the same clientMessageId
+            returns the already-created message (201 with the existing object)
+            instead of creating a duplicate, and does not re-emit the
+            real-time WebSocket events. Omit it for non-idempotent sends
+            (previous behavior, unchanged).
+          example: 6f1e0c2a-9b1d-4a7e-8c3f-2d5b8a91c0de
     MessagesList:
       type: object
       properties:
@@ -8608,6 +8672,17 @@ components:
           type: integer
         offset:
           type: integer
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          description: >-
+            Opaque keyset cursor built from the last message of this page:
+            pass it back as `before` (descending order) or `after` (ascending
+            order) to fetch the next page. `null` when this page is the last
+            one, and when the page was sorted by `updatedAt` (the cursor is
+            built on `createdAt`).
+          example: MjAyNi0wNy0yMlQxMDoxNToxMi4zNDU2N1p8MDE5MWZhMmUtOGUzYi03YjJlLThlM2ItN2IyZThlM2I3YzAy
     Post:
       type: object
       required:

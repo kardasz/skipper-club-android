@@ -80,7 +80,9 @@ Server-to-client message events are transport-independent: a message created
 over REST (`POST /chats/{chatId}/messages`) triggers exactly the same
 `message:new` / `message:received` fan-out as one sent over WS
 `message:send`, and `PATCH …/messages/{messageId}` with `read: true`
-broadcasts the same `message:read` receipt as WS `message:read`. See
+broadcasts the same `message:read` receipt as WS `message:read`. Bulk
+mark-read (`POST /chats/actions`) broadcasts one `message:read` receipt per
+chat where anything was newly marked. See
 [Transport parity](./websocket.md#transport-parity-rest--websocket).
 
 ## Key Concepts
@@ -102,6 +104,11 @@ Each message tracks read status per user. Messages can be marked as read individ
 
 - `PATCH /chats/{chatId}/messages/{messageId}` with `{"read": true}` — single message
 - `POST /chats/actions` with `{"action": "mark-read", "chatIds": [...]}` — all messages in one or more chats
+
+Both paths broadcast `message:read` receipts with cascading semantics: a
+receipt for message M means the reader has read M and every earlier message
+in that chat. See
+[Read receipts are cascading](./websocket.md#read-receipts-are-cascading).
 
 ### Unread Count
 

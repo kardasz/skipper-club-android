@@ -4,17 +4,18 @@ This document covers all REST API endpoints for chat and message management.
 
 ## Endpoints
 
-| Method | Endpoint                               | Description                   |
-| ------ | -------------------------------------- | ----------------------------- |
-| GET    | `/chats`                               | List user's chats             |
-| POST   | `/chats`                               | Create new chat               |
-| GET    | `/chats/{chatId}`                      | Get chat metadata             |
-| DELETE | `/chats/{chatId}`                      | Hide chat from list           |
-| GET    | `/chats/{chatId}/messages`             | List chat messages            |
-| POST   | `/chats/{chatId}/messages`             | Send message                  |
-| PATCH  | `/chats/{chatId}/messages/{messageId}` | Update message (mark as read) |
-| GET    | `/chats/unread-count`                  | Get total unread count        |
-| POST   | `/chats/actions`                       | Perform bulk actions on chats |
+| Method | Endpoint                               | Description                          |
+| ------ | -------------------------------------- | ------------------------------------ |
+| GET    | `/chats`                               | List user's chats                    |
+| POST   | `/chats`                               | Create new chat                      |
+| GET    | `/chats/{chatId}`                      | Get chat metadata                    |
+| DELETE | `/chats/{chatId}`                      | Hide chat from list                  |
+| GET    | `/chats/{chatId}/messages`             | List chat messages                   |
+| POST   | `/chats/{chatId}/messages`             | Send message                         |
+| PATCH  | `/chats/{chatId}/messages/{messageId}` | Update message (mark as read)        |
+| GET    | `/chats/unread-count`                  | Get total unread count               |
+| GET    | `/chats/presence`                      | Presence snapshot of co-participants |
+| POST   | `/chats/actions`                       | Perform bulk actions on chats        |
 
 ---
 
@@ -407,15 +408,70 @@ Retrieve messages from a chat with pagination and filtering options.
 
 ### Query Parameters
 
-| Parameter  | Type    | Default     | Description                          |
-| ---------- | ------- | ----------- | ------------------------------------ |
-| `fromDate` | date    | —           | Messages from this date (inclusive)  |
-| `toDate`   | date    | —           | Messages until this date (inclusive) |
-| `read`     | boolean | —           | Filter by read status                |
-| `limit`    | integer | 20          | Results per page (1-100)             |
-| `offset`   | integer | 0           | Results to skip                      |
-| `sort`     | string  | `createdAt` | Sort field                           |
-| `order`    | string  | `desc`      | Sort order (`asc`, `desc`)           |
+| Parameter  | Type    | Default     | Description                                |
+| ---------- | ------- | ----------- | ------------------------------------------ |
+| `fromDate` | date    | —           | Messages from this date (inclusive)        |
+| `toDate`   | date    | —           | Messages until this date (inclusive)       |
+| `read`     | boolean | —           | Filter by read status                      |
+| `limit`    | integer | 20          | Results per page (1-100)                   |
+| `offset`   | integer | 0           | Results to skip                            |
+| `before`   | string  | —           | Keyset cursor: only messages older than it |
+| `after`    | string  | —           | Keyset cursor: only messages newer than it |
+| `sort`     | string  | `createdAt` | Sort field                                 |
+| `order`    | string  | `desc`      | Sort order (`asc`, `desc`)                 |
+
+### Paging modes
+
+The endpoint supports two paging modes; a request must pick one.
+
+- **Offset paging** (`offset`) — simple, but not stable while the chat grows.
+  The list is ordered by `createdAt` and grows at the head, so every message
+  that arrives between two page fetches shifts the window by one and one older
+  message is silently skipped.
+- **Keyset paging** (`before` / `after`) — anchored to a position instead of a
+  count, so concurrent arrivals cannot move it. Recommended for history
+  scrolling and for catch-up after a WebSocket reconnect.
+
+Mixing them is rejected rather than silently resolved: `before` together with
+`after`, either of them together with `offset` (including `offset=0`), and
+either of them together with `sort=updatedAt` all return `400`
+`/errors/bad-request`, as does a cursor that does not decode.
+
+### Cursors
+
+`nextCursor` in the response is an opaque string built from the last message of
+the page. Pass it back verbatim as `before` (in the default `order=desc`) or as
+`after` (in `order=asc`) to get the next page. It is `null` exactly when the
+page is the last one — and always `null` for `sort=updatedAt` pages, which the
+cursor cannot describe.
+
+Treat the value as opaque: its contents are an implementation detail and may
+change. Do not construct one client-side; start the first page without a cursor
+and follow `nextCursor` from there.
+
+All other filters (`fromDate`, `toDate`, `read`, `limit`, `order`) keep working
+alongside a cursor — repeat them unchanged on every page of a walk. Note that
+with a cursor, `total` counts the messages remaining on the cursor's side of
+the history, not the whole chat.
+
+### Catch-up loop
+
+To reconcile after a reconnect, page backwards until a message the client
+already holds appears:
+
+```
+GET /v1/chats/{chatId}/messages?limit=50
+  → render page, remember nextCursor
+GET /v1/chats/{chatId}/messages?limit=50&before={nextCursor}
+  → stop when a known message id shows up, or when nextCursor is null
+```
+
+Walking forward works the same way with `order=asc` and `after`. Cursors cannot
+be derived from a message id, so a forward walk needs a starting position: keep
+the `nextCursor` of an earlier page, or fetch `?limit=1` in the default
+descending order and use that response's `nextCursor`, which points at the
+newest message (it is `null` when that message is the only one in the chat —
+there is then nothing to walk forward to).
 
 ### Example Requests
 
@@ -479,7 +535,8 @@ Authorization: Bearer <token>
   ],
   "total": 42,
   "limit": 20,
-  "offset": 0
+  "offset": 0,
+  "nextCursor": "MjAyNS0xMS0yM1QxNDoyNTowMFp8MDE4ZmEyZTQtOGUzYi03YjJlLThlM2ItN2IyZThlM2I3YzAx"
 }
 ```
 
@@ -489,10 +546,11 @@ If the user previously hid the chat (via `DELETE /chats/{chatId}`), only message
 
 ### Errors
 
-| Status | Type                            | Description                              |
-| ------ | ------------------------------- | ---------------------------------------- |
-| 404    | `/errors/chat-not-found`        | Chat doesn't exist                       |
-| 403    | `/errors/chat-access-forbidden` | Chat exists but user isn't a participant |
+| Status | Type                            | Description                                                  |
+| ------ | ------------------------------- | ------------------------------------------------------------ |
+| 400    | `/errors/bad-request`           | Malformed cursor, or a rejected paging-parameter combination |
+| 404    | `/errors/chat-not-found`        | Chat doesn't exist                                           |
+| 403    | `/errors/chat-access-forbidden` | Chat exists but user isn't a participant                     |
 
 ---
 
@@ -512,9 +570,20 @@ Send a new message to a chat.
 
 ### Request Body
 
-| Field  | Type   | Required | Description                           |
-| ------ | ------ | -------- | ------------------------------------- |
-| `text` | string | Yes      | Message content (max 1000 characters) |
+| Field             | Type   | Required | Description                                                                                                                                    |
+| ----------------- | ------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `text`            | string | Yes      | Message content (max 1000 characters)                                                                                                          |
+| `clientMessageId` | uuid   | No       | Client-generated idempotency key, unique per (chat, sender). Any UUID version is accepted — it is a client identifier, not a server entity id. |
+
+### Idempotent sends
+
+When `clientMessageId` is provided, retrying the same send (same chat, same
+sender, same key) returns `201 Created` with the **already-created** message
+object instead of creating a duplicate, and emits no second round of
+WebSocket events. Use it to retry safely after a network failure. Without
+`clientMessageId`, every request creates a new message (previous behavior,
+unchanged). The same key space is shared with the WS `message:send`
+operation.
 
 ### Example Request
 
@@ -525,7 +594,8 @@ Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "text": "Looking forward to the trip!"
+  "text": "Looking forward to the trip!",
+  "clientMessageId": "6f1e0c2a-9b1d-4a7e-8c3f-2d5b8a91c0de"
 }
 ```
 
@@ -545,6 +615,7 @@ Location: /v1/chats/018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b99/messages/018fa2e4-8e3b-
   "read": true,
   "createdAt": "2025-11-23T15:00:00Z",
   "updatedAt": "2025-11-23T15:00:00Z",
+  "clientMessageId": "6f1e0c2a-9b1d-4a7e-8c3f-2d5b8a91c0de",
   "user": {
     "id": "018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b00",
     "name": "Jan Kowalski",
@@ -552,6 +623,11 @@ Location: /v1/chats/018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b99/messages/018fa2e4-8e3b-
   }
 }
 ```
+
+The response echoes the `clientMessageId` the sender supplied (on the original
+send and on an idempotent replay), so the sender can match the `201` to its
+optimistic entry by key — the same reconciliation the WebSocket events allow.
+It is omitted when the send carried no key, and on the list and read paths.
 
 ### Side Effects
 
@@ -564,6 +640,9 @@ When a message is sent:
    `message:received` to every other participant's personal room — exactly
    the same events as a WS `message:send` (see
    [Transport parity](./websocket.md#transport-parity-rest--websocket))
+
+An idempotent replay (repeated `clientMessageId`) has none of these side
+effects — it only returns the existing message.
 
 ### Errors
 
@@ -630,8 +709,14 @@ Content-Type: application/json
 
 Marking as read (`"read": true`) broadcasts a `message:read` receipt
 (`{messageId, userId, readAt}`) to the chat room — the same event the WS
-`message:read` operation produces. Marking as unread (`"read": false`) emits
-no WebSocket event.
+`message:read` operation produces. Receipts are cascading: a receipt for
+message M means the reader has read M and every earlier message in the chat
+(see [Read receipts are cascading](./websocket.md#read-receipts-are-cascading)).
+Marking as unread (`"read": false`) emits no WebSocket event.
+
+The caller's `lastReadMessageId` pointer only advances: marking an older
+message read records its per-message receipt but leaves the pointer (and so
+`unreadCount` and the chat list's `lastMessage.read`) untouched.
 
 ### Errors
 
@@ -711,8 +796,12 @@ Content-Type: application/json
 - Marks all messages in the specified chats as read for the current user
 - Updates `lastReadMessageId` to the most recent message in each chat
 - Updates unread counts
-- Emits **no** WebSocket `message:read` receipts (unlike the single-message
-  `PATCH`, which does)
+- Broadcasts one WebSocket `message:read` receipt per chat where at least
+  one message actually transitioned from unread to read, carrying the newest
+  such message (`{messageId, userId, readAt}`) to that chat's room. Receipts
+  are cascading — the one receipt covers every earlier message — so chats
+  with nothing newly marked emit no event (see
+  [Read receipts are cascading](./websocket.md#read-receipts-are-cascading))
 
 **delete action**:
 
@@ -761,6 +850,68 @@ Authorization: Bearer <token>
 ```
 
 This endpoint is useful for displaying a badge or indicator showing the total number of unread messages.
+
+---
+
+## Get Presence Snapshot
+
+```http
+GET /chats/presence
+```
+
+Returns the current online state of the caller's **chat co-participants** — the
+same audience the `presence:update` WebSocket event is delivered to (users who
+share at least one chat with the caller), never arbitrary users. There are no
+query parameters: the scope is fixed to "all my chat co-participants".
+
+Clients use this to **seed** presence right after every WebSocket (re)connect,
+then apply live `presence:update` events on top — see the presence lifecycle
+and the mandatory snapshot-vs-live race rule in
+[websocket.md](./websocket.md#seeding-presence-after-reconnect).
+
+### Example Request
+
+```http
+GET /v1/chats/presence HTTP/1.1
+Host: api.skipperclub.app
+Authorization: Bearer <token>
+```
+
+### Response
+
+**200 OK**
+
+```json
+{
+  "items": [
+    {
+      "userId": "018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b2e",
+      "isOnline": true,
+      "lastSeen": null
+    },
+    {
+      "userId": "018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b2f",
+      "isOnline": false,
+      "lastSeen": "2026-07-18T09:41:12Z"
+    }
+  ]
+}
+```
+
+| Field      | Type              | Description                                                                  |
+| ---------- | ----------------- | ---------------------------------------------------------------------------- |
+| `userId`   | uuid              | A chat co-participant of the caller                                          |
+| `isOnline` | boolean           | Whether the user currently holds at least one live WebSocket connection      |
+| `lastSeen` | date-time \| null | Persisted moment the user's last connection closed; ignored while `isOnline` |
+
+`lastSeen` is `null` when the user has never cleanly disconnected since the
+field was introduced. When `isOnline` is `true`, clients should display
+"online" and ignore `lastSeen`. A user whose API instance was crash-killed may
+read as online until presence self-heals, and their `lastSeen` stays null or
+stale until their next clean disconnect.
+
+The result is an empty array (`{"items": []}`, **not** a 404) when the caller
+shares no chat with anyone. The only error is `401` — the caller always exists.
 
 ---
 

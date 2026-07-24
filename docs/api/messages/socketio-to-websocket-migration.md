@@ -18,7 +18,7 @@ connection model, and authentication handshake are not.
 | Auth               | `auth: { token }` handshake object (plus header/query)   | `Authorization: Bearer <token>` header **or** `?token=` query param         |
 | Transport fallback | long-polling fallback                                    | none — WebSocket only                                                       |
 | Reconnection       | built into the client library                            | client-implemented backoff + rejoin                                         |
-| Acks               | event-style replies (`message:sent`, `chat:joined`, …)   | unchanged — same reply events                                               |
+| Acks               | event-style replies (`message:sent`, `chat:joined`, …)   | same reply events; `message:sent` now carries the created message object    |
 | Keepalive          | Socket.IO ping/pong (25 s / 20 s)                        | protocol-level Ping every 30 s, Pong deadline 10 s (automatic)              |
 | Presence           | online on first `chat:join`, broadcast to every client   | online on connect, offline on last close, sent only to chat co-participants |
 | Token expiry       | connection outlived the token                            | server closes with code 4401 (`token expired`)                              |
@@ -30,7 +30,10 @@ connection model, and authentication handshake are not.
 `chat:join`, `chat:leave`, `message:send`, `message:read`, `chat:typing`,
 `chat:joined`, `chat:left`, `message:sent`, `message:new`,
 `message:received`, `message:read:confirmed`, `chat:typing:sent`,
-`presence:update`, `notification:new`, `error`. The personal room
+`presence:update`, `notification:new`, `error` — with one payload
+enrichment: `message:sent` now carries the created message object (the same
+shape as `message:new`) instead of the legacy empty `{}` ack; clients that
+ignored the ack payload are unaffected. The personal room
 (`user:{userId}`) is still joined automatically on connect, so
 `message:received` and `notification:new` need no subscription message.
 

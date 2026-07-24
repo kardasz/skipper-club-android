@@ -21,30 +21,73 @@ info:
 
     - Creating a message (WS message:send or REST
       POST /chats/{chatId}/messages) emits message:new to the chat room and
-      message:received to every other participant's personal room.
+      message:received to every other participant's personal room. Both
+      transports accept an optional clientMessageId idempotency key: a
+      retried send returns the already-created message and emits no second
+      fan-out.
     - Marking a message read (WS message:read or REST
       PATCH /chats/{chatId}/messages/{messageId} with read=true) broadcasts
       the message:read receipt to the chat room.
+    - Bulk mark-read (REST POST /chats/actions with action=mark-read)
+      broadcasts one message:read receipt per chat where at least one message
+      actually transitioned unread→read, carrying the newest newly-marked
+      message in that chat. Chats with nothing newly marked emit no event.
 
-    Only the acknowledgement differs: WS callers get the reply events
-    (message:sent, message:read:confirmed); REST callers get the HTTP
-    response instead. Bulk mark-read (POST /chats/actions) and marking a
-    message unread emit no WebSocket events.
+    Read receipts are cascading: a message:read receipt for message M by
+    user U means U has read M and every earlier message in that chat.
+
+    Only the acknowledgement differs: WS callers get the reply events —
+    message:sent carrying the created message object (identical shape to
+    message:new) and the empty message:read:confirmed — while REST callers
+    get the HTTP response instead. Marking a message unread emits no
+    WebSocket events. Hiding a chat (REST DELETE /chats/{chatId}, or the
+    delete bulk action on POST /chats/actions) emits no event either, but
+    the server evicts the hider's connections from that chat's room, so no
+    further room events (message:new, chat:typing, message:read) reach them.
+
+    ## Errors
+
+    Failed client operations produce an `error` event with generic text
+    (never REST problem details):
+
+    - "Invalid payload" — input validation failed: malformed payload JSON, a
+      bad or wrong-version UUID, a wrong text length, or a missing required
+      field. Frames that are not a well-formed envelope produce one such error
+      per streak (like "Rate limit exceeded"), reset by the next well-formed
+      frame; per-handler validation failures are reported per frame.
+    - "Chat not found or access denied" / "Message not found or access
+      denied" — the access checks deliberately collapse "does not exist" and
+      "not yours to touch" into one message.
+    - "Rate limit exceeded" — see Rate limiting.
+    - "Internal server error" — an unexpected server-side failure.
 
     ## Connection lifecycle
 
     - One connection serves chat and notifications; every authenticated
       connection automatically joins its personal room (user:{userId}).
-    - The server sends a protocol-level Ping every 30 seconds and closes
+    - Chat-room membership (chat:join) lasts until the client sends
+      chat:leave, the connection closes, or the server evicts the user's
+      connections from the room because they hid the chat (REST
+      DELETE /chats/{chatId} or the delete bulk action).
+    - The server sends a protocol-level Ping approximately every 30 seconds
+      (never more often, and it may drift later under load) and closes
       connections that do not answer with a Pong within 10 seconds. Standard
       WebSocket clients answer pings automatically; no application code is
       needed.
+    - In addition to (not replacing) the protocol-level Ping, the server emits
+      a heartbeat message as a normal envelope frame on every one of those
+      ticks, to every authenticated connection. Native clients that can observe protocol pings
+      may ignore it. Browsers cannot see protocol pings at all — the network
+      stack answers them invisibly to JavaScript — so a browser client should
+      treat "no frame of any kind (heartbeat or otherwise) for ~90 seconds" as
+      a dead connection, force-close it, and reconnect.
     - Presence is connection-scoped: a user becomes online when their first
       connection is established and offline when their last connection closes.
       presence:update is delivered only to users sharing at least one chat
       with the affected user. It is push-only (no on-connect snapshot over the
       socket): after every (re)connect, seed presence from the REST endpoint
-      GET /chats/presence, then let live presence:update events win.
+      GET /chats/presence, then let live presence:update events win — see the
+      snapshot-vs-live race rule in docs/messages/websocket.md.
     - The server does not reconnect for you: clients must implement bounded
       exponential backoff with jitter and re-send chat:join for the chats they
       are viewing after every reconnect.
@@ -66,6 +109,13 @@ info:
     - Inbound frames are limited per connection to 10 events/second with a
       burst of 20. Frames over the limit are dropped; each violation streak
       produces one `error` event with the message "Rate limit exceeded".
+    - Independently of the rate limit, inbound frames queue per connection
+      (up to the same burst allowance of 20) while earlier frames are still
+      being handled. Frames arriving beyond that backlog are dropped, again
+      with a single `error` event per drop streak carrying the same
+      "Rate limit exceeded" message — one backpressure signal, deliberately
+      not a distinct error kind. A streak ends once a frame is accepted
+      again.
   contact:
     name: Skipper Club API Team
     email: api@skipperclub.com
@@ -130,6 +180,8 @@ channels:
         $ref: "#/components/messages/ChatJoined"
       chatLeft:
         $ref: "#/components/messages/ChatLeft"
+      heartbeat:
+        $ref: "#/components/messages/Heartbeat"
       error:
         $ref: "#/components/messages/Error"
 
@@ -181,7 +233,7 @@ operations:
     channel:
       $ref: "#/channels/chat"
     summary: Send a message to a chat
-    description: Send a new message to all participants in a chat room. Returns message:sent confirmation and broadcasts message:new to all participants.
+    description: Send a new message to all participants in a chat room. Returns a message:sent acknowledgement carrying the created message object and broadcasts message:new to all participants.
     messages:
       - $ref: "#/channels/chat/messages/messageSend"
     reply:
@@ -277,6 +329,22 @@ operations:
     messages:
       - $ref: "#/channels/chat/messages/presenceUpdate"
 
+  receiveHeartbeat:
+    action: receive
+    channel:
+      $ref: "#/channels/chat"
+    summary: Receive server heartbeats
+    description: |
+      Receive the server's application-level heartbeat. Emitted approximately
+      every 30 seconds (never more often) to every authenticated connection,
+      piggybacked on the same loop as the protocol-level Ping. It exists so browser clients — which cannot
+      observe protocol pings — have an inbound frame to derive liveness from:
+      a client that sees no frame of any kind for ~90 seconds should treat the
+      connection as dead and reconnect. Native clients with their own ping
+      watchdog may ignore it. Clients never send heartbeat.
+    messages:
+      - $ref: "#/channels/chat/messages/heartbeat"
+
   receiveError:
     action: receive
     channel:
@@ -370,10 +438,22 @@ components:
     MessageSent:
       name: message:sent
       title: Message Sent
-      summary: Confirmation that message was successfully sent
+      summary: Acknowledgement carrying the created message object
+      description: |
+        Sent to the requesting connection after a successful message:send.
+        The payload is the created message object — identical in shape to
+        message:new — so the sender can reconcile a pending optimistic UI
+        entry with the server-assigned id and timestamps. Match it on the
+        echoed clientMessageId; per-connection replies are ordered, but order
+        alone only identifies the acknowledgement when every send goes out on
+        this connection, which stops holding as soon as one falls back to REST.
+
+        For an idempotent replay (a message:send repeating an earlier send's
+        clientMessageId), the payload is the previously created message; the
+        replay produces no second message:new / message:received fan-out.
       contentType: application/json
       payload:
-        $ref: "#/components/schemas/EmptyPayload"
+        $ref: "#/components/schemas/MessageNewPayload"
 
     MessageReadReceipt:
       name: message:read
@@ -381,14 +461,14 @@ components:
       summary: Receive read receipt for a message
       description: |
         Broadcast to the chat room when a participant marks a message read —
-        whether over WS message:read or over REST
-        PATCH /chats/{chatId}/messages/{messageId} with read=true. Bulk
-        mark-read (POST /chats/actions) emits no receipts.
+        whether over WS message:read, over REST
+        PATCH /chats/{chatId}/messages/{messageId} with read=true, or via the
+        bulk mark-read action (POST /chats/actions), which emits one receipt
+        per chat where at least one message actually transitioned
+        unread→read, carrying the newest such message.
 
-        Receipts are cumulative: a receipt for messageId means userId has read
-        that message and every earlier message in the chat, so clients mark
-        everything up to and including messageId as read instead of only the
-        exact match.
+        Receipt semantics are cascading: a receipt for message M by user U
+        means U has read M and every earlier message in that chat.
       contentType: application/json
       payload:
         $ref: "#/components/schemas/MessageReadReceiptPayload"
@@ -428,7 +508,8 @@ components:
         This event is push-only — it fires on those transitions, not on
         connect. To learn the state of already-online co-participants after a
         (re)connect, seed from the REST snapshot GET /chats/presence and apply
-        these live events on top (live always wins).
+        these live events on top (live always wins; see
+        docs/messages/websocket.md).
       contentType: application/json
       payload:
         $ref: "#/components/schemas/PresenceUpdatePayload"
@@ -449,6 +530,22 @@ components:
       payload:
         $ref: "#/components/schemas/ChatLeftPayload"
 
+    Heartbeat:
+      name: heartbeat
+      title: Heartbeat
+      summary: Server-initiated application-level keepalive
+      description: |
+        Emitted approximately every 30 seconds (never more often) to every
+        authenticated connection as an ordinary envelope frame, alongside (not
+        replacing) the protocol-level Ping. Its purpose is to give browser clients — which cannot observe
+        protocol ping/pong — an observable inbound signal for half-open
+        detection: derive liveness from any inbound frame and reconnect if none
+        arrives for ~90 seconds. Clients never send heartbeat, and a client
+        that sends it is ignored like any unknown event.
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/HeartbeatPayload"
+
     Error:
       name: error
       title: Error
@@ -458,6 +555,17 @@ components:
         $ref: "#/components/schemas/ErrorPayload"
 
   schemas:
+    HeartbeatPayload:
+      type: object
+      required:
+        - ts
+      properties:
+        ts:
+          type: string
+          format: date-time
+          description: Server time when the heartbeat was emitted.
+          example: "2026-07-17T12:00:00.000Z"
+
     EmptyPayload:
       type: object
       description: Empty payload for confirmation events
@@ -471,7 +579,10 @@ components:
         chatId:
           type: string
           format: uuid
-          description: UUID of the chat to join
+          description: |
+            UUID of the chat to join. The WebSocket handler accepts only
+            UUID version 7 and rejects any other version with an `error`
+            event (the REST API parses generic UUIDs).
           example: "018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b2e"
 
     ChatLeavePayload:
@@ -482,7 +593,10 @@ components:
         chatId:
           type: string
           format: uuid
-          description: UUID of the chat to leave
+          description: |
+            UUID of the chat to leave. The WebSocket handler accepts only
+            UUID version 7 and rejects any other version with an `error`
+            event (the REST API parses generic UUIDs).
           example: "018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b2e"
 
     MessageSendPayload:
@@ -494,7 +608,10 @@ components:
         chatId:
           type: string
           format: uuid
-          description: UUID of the chat to send message to
+          description: |
+            UUID of the chat to send message to. The WebSocket handler
+            accepts only UUID version 7 and rejects any other version with
+            an `error` event (the REST API parses generic UUIDs).
           example: "018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b2e"
         text:
           type: string
@@ -504,6 +621,19 @@ components:
             Message content. Length is counted in Unicode characters (runes),
             not bytes: 1 to 1000 characters.
           example: "Hello everyone! 👋"
+        clientMessageId:
+          type: string
+          format: uuid
+          description: |
+            Optional client-generated idempotency key, unique per (chat,
+            sender). Any UUID version is accepted — it is a client
+            identifier, not a server entity id, so the UUIDv7 restriction
+            applied to chatId deliberately does not apply here. Re-sending
+            with the same clientMessageId acknowledges with message:sent
+            carrying the already-created message and does not broadcast
+            message:new / message:received again. Omit it for non-idempotent
+            sends (previous behavior, unchanged).
+          example: "6f1e0c2a-9b1d-4a7e-8c3f-2d5b8a91c0de"
 
     MessageReadPayload:
       type: object
@@ -514,12 +644,18 @@ components:
         chatId:
           type: string
           format: uuid
-          description: UUID of the chat containing the message
+          description: |
+            UUID of the chat containing the message. The WebSocket handler
+            accepts only UUID version 7 and rejects any other version with
+            an `error` event (the REST API parses generic UUIDs).
           example: "018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b2e"
         messageId:
           type: string
           format: uuid
-          description: UUID of the message to mark as read
+          description: |
+            UUID of the message to mark as read. The WebSocket handler
+            accepts only UUID version 7 and rejects any other version with
+            an `error` event (the REST API parses generic UUIDs).
           example: "018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b30"
 
     ChatTypingPayload:
@@ -531,7 +667,10 @@ components:
         chatId:
           type: string
           format: uuid
-          description: UUID of the chat where user is typing
+          description: |
+            UUID of the chat where user is typing. The WebSocket handler
+            accepts only UUID version 7 and rejects any other version with
+            an `error` event (the REST API parses generic UUIDs).
           example: "018fa2e4-8e3b-7b2e-8e3b-7b2e8e3b7b2e"
         isTyping:
           type: boolean
@@ -573,6 +712,17 @@ components:
             available from the REST message responses. Clients should derive
             read/unread state from their own read receipts, not from this field.
           example: false
+        clientMessageId:
+          type: string
+          format: uuid
+          description: |
+            The idempotency key the sender supplied on `message:send` (or the
+            REST create), echoed back. Present only when the send carried one,
+            and only meaningful to the client that sent it: use it to match
+            this message against a pending optimistic entry, including across
+            that user's other connections, where the ordered-reply guarantee
+            below does not apply. Any UUID version.
+          example: "9f1c2b7a-3d4e-4f5a-8b6c-7d8e9f0a1b2c"
         createdAt:
           type: string
           format: date-time
@@ -838,8 +988,10 @@ components:
         - HTTP upgrade header: Authorization: Bearer <jwt-token> — preferred
           for native clients that can set upgrade headers.
         - Query parameter: ?token=<jwt-token> — for browser WebSocket clients,
-          which cannot set arbitrary upgrade headers. Never log URLs carrying
-          this parameter.
+          which cannot set arbitrary upgrade headers. The server logs the
+          request path only, and redacts the parameter (token=[Filtered])
+          from error reports before they leave the process; clients should
+          still never log URLs carrying it.
 
         A missing or invalid token closes the connection with 1008
         ("unauthorized"). When the access token expires while the connection
