@@ -35,6 +35,19 @@ internal fun presenceAfter(
 }
 
 /**
+ * Whether [event] invalidates a presence snapshot fetch still in flight. Both connection
+ * transitions do: [ChatRealtimeEvent.Connected] starts a new session (a seed launched for a
+ * previous one must not apply to it), and [ChatRealtimeEvent.Disconnected] ends one — the map was
+ * just cleared, and a snapshot landing afterwards would repopulate presence that is now unknown,
+ * leaving users falsely "online" until the next reconnect (D-AN-2). Pure for unit testing, like
+ * [presenceAfter].
+ */
+internal fun invalidatesInFlightPresenceSeed(event: ChatRealtimeEvent): Boolean = when (event) {
+    ChatRealtimeEvent.Connected, ChatRealtimeEvent.Disconnected -> true
+    else -> false
+}
+
+/**
  * Merges a `GET /chats/presence` [snapshot] into [current] under the snapshot-vs-live race rule:
  * a snapshot entry is applied only for a user NOT in [liveUpdatedSinceOpen] — the set of users that
  * received a live `presence:update` since the current connection opened. Live events always win, so
@@ -80,8 +93,10 @@ object PresenceStore {
     // single Main-immediate thread, so a plain set is safe.
     private val liveUpdatedSinceOpen = mutableSetOf<String>()
 
-    // Bumped on every Connected. A seed fetch in flight when a newer (dis)connect happens is dropped,
-    // so a late snapshot from a superseded connection can't overwrite fresh state.
+    // Bumped on every Connected AND every Disconnected (see invalidatesInFlightPresenceSeed). A
+    // seed fetch in flight when a newer connect or disconnect happens is dropped: a late snapshot
+    // from a superseded connection must not overwrite fresh state, and one landing after a
+    // disconnect must not repopulate the just-cleared map with stale "online" flags (D-AN-2).
     private var connectionEpoch = 0
 
     /**
@@ -103,18 +118,20 @@ object PresenceStore {
     }
 
     private fun onEvent(event: ChatRealtimeEvent) {
+        if (invalidatesInFlightPresenceSeed(event)) connectionEpoch += 1
         when (event) {
             // Live events always win: record the user so the seed skips them, then apply.
             is ChatRealtimeEvent.PresenceUpdate -> liveUpdatedSinceOpen.add(event.userId)
             // A fresh connection: reset the race set and seed from the REST snapshot. presenceAfter
             // leaves the map untouched for Connected — the seed (launched below) fills it.
             ChatRealtimeEvent.Connected -> {
-                connectionEpoch += 1
                 liveUpdatedSinceOpen.clear()
                 val epoch = connectionEpoch
                 scope.launch { seedFromSnapshot(epoch) }
             }
-            // Clearing on disconnect resets the race set too (presenceAfter empties the map).
+            // Clearing on disconnect resets the race set too (presenceAfter empties the map); the
+            // epoch bump above additionally drops any seed fetch still in flight, so its snapshot
+            // cannot repopulate the map we are about to clear.
             ChatRealtimeEvent.Disconnected -> liveUpdatedSinceOpen.clear()
             else -> Unit
         }

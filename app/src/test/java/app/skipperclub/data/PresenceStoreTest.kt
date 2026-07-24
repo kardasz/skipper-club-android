@@ -78,6 +78,25 @@ class PresenceStoreTest {
     }
 
     @Test
+    fun bothConnectionTransitionsInvalidateAnInFlightSeed() {
+        // D-AN-2: the epoch must bump on Disconnected too — the map is cleared then, and a
+        // snapshot response still in flight would otherwise repopulate presence for a connection
+        // that no longer exists, leaving stale "online" flags until the next reconnect.
+        assertTrue(invalidatesInFlightPresenceSeed(ChatRealtimeEvent.Connected))
+        assertTrue(invalidatesInFlightPresenceSeed(ChatRealtimeEvent.Disconnected))
+    }
+
+    @Test
+    fun otherEventsLeaveAnInFlightSeedValid() {
+        assertTrue(
+            !invalidatesInFlightPresenceSeed(
+                ChatRealtimeEvent.PresenceUpdate(userId = "u1", isOnline = true, lastSeen = null),
+            ),
+        )
+        assertTrue(!invalidatesInFlightPresenceSeed(ChatRealtimeEvent.ChatJoined("chat-1")))
+    }
+
+    @Test
     fun seedDoesNotOverwriteAUserThatAlreadyGotALiveUpdate() {
         // A live event landed for u1 (online) before the snapshot arrived; the snapshot says u1 is
         // offline. The race rule must keep the live value and still seed the untouched u2.
