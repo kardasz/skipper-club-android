@@ -378,9 +378,10 @@ internal fun shouldSurfaceRealtimeError(error: ChatRealtimeEvent.ServerError): B
  * [ChatListController.onRealtimeMessage] as the messages arrive, and [ChatListController.onChatOpened]
  * cleared the badge locally when the conversation was opened — so the reload refetched a list that
  * was already correct, on every single conversation close. It stays as the fallback for the
- * socket-down case, where nothing kept the row live. The reconnect catch-up
- * ([ChatListController.onRealtimeReconnected]) remains the backstop for events dropped on buffer
- * overflow while connected.
+ * socket-down case, where nothing kept the row live. Events dropped on socket-buffer overflow
+ * *while connected* have no live backstop here: they are reconciled only by the next reconnect's
+ * catch-up ([ChatListController.onRealtimeReconnected]), a pull-to-refresh, or reopening the tab —
+ * a reconnect never fires while the connection stays up.
  */
 internal fun shouldRefreshListOnConversationClose(
     hasLoadedOnce: Boolean,
