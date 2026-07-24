@@ -473,6 +473,54 @@ internal fun joinFailedEvent(chatId: String): ChatRealtimeEvent.ServerError =
         timestamp = Instant.now().toString(),
     )
 
+/**
+ * `type` of the synthetic [ChatRealtimeEvent.ServerError] minted when the auth breaker gives up,
+ * so the UI can distinguish it from genuine server `error` frames and show a dedicated,
+ * actionable message (web shows a persistent banner, iOS an alert — parity, C-AN-2).
+ */
+internal const val AUTH_GAVE_UP_ERROR_TYPE = "auth_gave_up"
+
+/**
+ * The synthetic event for the auth breaker's give-up. Like [joinFailedEvent], it carries a real
+ * ISO-8601 timestamp so the one event the client mints itself never breaks a consumer that parses
+ * the field. A named factory so the shape is testable without driving real auth failures.
+ */
+internal fun authGaveUpEvent(): ChatRealtimeEvent.ServerError =
+    ChatRealtimeEvent.ServerError(
+        type = AUTH_GAVE_UP_ERROR_TYPE,
+        message = "auth rejected more than $MAX_CONSECUTIVE_AUTH_FAILURES times in a row; " +
+            "auto-reconnect stopped until the next session",
+        timestamp = Instant.now().toString(),
+    )
+
+/**
+ * Bounded breaker for consecutive auth rejections (1008/4401 close, 401 upgrade), parity with the
+ * web and iOS caps. Extracted as its own small seam (like [ReconnectBackoffGate]) so the
+ * count/reset semantics are unit-testable without driving the singleton's reconnect schedule.
+ *
+ * [reset] runs on every `connect()` and on every socket that actually opens: a new session must
+ * start with a fresh budget — inheriting the previous session's exhausted count meant the very
+ * first 1008/4401/401 of the next session gave up *before* the refresh handler ever ran, leaving
+ * realtime dead until some connect happened to succeed (C-AN-2).
+ */
+internal class AuthFailureBreaker(
+    private val maxConsecutiveFailures: Int = MAX_CONSECUTIVE_AUTH_FAILURES,
+) {
+    private var consecutiveFailures = 0
+
+    /** Counts one rejection; true once the cap is exceeded and the caller should give up. */
+    @Synchronized
+    fun registerFailure(): Boolean {
+        consecutiveFailures += 1
+        return consecutiveFailures > maxConsecutiveFailures
+    }
+
+    @Synchronized
+    fun reset() {
+        consecutiveFailures = 0
+    }
+}
+
 /** How long to wait for a `chat:joined` ack before re-sending the `chat:join` frame. */
 internal const val JOIN_ACK_TIMEOUT_MILLIS = 10_000L
 
@@ -615,11 +663,10 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
      * Consecutive auth rejections (1008/4401 close, or a 401 upgrade failure) since the last socket
      * that actually opened. After [MAX_CONSECUTIVE_AUTH_FAILURES] the client stops auto-reconnecting
      * instead of refresh-and-retrying forever every 15–30s — the credentials are the problem and
-     * hammering the refresh/upgrade endpoints cannot fix them (AN-C2, parity with web/iOS). Written
-     * under the object monitor like the other connection-state transitions.
+     * hammering the refresh/upgrade endpoints cannot fix them (AN-C2, parity with web/iOS). Reset
+     * per session (see [AuthFailureBreaker]).
      */
-    @Volatile
-    private var consecutiveAuthFailures = 0
+    private val authFailureBreaker = AuthFailureBreaker()
 
     @Synchronized
     override fun connect(
@@ -627,6 +674,10 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         onAuthClose: suspend () -> Unit,
     ) {
         if (scope != null) return
+        // A fresh session gets a fresh auth budget: without this reset a session that ended in a
+        // breaker give-up poisoned every later one — its first auth rejection landed on an
+        // already-exhausted count and gave up before the refresh handler ever ran (C-AN-2).
+        authFailureBreaker.reset()
         tokenProvider = accessTokenProvider
         authCloseHandler = onAuthClose
         val newScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -646,6 +697,11 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         authCloseHandler = null
         webSocket?.close(1000, null)
         webSocket = null
+        // Cleared so a signed-out session can never replay another user's rooms. This also means
+        // the onOpen replay alone cannot restore a room across a deliberate disconnect
+        // (backgrounding) — the open conversation re-joins itself on the next Connected event
+        // (applyConversationRealtimeEvent, C-AN-1/D-AN-1), which covers both this path and a
+        // server-side drop.
         joinedChatIds.clear()
         // Emit Disconnected so consumers (e.g. PresenceStore) clear stale state on logout and
         // app-backgrounding too, not only on server-side drops. No double emission when the
@@ -750,7 +806,7 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         // from the fast backoff tier again, and the auth breaker resets (this open proves the
         // credentials work).
         lastFailureWasForbidden = false
-        consecutiveAuthFailures = 0
+        authFailureBreaker.reset()
         _events.tryEmit(ChatRealtimeEvent.Connected)
         return true
     }
@@ -798,18 +854,24 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
      * reconnecting. After [MAX_CONSECUTIVE_AUTH_FAILURES] refresh-and-retry rounds the credentials
      * are the problem and hammering the refresh/upgrade endpoints cannot fix them, so stop —
      * matching the bounded auth breaker on web and iOS. A socket that actually opens resets the
-     * count (see [publishOpenIfCurrent]). Guarded on the current scope so a superseded attempt
-     * neither counts nor blocks the live one.
+     * count (see [publishOpenIfCurrent]), as does the next `connect()`. Guarded on the current
+     * scope so a superseded attempt neither counts nor blocks the live one.
+     *
+     * The give-up is not silent: it emits [authGaveUpEvent] so the UI can tell the user realtime
+     * is down and how to recover (web shows a banner, iOS an alert — parity, C-AN-2). Recovery is
+     * the next session: backgrounding tears this one down and the next foreground `connect()`
+     * starts with a fresh breaker.
      */
     @Synchronized
     private fun registerAuthFailureAndGaveUp(ownerScope: CoroutineScope): Boolean {
         if (scope !== ownerScope) return true
-        consecutiveAuthFailures += 1
-        if (consecutiveAuthFailures > MAX_CONSECUTIVE_AUTH_FAILURES) {
-            Log.w(TAG, "auth rejected $consecutiveAuthFailures× in a row; giving up on auto-reconnect")
-            return true
-        }
-        return false
+        if (!authFailureBreaker.registerFailure()) return false
+        Log.w(
+            TAG,
+            "auth rejected more than $MAX_CONSECUTIVE_AUTH_FAILURES× in a row; giving up on auto-reconnect",
+        )
+        _events.tryEmit(authGaveUpEvent())
+        return true
     }
 
     private fun scheduleReconnect(ownerScope: CoroutineScope, attempt: Int) {

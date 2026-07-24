@@ -670,6 +670,44 @@ class ChatRealtimeClientTest {
     }
 
     @Test
+    fun authBreakerGivesUpOnlyPastTheCap() {
+        // Parity with web/iOS: three refresh-and-retry rounds, then stop.
+        val breaker = AuthFailureBreaker()
+
+        assertFalse(breaker.registerFailure())
+        assertFalse(breaker.registerFailure())
+        assertFalse(breaker.registerFailure())
+        assertTrue(breaker.registerFailure())
+    }
+
+    @Test
+    fun authBreakerResetGivesTheNextSessionAFreshBudget() {
+        // C-AN-2: without the per-session reset (connect() / a successful open), a session that
+        // ended in a give-up poisoned every later one — its very first auth rejection landed on the
+        // exhausted count and gave up before the refresh handler ever ran.
+        val breaker = AuthFailureBreaker()
+        repeat(4) { breaker.registerFailure() }
+
+        breaker.reset()
+
+        assertFalse(breaker.registerFailure())
+        assertFalse(breaker.registerFailure())
+        assertFalse(breaker.registerFailure())
+        assertTrue(breaker.registerFailure())
+    }
+
+    @Test
+    fun authGaveUpEventCarriesTheDedicatedTypeAndAParseableTimestamp() {
+        // The UI keys the actionable "connection lost" message off this type; and like every
+        // client-minted ServerError the timestamp must parse as ISO-8601.
+        val event = authGaveUpEvent()
+
+        assertEquals(AUTH_GAVE_UP_ERROR_TYPE, event.type)
+        assertTrue(event.message.isNotEmpty())
+        java.time.Instant.parse(event.timestamp)
+    }
+
+    @Test
     fun joinFailedEventCarriesAParseableTimestamp() {
         // The one ServerError the client mints itself. Every real `error` frame carries an ISO-8601
         // timestamp, so an empty string here would be the single value a consumer parsing the field

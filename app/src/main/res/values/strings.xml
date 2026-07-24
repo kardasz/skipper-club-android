@@ -369,6 +369,7 @@
     <string name="messages_error_auth">Please sign in again.</string>
     <string name="messages_error_generic">Something went wrong. Please try again.</string>
     <string name="messages_error_realtime">Chat is having trouble right now. Please try again.</string>
+    <string name="messages_error_connection_lost">Chat connection lost. Close and reopen the app to reconnect.</string>
     <string name="conversation_back">Back</string>
     <string name="conversation_input_placeholder">Type a message…</string>
     <string name="conversation_send">Send</string>

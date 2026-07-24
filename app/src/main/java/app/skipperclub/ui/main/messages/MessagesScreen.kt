@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.skipperclub.R
+import app.skipperclub.data.AUTH_GAVE_UP_ERROR_TYPE
 import app.skipperclub.data.Chat
 import app.skipperclub.data.ChatMessage
 import app.skipperclub.data.ChatRealtimeEvent
@@ -110,6 +111,7 @@ fun MessagesScreen(modifier: Modifier = Modifier) {
     val errorAuthMessage = stringResource(R.string.messages_error_auth)
     val errorGenericMessage = stringResource(R.string.messages_error_generic)
     val errorRealtimeMessage = stringResource(R.string.messages_error_realtime)
+    val errorConnectionLostMessage = stringResource(R.string.messages_error_connection_lost)
     val chatDeletedMessage = stringResource(R.string.messages_deleted)
 
     fun errorMessage(error: Exception): String = when (error) {
@@ -162,15 +164,25 @@ fun MessagesScreen(modifier: Modifier = Modifier) {
         },
         onReconnected = controller::onRealtimeReconnected,
         // This screen stays composed underneath the conversation dialog for as long as the socket
-        // lives, so it is the one lightweight place to surface a server-side WS failure (rate
-        // limiting, access denied on chat:join, ...) — it is already logged unconditionally in
-        // ChatRealtimeClient; this just makes it visible to the user too.
+        // lives, so it is the one lightweight place to surface a server-side WS failure (access
+        // denied on chat:join, unacked joins, the auth breaker's give-up, ...) — it is already
+        // logged unconditionally in ChatRealtimeClient; this just makes it visible to the user too.
         //
         // The server's own text is deliberately not shown: it is English-only protocol wording
-        // ("Rate limit exceeded", "Chat not found or access denied") aimed at developers, and the
-        // app is localized. The detail stays in the log for whoever is debugging.
-        onServerError = {
-            notificationHostState.show(errorRealtimeMessage, InAppNotificationType.Error)
+        // ("Chat not found or access denied") aimed at developers, and the app is localized. The
+        // detail stays in the log for whoever is debugging. The one distinction made here is the
+        // client-minted auth give-up, which gets its own actionable message (parity with web's
+        // banner and iOS's alert): realtime is down for the rest of the session, and "try again"
+        // would be a lie.
+        onServerError = { error ->
+            notificationHostState.show(
+                if (error.type == AUTH_GAVE_UP_ERROR_TYPE) {
+                    errorConnectionLostMessage
+                } else {
+                    errorRealtimeMessage
+                },
+                InAppNotificationType.Error,
+            )
         },
     )
 
@@ -306,7 +318,7 @@ internal fun ChatListRealtimeEffect(
     events: Flow<ChatRealtimeEvent>,
     onRealtimeMessage: (ChatMessage) -> Unit,
     onReconnected: () -> Unit,
-    onServerError: () -> Unit,
+    onServerError: (ChatRealtimeEvent.ServerError) -> Unit,
     /**
      * Whether the socket is already connected as this effect (re)starts. Seeds the first-connect
      * guard so a `Connected` seen while already online is treated as the reconnect it is, rather than
@@ -332,7 +344,7 @@ internal fun ChatListRealtimeEffect(
                     hasConnectedOnce = true
                 }
 
-                is ChatRealtimeEvent.ServerError -> currentOnServerError()
+                is ChatRealtimeEvent.ServerError -> currentOnServerError(event)
                 else -> Unit
             }
         }
