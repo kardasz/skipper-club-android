@@ -38,6 +38,11 @@ data class ChatConversationUiState(
      * Delivery state of own sends, keyed by the `clientMessageId` of the message they belong to.
      * The bubble itself is a normal entry in [messages] — this map only decorates it, so a status
      * for a message that is not (or no longer) rendered simply goes unused.
+     *
+     * Bounded: only [MessageSendStatus.Sending] and [MessageSendStatus.Failed] entries live here.
+     * A send the server confirms is *removed* rather than stored as [MessageSendStatus.Sent] — a
+     * confirmed message renders like any other server row, so keeping terminal entries only grew
+     * the map by one per message sent for the lifetime of the screen (AN-9b).
      */
     val sendStatusByClientMessageId: Map<String, MessageSendStatus> = emptyMap(),
 )
@@ -46,6 +51,10 @@ data class ChatConversationUiState(
  * Delivery state of an own message, cross-client parity with web's `MessageSendStatus`
  * (`lib/messages/types.ts`) and iOS's `MessageStatus`. iOS additionally models `delivered`; the
  * backend emits no distinct delivery event, so Android stays on these three.
+ *
+ * [Sent] is implicit in practice: a confirmed send's entry is removed from
+ * [ChatConversationUiState.sendStatusByClientMessageId] instead of stored, so the map stays
+ * bounded (AN-9b). The constant is kept for the cross-client vocabulary above.
  */
 enum class MessageSendStatus { Sending, Sent, Failed }
 
@@ -446,7 +455,7 @@ class ChatConversationController(
                 pendingIndex >= 0 || heldElsewhere -> state.messages
                 else -> state.messages + message
             }
-            state.copy(messages = messages).withSendStatus(clientMessageId, MessageSendStatus.Sent)
+            state.copy(messages = messages).withSendConfirmed(clientMessageId)
         }
     }
 
@@ -524,6 +533,23 @@ class ChatConversationController(
     }
 
     /**
+     * Drops the delivery-status entry for a send the server confirmed. A confirmed message renders
+     * like any other server row — [MessageSendStatus.Sent] never decorated the bubble — so storing
+     * terminal entries only grew [ChatConversationUiState.sendStatusByClientMessageId] by one per
+     * message sent for the lifetime of the screen (AN-9b). [MessageSendStatus.Failed] entries stay:
+     * the retry affordance reads them.
+     */
+    private fun ChatConversationUiState.withSendConfirmed(
+        clientMessageId: String,
+    ): ChatConversationUiState {
+        val statuses = sendStatusByClientMessageId - clientMessageId
+        return copy(
+            sendStatusByClientMessageId = statuses,
+            isSending = statuses.containsValue(MessageSendStatus.Sending),
+        )
+    }
+
+    /**
      * Applies a message pushed over the socket for this chat: appends it when unseen and
      * immediately marks incoming messages as read (the user is looking at the conversation).
      *
@@ -559,7 +585,7 @@ class ChatConversationController(
                     val messages = state.messages.toMutableList().also { it[existingIndex] = message }
                     val replaced = state.copy(messages = messages)
                     existing.clientMessageId
-                        ?.let { replaced.withSendStatus(it, MessageSendStatus.Sent) }
+                        ?.let { replaced.withSendConfirmed(it) }
                         ?: replaced
                 }
 
@@ -791,7 +817,7 @@ class ChatConversationController(
             val pending = reconciled.filter { it.isOptimistic() }
             confirmedKeys
                 .fold(state.copy(messages = (page.messages + pending).sortedByCreationOrder())) { acc, key ->
-                    acc.withSendStatus(key, MessageSendStatus.Sent)
+                    acc.withSendConfirmed(key)
                 }
                 // Clear a stale `loadFailed` too: a poll/rejoin reload that succeeds after the
                 // initial load failed must drop the "Retry" state, not leave it stuck (AN-7).
@@ -822,7 +848,7 @@ class ChatConversationController(
             } else {
                 confirmedKeys
                     .fold(state.copy(messages = (reconciled + fresh).sortedByCreationOrder())) { acc, key ->
-                        acc.withSendStatus(key, MessageSendStatus.Sent)
+                        acc.withSendConfirmed(key)
                     }
             }
         }
@@ -833,7 +859,7 @@ class ChatConversationController(
     /**
      * Swaps every optimistic entry of [existing] for the [incoming] server row that carries its
      * `clientMessageId`, and reports the keys that were confirmed so their watchdogs can be
-     * cancelled and their status flipped to [MessageSendStatus.Sent].
+     * cancelled and their status entries dropped (see `withSendConfirmed`).
      */
     private fun reconcileOptimistic(
         existing: List<ChatMessage>,

@@ -256,7 +256,8 @@ class ChatConversationControllerTest {
         // Replaced, not removed-and-re-appended: the list is the same length and the bubble kept
         // its position instead of jumping when the server's createdAt took over.
         assertEquals(listOf("m1", "server-id"), state.messages.map { it.id })
-        assertEquals(MessageSendStatus.Sent, state.sendStatusByClientMessageId["client-id-0"])
+        // Confirmed entries are pruned, not stored as Sent — the map stays bounded (AN-9b).
+        assertFalse(state.sendStatusByClientMessageId.containsKey("client-id-0"))
         assertFalse(state.isSending)
     }
 
@@ -278,14 +279,37 @@ class ChatConversationControllerTest {
         // The echo *replaces* the placeholder rather than being discarded as a duplicate — the row
         // has to pick up the server id, or it would stay unconfirmed until the watchdog fired.
         assertEquals(listOf("m1", "server-id"), controller.state.value.messages.map { it.id })
-        assertEquals(
-            MessageSendStatus.Sent,
-            controller.state.value.sendStatusByClientMessageId["client-id-0"],
-        )
+        // Confirmed: the status entry is pruned rather than stored as Sent (AN-9b).
+        assertFalse(controller.state.value.sendStatusByClientMessageId.containsKey("client-id-0"))
 
         sendGate.complete(Unit)
         assertEquals(listOf("m1", "server-id"), controller.state.value.messages.map { it.id })
         assertFalse(controller.state.value.isSending)
+    }
+
+    @Test
+    fun confirmedSendsDoNotAccumulateInTheStatusMap() {
+        // AN-9b: one terminal entry per message sent grew the map for the screen's lifetime.
+        // Confirmed sends are pruned; only in-flight and failed entries may live in the map.
+        gateway.messagePages = listOf(messagesPage(listOf(testMessage("m1"))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        for (i in 0..2) {
+            gateway.sentMessage = testMessage(
+                "server-$i",
+                userId = "me",
+                text = "msg$i",
+                createdAt = "2026-06-12T10:0${i + 1}:00Z",
+                clientMessageId = "client-id-$i",
+            )
+            controller.send("msg$i")
+        }
+
+        val state = controller.state.value
+        assertEquals(listOf("m1", "server-0", "server-1", "server-2"), state.messages.map { it.id })
+        assertTrue(state.sendStatusByClientMessageId.isEmpty())
+        assertFalse(state.isSending)
     }
 
     @Test
@@ -335,10 +359,8 @@ class ChatConversationControllerTest {
         retryGate.complete(Unit)
 
         assertEquals(listOf("m1", "server-id"), controller.state.value.messages.map { it.id })
-        assertEquals(
-            MessageSendStatus.Sent,
-            controller.state.value.sendStatusByClientMessageId["client-id-0"],
-        )
+        // Confirmed after the retry: the entry is pruned, not stored as Sent (AN-9b).
+        assertFalse(controller.state.value.sendStatusByClientMessageId.containsKey("client-id-0"))
     }
 
     @Test
@@ -443,10 +465,8 @@ class ChatConversationControllerTest {
         controller.catchUp()
 
         assertEquals(listOf("m1", "server-id"), controller.state.value.messages.map { it.id })
-        assertEquals(
-            MessageSendStatus.Sent,
-            controller.state.value.sendStatusByClientMessageId["client-id-0"],
-        )
+        // Confirmed by the catch-up page: the entry is pruned, not stored as Sent (AN-9b).
+        assertFalse(controller.state.value.sendStatusByClientMessageId.containsKey("client-id-0"))
         assertFalse(controller.state.value.isSending)
         // The unconfirmed bubble is not a usable anchor — its id exists nowhere on the server — so
         // the loop anchors on "m1" and the first (newest, no cursor) page already overlaps.
