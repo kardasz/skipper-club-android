@@ -344,12 +344,32 @@ internal fun ChatListRealtimeEffect(
                     hasConnectedOnce = true
                 }
 
-                is ChatRealtimeEvent.ServerError -> currentOnServerError(event)
+                is ChatRealtimeEvent.ServerError ->
+                    if (shouldSurfaceRealtimeError(event)) currentOnServerError(event)
+
                 else -> Unit
             }
         }
     }
 }
+
+/**
+ * The exact `error` message the server sends when inbound frames are dropped for backpressure —
+ * over the 10 events/s rate limit or beyond the per-connection handler backlog
+ * (docs/api/messages/websocket.md, "Rate limiting").
+ */
+internal const val WS_BACKPRESSURE_ERROR_MESSAGE = "Rate limit exceeded"
+
+/**
+ * Whether a server `error` frame deserves the user-facing realtime-error notice.
+ *
+ * Backpressure ([WS_BACKPRESSURE_ERROR_MESSAGE]) does not: it is a signal that the client sent
+ * frames faster than the server's inbound limit, not a failure the user caused or can act on —
+ * toasting it just blames them for nothing (D-AN-4; web suppresses the same message, its one
+ * exception to toasting WS errors). It stays observable in ChatRealtimeClient's warning log.
+ */
+internal fun shouldSurfaceRealtimeError(error: ChatRealtimeEvent.ServerError): Boolean =
+    error.message != WS_BACKPRESSURE_ERROR_MESSAGE
 
 /**
  * Whether closing the conversation should reload the whole chat list.
