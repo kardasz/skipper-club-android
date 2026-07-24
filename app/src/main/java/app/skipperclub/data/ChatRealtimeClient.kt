@@ -667,9 +667,12 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
     override fun joinChat(chatId: String) {
         joinedChatIds += chatId
         sendFrame("chat:join", chatIdFramePayload(chatId))
-        // Arm the ack timeout only when a frame could actually go out; with no live scope/socket the
-        // frame was dropped, and the reconnect replay (through this same method) re-arms on open.
+        // Arm the ack timeout only when a frame could actually go out. `sendFrame` no-ops unless the
+        // socket is open, so arming while merely mid-backoff (scope alive, `_isConnected` false)
+        // would fire a spurious `join_failed` for a join that was never sent (AN-5). The reconnect
+        // replay runs through this same method on open, where it arms correctly.
         val activeScope = scope ?: return
+        if (!_isConnected.value) return
         joinAckTracker.track(
             chatId = chatId,
             scope = activeScope,
@@ -881,6 +884,15 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
 
     /** Whether a `chat:join` for [chatId] is still awaiting its ack. Test seam over the tracker. */
     internal fun isJoinPending(chatId: String): Boolean = joinAckTracker.isPending(chatId)
+
+    /**
+     * Marks the client connected without a real socket, so tests exercising paths gated on
+     * `_isConnected` — notably the join-ack tracking in [joinChat] (AN-5) — can drive them over a
+     * parked connection. No socket exists, so sends still no-op; only the flag flips.
+     */
+    internal fun markConnectedForTesting() {
+        _isConnected.value = true
+    }
 
     /** Internal rather than private so tests can drive the dispatch without a live transport. */
     internal fun handleFrame(text: String) {

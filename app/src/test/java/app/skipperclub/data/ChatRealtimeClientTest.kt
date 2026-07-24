@@ -715,6 +715,10 @@ class ChatRealtimeClientTest {
             },
         )
         providerEntered.await()
+        // A parked connection has a live scope but no socket, so `_isConnected` is false. Mark it
+        // connected so joins arm their ack tracker (AN-5 gates tracking on the socket being up),
+        // which is exactly the state these join-ack integration tests exercise.
+        WebSocketChatRealtimeClient.markConnectedForTesting()
         try {
             block(events)
         } finally {
