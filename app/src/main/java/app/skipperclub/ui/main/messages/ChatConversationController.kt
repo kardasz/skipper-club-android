@@ -166,6 +166,15 @@ class ChatConversationController(
      */
     private var historyCursor: String? = null
 
+    /**
+     * Monotonic stamp of the current history window. Bumped whenever the window and
+     * [historyCursor] are replaced wholesale ([retry], [reloadFromScratch]): a [loadMore] page
+     * that resolves against a stale stamp belongs to the discarded window, and merging it — or
+     * worse, writing its deep cursor — would splice an old page into the fresh page 0 and leave
+     * an invisible, never-closed hole in the conversation (D-AN-3).
+     */
+    private var historyGeneration = 0
+
     /** The catch-up loop in flight, so a second trigger coalesces into it instead of stacking. */
     private var catchUpJob: Job? = null
 
@@ -252,6 +261,8 @@ class ChatConversationController(
 
     fun retry() {
         historyCursor = null
+        // The full reload replaces the window; a loadMore still in flight belongs to the old one.
+        historyGeneration += 1
         // The buffer belongs to the load that failed: the retry re-reads page 0, which already
         // contains everything the server has, so replaying stale arrivals on top only risks
         // resurrecting a message that was meanwhile deleted.
@@ -266,6 +277,7 @@ class ChatConversationController(
         if (!current.hasMore || current.isLoading || current.isLoadingMore) return
         // `hasMore` and the cursor are written together, so this is unreachable; kept consistent.
         val cursor = historyCursor ?: run { _state.update { it.copy(hasMore = false) }; return }
+        val generation = historyGeneration
         _state.update { it.copy(isLoadingMore = true) }
         scope.launch {
             val token = requireToken() ?: run {
@@ -280,6 +292,17 @@ class ChatConversationController(
                     before = cursor,
                     order = SortOrder.Desc,
                 )
+                if (generation != historyGeneration) {
+                    // The window this page belongs to was replaced while the fetch was in flight
+                    // (retry / reload-from-scratch): both its content and its cursor are stale, so
+                    // merging or writing either would tear a hole into the fresh window (D-AN-3).
+                    // Re-run instead of just dropping: the scroll trigger that requested this page
+                    // fires only on a state *change*, so a silent drop could stall paging until
+                    // the user scrolls away and back.
+                    _state.update { it.copy(isLoadingMore = false) }
+                    loadMore()
+                    return@launch
+                }
                 // Advance to the next page's cursor; `hasMore` follows from it, never from a
                 // post-dedupe count (a fully-overlapping page would otherwise stop paging).
                 historyCursor = page.nextCursor
@@ -742,7 +765,7 @@ class ChatConversationController(
      * contract, and the cold path when nothing local is left to anchor on. Replaces the list
      * atomically instead of flipping [ChatConversationUiState.isLoading]: the 5s poll reaches this on
      * an empty conversation, and a spinner flashing every tick would be worse than a silent swap.
-     * Being a full load, this is one of the two paths allowed to write `hasMore` and [historyOffset].
+     * Being a full load, this is one of the two paths allowed to write `hasMore` and [historyCursor].
      */
     private suspend fun reloadFromScratch(token: String) {
         val page = gateway.listMessages(
@@ -754,6 +777,9 @@ class ChatConversationController(
         )
         val known = _state.value.messages
         val gainedMessages = page.messages.any { candidate -> known.none { isDuplicate(it, candidate) } }
+        // Committing a wholesale window swap: a loadMore racing this reload must not splice its
+        // (now stale) deep page or cursor into the fresh page 0 (D-AN-3).
+        historyGeneration += 1
         historyCursor = page.nextCursor
         val confirmed = mutableSetOf<String>()
         _state.update { state ->

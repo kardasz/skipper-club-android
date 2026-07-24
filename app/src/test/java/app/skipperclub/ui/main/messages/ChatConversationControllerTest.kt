@@ -778,6 +778,62 @@ class ChatConversationControllerTest {
     }
 
     @Test
+    fun loadMoreResolvingAfterAFullReloadIsDroppedAndReissuedAgainstTheFreshWindow() {
+        // D-AN-3: a loadMore in flight while retry()/reloadFromScratch replaces the window must
+        // neither merge its stale deep page into the fresh page 0 nor overwrite the fresh cursor
+        // with its deep one — either would leave an invisible, never-closed hole. And because the
+        // scroll trigger only fires on a state change, the dropped page is re-fetched against the
+        // fresh window instead of silently swallowed.
+        gateway.messagePages = listOf(
+            // Initial page 0.
+            messagesPage(
+                listOf(
+                    testMessage("m5", createdAt = "2026-06-12T10:05:00Z"),
+                    testMessage("m4", createdAt = "2026-06-12T10:04:00Z"),
+                ),
+                total = 10,
+            ),
+            // Served to retry()'s reload while the loadMore is still parked (the fake serves pages
+            // in resume order).
+            messagesPage(
+                listOf(
+                    testMessage("m6", createdAt = "2026-06-12T10:06:00Z"),
+                    testMessage("m5", createdAt = "2026-06-12T10:05:00Z"),
+                ),
+                total = 10,
+            ),
+            // The stale page the parked loadMore finally receives — it must be discarded.
+            messagesPage(listOf(testMessage("stale", createdAt = "2026-06-12T09:00:00Z")), total = 10),
+            // The re-issued loadMore's page, fetched with the fresh window's cursor.
+            messagesPage(
+                listOf(
+                    testMessage("m3", createdAt = "2026-06-12T10:03:00Z"),
+                    testMessage("m2", createdAt = "2026-06-12T10:02:00Z"),
+                ),
+                total = 2,
+            ),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        val gate = CompletableDeferred<Unit>()
+        gateway.listMessagesGate = gate
+
+        controller.loadMore() // parks in flight with the old window's cursor
+        gateway.listMessagesGate = null
+        controller.retry() // replaces the window while the loadMore is still parked
+        gate.complete(Unit) // the stale page resolves against the new window
+
+        val state = controller.state.value
+        assertEquals(listOf("m2", "m3", "m5", "m6"), state.messages.map { it.id })
+        assertFalse(state.messages.any { it.id == "stale" })
+        assertFalse(state.isLoadingMore)
+        assertFalse(state.hasMore)
+        // null (initial), cursor-0 (parked loadMore), null (retry reload), cursor-1 (re-issued
+        // loadMore threading the *fresh* window's cursor, never the stale page's).
+        assertEquals(listOf<String?>(null, "cursor-0", null, "cursor-1"), gateway.listMessagesBefores)
+    }
+
+    @Test
     fun retryResetsTheHistoryOffset() {
         gateway.messagePages = listOf(
             messagesPage(
