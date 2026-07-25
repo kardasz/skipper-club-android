@@ -633,6 +633,28 @@ class ChatRealtimeClientTest {
     }
 
     @Test
+    fun roomMembershipSurvivesUntilLeaveOrDeliberateDisconnect() = runBlocking {
+        // The Connected-time rejoin guard reads this set: membership must mean "a join was or
+        // will be sent on this connection" (joinChat adds before sending; the onOpen replay walks
+        // the set), must end on an explicit leave, and must clear with a deliberate disconnect —
+        // that clear is exactly why the conversation re-joins on Connected at all (C-AN-1).
+        withParkedConnection {
+            WebSocketChatRealtimeClient.joinChat("c1")
+            assertTrue(WebSocketChatRealtimeClient.isRoomJoined("c1"))
+            assertFalse(WebSocketChatRealtimeClient.isRoomJoined("c2"))
+
+            WebSocketChatRealtimeClient.leaveChat("c1")
+            assertFalse(WebSocketChatRealtimeClient.isRoomJoined("c1"))
+
+            WebSocketChatRealtimeClient.joinChat("c2")
+            assertTrue(WebSocketChatRealtimeClient.isRoomJoined("c2"))
+        }
+        // withParkedConnection tore the session down via disconnect(): the set is gone, so the
+        // next session's Connected rejoin is not skipped.
+        assertFalse(WebSocketChatRealtimeClient.isRoomJoined("c2"))
+    }
+
+    @Test
     fun chatJoinedFrameEmitsTheEventAndStillResolvesThePendingJoin() = runBlocking {
         // `chat:joined` is the only reliable "this room is live" signal, so it now drives the
         // conversation's catch-up as well as the join-retry timer — the timer must not regress.

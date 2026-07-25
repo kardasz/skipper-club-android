@@ -84,8 +84,8 @@ class ConversationRealtimeDispatchTest {
     @Test
     fun everyConnectedTriggersARejoin() {
         // Server-side drops reconnect too; the rejoin lambda itself decides (via the client's
-        // pending-join state) whether a frame actually goes out, so dispatch must never swallow
-        // the trigger.
+        // joined-room membership) whether a frame actually goes out, so dispatch must never
+        // swallow the trigger.
         val controller = controller()
 
         dispatch(ChatRealtimeEvent.Connected, controller)

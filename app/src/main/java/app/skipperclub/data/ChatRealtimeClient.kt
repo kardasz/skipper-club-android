@@ -976,6 +976,17 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
     internal fun isJoinPending(chatId: String): Boolean = joinAckTracker.isPending(chatId)
 
     /**
+     * Whether [chatId] is in the joined-room set this client replays on every open. Membership
+     * guarantees a `chat:join` was or will be sent on the current connection: the room was either
+     * in the onOpen replay's snapshot, or it was added by a [joinChat] call that itself sent the
+     * frame once the socket was up. The conversation screen keys its Connected-time rejoin off
+     * this, so a collector observing `Connected` before the OkHttp thread finishes the replay
+     * cannot fire a duplicate `chat:join` (and with it a duplicate catch-up). Cleared by
+     * [disconnect]/[leaveChat] — after a deliberate disconnect the rejoin therefore proceeds.
+     */
+    internal fun isRoomJoined(chatId: String): Boolean = chatId in joinedChatIds
+
+    /**
      * Marks the client connected without a real socket, so tests exercising paths gated on
      * `_isConnected` — notably the join-ack tracking in [joinChat] (AN-5) — can drive them over a
      * parked connection. No socket exists, so sends still no-op; only the flag flips.

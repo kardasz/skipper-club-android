@@ -222,12 +222,16 @@ fun ChatConversationScreen(
                 event = event,
                 chatId = chatId,
                 controller = controller,
-                // Skipped only when a `chat:join` for this room is already awaiting its ack — the
-                // client's onOpen replay got there first (server-side drop, where the joined set
-                // survives). That pending join either acks (its ChatJoined runs the catch-up) or
-                // exhausts into a retried-on-next-reconnect failure, so the skip never loses the
-                // trigger — it only avoids sending the same join twice and running two catch-ups.
-                rejoinChat = { id -> if (!realtime.isJoinPending(id)) realtime.joinChat(id) },
+                // Skipped when the room is already in the client's joined set. On a server-side
+                // drop the set survives, and membership guarantees a `chat:join` was or will be
+                // sent on this very connection — by the onOpen replay (which runs on the OkHttp
+                // thread and may finish before OR after this collector observes Connected) or by
+                // the joinChat call that added the room once the socket was up — so the skip can
+                // never lose the trigger; it only closes the window in which Connected was
+                // processed mid-replay and a pending-ack check still read false, firing a
+                // duplicate join and a duplicate catch-up. After a deliberate disconnect
+                // (backgrounding/logout) the set was cleared, so the rejoin proceeds.
+                rejoinChat = { id -> if (!realtime.isRoomJoined(id)) realtime.joinChat(id) },
             )
         }
     }
