@@ -697,6 +697,32 @@ class ChatRealtimeClientTest {
     }
 
     @Test
+    fun authGiveUpFlipsThePersistentStateUntilTheNextSessionStarts() = runBlocking {
+        // The app-wide banner cycle: give-up → connectionGaveUp true (persists across the
+        // teardown, so the banner survives on whatever tab is open) → the next session's
+        // connect() clears it, because that session is retrying again.
+        assertFalse(WebSocketChatRealtimeClient.connectionGaveUp.value)
+        withParkedConnection { events ->
+            WebSocketChatRealtimeClient.publishAuthGaveUp()
+
+            assertTrue(WebSocketChatRealtimeClient.connectionGaveUp.value)
+            // The transient Messages-tab notice still rides on the event flow alongside it.
+            yield()
+            assertTrue(
+                events.any { it is ChatRealtimeEvent.ServerError && it.type == AUTH_GAVE_UP_ERROR_TYPE },
+            )
+        }
+        // withParkedConnection tore the session down (disconnect()); the banner must persist —
+        // realtime is still dead, and clearing here would hide it before anything recovered.
+        assertTrue(WebSocketChatRealtimeClient.connectionGaveUp.value)
+
+        withParkedConnection {
+            // A fresh session (reconcile → connect()) resets the breaker and the banner with it.
+            assertFalse(WebSocketChatRealtimeClient.connectionGaveUp.value)
+        }
+    }
+
+    @Test
     fun authGaveUpEventCarriesTheDedicatedTypeAndAParseableTimestamp() {
         // The UI keys the actionable "connection lost" message off this type; and like every
         // client-minted ServerError the timestamp must parse as ISO-8601.

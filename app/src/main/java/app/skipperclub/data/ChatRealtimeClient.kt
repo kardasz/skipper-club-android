@@ -618,6 +618,19 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
     private val _isConnected = MutableStateFlow(false)
     override val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
 
+    /**
+     * Whether the auth breaker has given up on auto-reconnect for the current session (C-AN-2).
+     *
+     * State, not only an event: [authGaveUpEvent] on [events] is a replay-0 SharedFlow whose sole
+     * collector lives under the Messages tab, so on any other tab a give-up was invisible — and a
+     * consumer attaching later could never learn about it. [MainScreen][app.skipperclub.ui.main.MainScreen]
+     * renders a persistent app-wide banner off this flow (parity with web's connection banner and
+     * iOS's alert). Cleared when a socket actually opens ([publishOpenIfCurrent]) and when a new
+     * session starts ([connect]), the same places the breaker itself resets.
+     */
+    private val _connectionGaveUp = MutableStateFlow(false)
+    val connectionGaveUp: StateFlow<Boolean> = _connectionGaveUp.asStateFlow()
+
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         // Detect a half-open connection instead of waiting to discover it on the next send. The
@@ -676,8 +689,11 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         if (scope != null) return
         // A fresh session gets a fresh auth budget: without this reset a session that ended in a
         // breaker give-up poisoned every later one — its first auth rejection landed on an
-        // already-exhausted count and gave up before the refresh handler ever ran (C-AN-2).
+        // already-exhausted count and gave up before the refresh handler ever ran (C-AN-2). The
+        // give-up banner clears with it: this session is retrying again, so "reconnect stopped"
+        // would be stale the moment it kept showing.
         authFailureBreaker.reset()
+        _connectionGaveUp.value = false
         tokenProvider = accessTokenProvider
         authCloseHandler = onAuthClose
         val newScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -807,6 +823,7 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
         // credentials work).
         lastFailureWasForbidden = false
         authFailureBreaker.reset()
+        _connectionGaveUp.value = false
         _events.tryEmit(ChatRealtimeEvent.Connected)
         return true
     }
@@ -870,8 +887,19 @@ object WebSocketChatRealtimeClient : ChatRealtimeClient {
             TAG,
             "auth rejected more than $MAX_CONSECUTIVE_AUTH_FAILURES× in a row; giving up on auto-reconnect",
         )
-        _events.tryEmit(authGaveUpEvent())
+        publishAuthGaveUp()
         return true
+    }
+
+    /**
+     * The user-visible half of a breaker give-up: flips the persistent app-wide
+     * [connectionGaveUp] state (MainScreen banner) and emits the transient [authGaveUpEvent]
+     * (Messages-tab notice). Internal so tests can drive the give-up → banner → next-session
+     * recovery cycle without manufacturing three real auth rejections.
+     */
+    internal fun publishAuthGaveUp() {
+        _connectionGaveUp.value = true
+        _events.tryEmit(authGaveUpEvent())
     }
 
     private fun scheduleReconnect(ownerScope: CoroutineScope, attempt: Int) {

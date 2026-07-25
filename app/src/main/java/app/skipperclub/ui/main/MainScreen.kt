@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Badge
 import androidx.compose.material3.HorizontalDivider
@@ -17,6 +18,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -27,8 +29,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -37,6 +41,7 @@ import app.skipperclub.R
 import app.skipperclub.data.SessionUser
 import app.skipperclub.data.UnreadMessagesStore
 import app.skipperclub.data.UnreadNotificationsStore
+import app.skipperclub.data.WebSocketChatRealtimeClient
 import app.skipperclub.ui.main.cruises.CruisesScreen
 import app.skipperclub.ui.main.cruises.reviews.CruiseReviewsScreen
 import app.skipperclub.ui.main.friends.FriendsScreen
@@ -61,6 +66,11 @@ fun MainScreen(
     var current by currentSelection
     val messagesBadgeCount by UnreadMessagesStore.count.collectAsState()
     val notificationsBadgeCount by UnreadNotificationsStore.count.collectAsState()
+    // App-wide: the WS auth breaker's give-up must stay visible on every tab, not only under
+    // Messages where the transient event-driven notice lives (parity with web's connection
+    // banner). Persistent state, cleared by the client itself on the next successful connect
+    // or session start.
+    val realtimeGaveUp by WebSocketChatRealtimeClient.connectionGaveUp.collectAsState()
     MainScreenContent(
         current = current,
         user = user,
@@ -71,6 +81,7 @@ fun MainScreen(
         messagesBadgeCount = messagesBadgeCount,
         notificationsBadgeCount = notificationsBadgeCount,
         onNotificationsClosed = { UnreadNotificationsStore.refresh() },
+        showRealtimeGaveUpBanner = realtimeGaveUp,
         modifier = modifier,
     )
 }
@@ -88,6 +99,7 @@ private fun MainScreenContent(
     messagesBadgeCount: Int = 0,
     notificationsBadgeCount: Int = 0,
     onNotificationsClosed: () -> Unit = {},
+    showRealtimeGaveUpBanner: Boolean = false,
 ) {
     val menuOpenState = rememberSaveable { mutableStateOf(value = false) }
     var isMenuOpen by menuOpenState
@@ -152,6 +164,10 @@ private fun MainScreenContent(
             menuBadgeCount = notificationsBadgeCount,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
+
+        if (showRealtimeGaveUpBanner) {
+            RealtimeGaveUpBanner(modifier = Modifier.align(Alignment.TopCenter))
+        }
     }
 
     if (isMenuOpen) {
@@ -263,6 +279,33 @@ private fun MainScreenContent(
                 onClose = { reviewsCruiseId = null },
             )
         }
+    }
+}
+
+/**
+ * Persistent notice that realtime gave up reconnecting (WS auth breaker exhausted). Rendered
+ * app-wide over every tab, unlike the transient Messages-tab notice fed by the same event —
+ * recovery is a background/foreground cycle (the next `connect()` clears the state), so the
+ * banner simply stays until the client reports either a fresh session or an open socket.
+ */
+@Composable
+private fun RealtimeGaveUpBanner(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("realtime_gave_up_banner"),
+        color = MaterialTheme.colorScheme.errorContainer,
+    ) {
+        Text(
+            text = stringResource(R.string.messages_error_connection_lost),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onErrorContainer,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 6.dp),
+        )
     }
 }
 
@@ -429,6 +472,8 @@ private fun MainScreenPreviewPl() {
             user = previewUser,
             onSelect = {},
             onLogout = {},
+            // The busy state: the realtime give-up banner pinned over the tab content.
+            showRealtimeGaveUpBanner = true,
         )
     }
 }
