@@ -333,6 +333,25 @@ class ChatListControllerTest {
     }
 
     @Test
+    fun ownRealtimeMessageRefreshesThePreviewWithoutBumpingUnread() {
+        // Our own send echoes back as message:new on the chat room. Closing the conversation
+        // clears the open-chat id before the dispose leaves the room, so that echo can arrive
+        // with isChatOpen = false — and must still never raise an unread badge for words the
+        // user just wrote (parity with web's shouldBumpUnread and iOS's shouldCountUnread).
+        gateway.chatPages = listOf(chatsPage(listOf(testChat("c1", unreadCount = 1))))
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        val own = testMessage("m9", chatId = "c1", text = "Ahoy!", userId = "me", createdAt = "2026-06-12T11:00:00Z")
+        controller.onRealtimeMessage(own, isChatOpen = false, isOwnMessage = true)
+
+        val updated = controller.state.value.chats.first()
+        assertEquals("Ahoy!", updated.lastMessage?.text)
+        assertEquals("2026-06-12T11:00:00Z", updated.updatedAt)
+        assertEquals(1, updated.unreadCount)
+    }
+
+    @Test
     fun outOfOrderRealtimeMessageDoesNotOverwriteANewerPreview() {
         // The message:new / message:received pair for one message, plus a catch-up burst after a
         // reconnect, can arrive out of order. Writing the preview unconditionally let an older

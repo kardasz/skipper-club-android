@@ -160,6 +160,11 @@ fun MessagesScreen(modifier: Modifier = Modifier) {
             controller.onRealtimeMessage(
                 message = message,
                 isChatOpen = message.chatId == currentOpenChatId,
+                // Our own message never counts as unread for us. Not implied by isChatOpen: the
+                // conversation clears the open-chat id before its dispose leaves the room, so the
+                // `message:new` echo of a send followed by an immediate back-tap arrives with the
+                // chat already reported closed.
+                isOwnMessage = currentUserId != null && message.user.id == currentUserId,
             )
         },
         onReconnected = controller::onRealtimeReconnected,

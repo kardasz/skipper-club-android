@@ -205,8 +205,15 @@ class ChatListController(
      * order*, so the preview and the row timestamp are only overwritten when the arrival is
      * genuinely newer than what the row already shows. Writing unconditionally let an older
      * message replace a newer preview and walk the row's `updatedAt` backwards.
+     *
+     * [isOwnMessage] suppresses the unread bump for a message the current user sent, exactly as
+     * web (`shouldBumpUnread`) and iOS (`shouldCountUnread`) do. It is not covered by
+     * [isChatOpen]: the server delivers our own message back as `message:new` on the chat room,
+     * and closing the conversation clears the open-chat id *before* the room is left, so a send
+     * followed by an immediate back-tap raced its own echo into the row's unread badge — where
+     * it stuck, since nothing reloads the list while the socket is up.
      */
-    fun onRealtimeMessage(message: ChatMessage, isChatOpen: Boolean) {
+    fun onRealtimeMessage(message: ChatMessage, isChatOpen: Boolean, isOwnMessage: Boolean = false) {
         val snapshot = _state.value
         if (!snapshot.hasLoadedOnce) return
         val existing = snapshot.chats.firstOrNull { it.id == message.chatId }
@@ -226,7 +233,7 @@ class ChatListController(
                 updatedAt = if (isNewerThanPreview) message.createdAt else existing.updatedAt,
                 unreadCount = when {
                     isChatOpen -> 0
-                    alreadyApplied -> existing.unreadCount
+                    isOwnMessage || alreadyApplied -> existing.unreadCount
                     else -> existing.unreadCount + 1
                 },
             )
