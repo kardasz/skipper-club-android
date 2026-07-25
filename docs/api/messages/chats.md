@@ -29,14 +29,42 @@ Retrieve a paginated list of chats for the current user. Returns chats of all ty
 
 ### Query Parameters
 
-| Parameter | Type    | Default     | Description                                                               |
-| --------- | ------- | ----------- | ------------------------------------------------------------------------- |
-| `type`    | enum    | —           | Filter by chat type (`ONE_TO_ONE`, `GROUP`, `CRUISE_QNA`, `CRUISE_GROUP`) |
-| `search`  | string  | —           | Search by chat name or participant names                                  |
-| `limit`   | integer | 20          | Results per page (1-100)                                                  |
-| `offset`  | integer | 0           | Results to skip                                                           |
-| `sort`    | string  | `updatedAt` | Sort field (`createdAt`, `updatedAt`, `name`)                             |
-| `order`   | string  | `desc`      | Sort order (`asc`, `desc`)                                                |
+| Parameter | Type    | Default     | Description                                                                    |
+| --------- | ------- | ----------- | ------------------------------------------------------------------------------ |
+| `type`    | enum    | —           | Filter by chat type (`ONE_TO_ONE`, `GROUP`, `CRUISE_QNA`, `CRUISE_GROUP`)      |
+| `search`  | string  | —           | Search by chat name only (participant names are not searched)                  |
+| `limit`   | integer | 20          | Results per page (1-100)                                                       |
+| `cursor`  | string  | —           | Keyset cursor: only chats older than it in `(updatedAt, id)` ordering          |
+| `offset`  | integer | 0           | Results to skip — **deprecated**, use `cursor` (mutually exclusive with it)    |
+| `sort`    | string  | `updatedAt` | Sort field (`createdAt`, `updatedAt`, `name`); a `cursor` requires the default |
+| `order`   | string  | `desc`      | Sort order (`asc`, `desc`); a `cursor` requires the default `desc`             |
+
+### Paging modes
+
+The endpoint supports two paging modes; a request must pick one.
+
+- **Offset paging** (`offset`) — deprecated. The list is ordered by
+  `updatedAt` and reorders whenever a chat receives a message, so every
+  reorder between two page fetches makes offset paging repeat or skip a chat.
+  Kept for backward compatibility only.
+- **Keyset paging** (`cursor`) — anchored to a `(updatedAt, id)` position
+  instead of a count, so reordering cannot move it. `nextCursor` in the
+  response is the opaque cursor of the page's last chat; pass it back
+  verbatim as `cursor` for the next page. It is `null` exactly when the page
+  is the last one — and always `null` for a non-default `sort`/`order`,
+  which the cursor cannot describe. Ties on `updatedAt` are broken by `id`
+  (descending), so page boundaries are deterministic.
+
+Combining `cursor` with `offset` (including `offset=0`), with a `sort` other
+than `updatedAt`, or with `order=asc` returns `400 /errors/bad-request`, as
+does a cursor that does not decode. Treat the value as opaque — never
+construct one client-side.
+
+A chat that receives a message while you are paging moves to the head of the
+list, above the cursor: it will not appear again in the remaining pages (no
+duplicates), and you pick it up from the `message:received` /
+`message:new` realtime events or the next reload of page one. With a
+`cursor`, `total` counts only the chats remaining past the cursor's position.
 
 ### Example Requests
 
@@ -53,13 +81,13 @@ Authorization: Bearer <token>
 ```
 
 ```http
-GET /v1/chats?search=jan HTTP/1.1
+GET /v1/chats?search=crew HTTP/1.1
 Host: api.skipperclub.app
 Authorization: Bearer <token>
 ```
 
 ```http
-GET /v1/chats?limit=20&offset=20 HTTP/1.1
+GET /v1/chats?limit=20&cursor=MjAyNi0wNy0yMlQxMDoxNToxMi4zNDU2N1p8MDE5MWZhMmUtOGUzYi03YjJlLThlM2ItN2IyZThlM2I3YzAy HTTP/1.1
 Host: api.skipperclub.app
 Authorization: Bearer <token>
 ```
@@ -135,9 +163,13 @@ Authorization: Bearer <token>
   ],
   "total": 5,
   "limit": 20,
-  "offset": 0
+  "offset": 0,
+  "nextCursor": null
 }
 ```
+
+`nextCursor` is `null` here because the page is the last one; a page with more
+chats behind it carries the opaque cursor of its last chat.
 
 ---
 
@@ -435,7 +467,12 @@ The endpoint supports two paging modes; a request must pick one.
 Mixing them is rejected rather than silently resolved: `before` together with
 `after`, either of them together with `offset` (including `offset=0`), and
 either of them together with `sort=updatedAt` all return `400`
-`/errors/bad-request`, as does a cursor that does not decode.
+`/errors/bad-request`, as does a cursor that does not decode. The cursor name
+must also agree with the sort direction — `before` promises strictly older
+messages and requires `order=desc` (the default), `after` promises strictly
+newer ones and requires an explicit `order=asc`; the mismatched combinations
+(`before`+`asc`, `after`+`desc`) are a `400` too, never pages silently served
+from the wrong side of the cursor.
 
 ### Cursors
 
@@ -449,8 +486,9 @@ Treat the value as opaque: its contents are an implementation detail and may
 change. Do not construct one client-side; start the first page without a cursor
 and follow `nextCursor` from there.
 
-All other filters (`fromDate`, `toDate`, `read`, `limit`, `order`) keep working
-alongside a cursor — repeat them unchanged on every page of a walk. Note that
+All other filters (`fromDate`, `toDate`, `read`, `limit`) keep working
+alongside a cursor — repeat them unchanged on every page of a walk (`order` is
+fixed by the cursor name: `desc` for `before`, `asc` for `after`). Note that
 with a cursor, `total` counts the messages remaining on the cursor's side of
 the history, not the whole chat.
 
@@ -964,21 +1002,34 @@ chats.forEach((chat) => {
 
 ### Infinite Scroll Messages
 
+Page backwards with the `before` keyset cursor (see [Paging modes](#paging-modes)) —
+never with `offset`, which skips one older message for every message that
+arrives between two page fetches:
+
 ```javascript
-let offset = 0;
+let nextCursor = null; // opaque; always the previous response's nextCursor
+let exhausted = false;
 const limit = 20;
 
 async function loadMoreMessages(chatId) {
+  if (exhausted) return { messages: [], hasMore: false };
+  const cursorParam = nextCursor
+    ? `&before=${encodeURIComponent(nextCursor)}`
+    : "";
   const response = await fetch(
-    `/v1/chats/${chatId}/messages?limit=${limit}&offset=${offset}&order=desc`,
+    `/v1/chats/${chatId}/messages?limit=${limit}&order=desc${cursorParam}`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
-  const { messages, total } = await response.json();
+  const { messages, nextCursor: cursor } = await response.json();
 
-  offset += messages.length;
-  return { messages, hasMore: offset < total };
+  nextCursor = cursor; // null on the last page
+  exhausted = cursor === null;
+  return { messages, hasMore: !exhausted };
 }
 ```
+
+The chat list itself paginates the same way: follow `nextCursor` from
+`GET /v1/chats` and pass it back as `cursor`.
 
 ### Real-time + REST Hybrid
 

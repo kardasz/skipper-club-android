@@ -27,7 +27,10 @@ info:
       fan-out.
     - Marking a message read (WS message:read or REST
       PATCH /chats/{chatId}/messages/{messageId} with read=true) broadcasts
-      the message:read receipt to the chat room.
+      the message:read receipt to the chat room — unless the message is the
+      caller's own: that operation still succeeds (and still answers
+      message:read:confirmed over WS) but inserts no receipt and broadcasts
+      nothing, matching the bulk action's own-message exclusion.
     - Bulk mark-read (REST POST /chats/actions with action=mark-read)
       broadcasts one message:read receipt per chat where at least one message
       actually transitioned unread→read, carrying the newest newly-marked
@@ -67,8 +70,16 @@ info:
       connection automatically joins its personal room (user:{userId}).
     - Chat-room membership (chat:join) lasts until the client sends
       chat:leave, the connection closes, or the server evicts the user's
-      connections from the room because they hid the chat (REST
-      DELETE /chats/{chatId} or the delete bulk action).
+      connections from the room. The server evicts on two occasions: the user
+      hid the chat (REST DELETE /chats/{chatId} or the delete bulk action), or
+      the user stopped being a participant (cruise group-chat membership sync,
+      including its cli cruises sync-chats reconciliation). Eviction on the
+      instance handling the request is immediate; reaching connections on
+      other instances rides a Redis publish that is retried a bounded number
+      of times on failure — best effort with retries, not a guarantee.
+      Neither eviction emits an event — the client learns it lost access on
+      its next REST fetch — and a later legitimate chat:join re-checks access
+      and succeeds again.
     - The server sends a protocol-level Ping approximately every 30 seconds
       (never more often, and it may drift later under load) and closes
       connections that do not answer with a Pong within 10 seconds. Standard
@@ -248,7 +259,13 @@ operations:
     channel:
       $ref: "#/channels/chat"
     summary: Mark message as read
-    description: Mark a specific message as read by the current user. Returns message:read:confirmed and broadcasts read receipt to participants.
+    description: >-
+      Mark a specific message as read by the current user. Returns
+      message:read:confirmed and broadcasts the message:read receipt to the
+      chat room. Marking the caller's own message succeeds and is still
+      acknowledged with message:read:confirmed, but inserts no receipt and
+      broadcasts nothing — receipts always reference a message another
+      participant sent.
     messages:
       - $ref: "#/channels/chat/messages/messageRead"
     reply:
@@ -468,7 +485,10 @@ components:
         unread→read, carrying the newest such message.
 
         Receipt semantics are cascading: a receipt for message M by user U
-        means U has read M and every earlier message in that chat.
+        means U has read M and every earlier message in that chat. A receipt
+        never references a message the reader sent themselves: the
+        single-message paths skip own messages (the operation succeeds
+        without a receipt) and the bulk action excludes them from marking.
       contentType: application/json
       payload:
         $ref: "#/components/schemas/MessageReadReceiptPayload"

@@ -72,22 +72,27 @@ reconnecting, the client must join each active chat again.
 
 Hiding a chat also ends membership server-side: both `DELETE /chats/{chatId}`
 and the bulk delete action (`POST /chats/actions` with `action: delete`) evict
-the hider's connections from that chat's room across every API instance, so a
-chat the client was just told is gone stops pushing `message:new` and
-`chat:typing` at it. No `chat:leave` is needed; an explicit one still works
-(leave is deliberately not access-checked) but is redundant after the
-eviction. A new message in the chat un-hides it, after which `chat:join`
-succeeds again.
+the hider's connections from that chat's room, so a chat the client was just
+told is gone stops pushing `message:new` and `chat:typing` at it. Eviction on
+the instance handling the request is immediate; reaching connections on
+_other_ instances rides a Redis publish, which is retried a bounded number of
+times (3 attempts with backoff) on failure — a best-effort-with-retries
+delivery, not a guarantee: if Redis stays unreachable through every attempt,
+connections on other instances keep the room until they disconnect. No
+`chat:leave` is needed; an explicit one still works (leave is deliberately not
+access-checked) but is redundant after the eviction. A new message in the chat
+un-hides it, after which `chat:join` succeeds again.
 
 Losing participation ends membership the same way: when a user is removed from
 a chat's participants — today the cruise group-chat membership sync, including
 its `cli cruises sync-chats` reconciliation (see
 [Cruise Chats](../cruises/chats.md)) — their connections are evicted from that
-chat's room across every API instance. Otherwise they would keep receiving
-`message:new` and `chat:typing` for a chat they no longer belong to, for the
-whole lifetime of the connection. No event announces the removal: the client
-learns it lost access on its next REST fetch, so a chat opened at that moment
-simply goes quiet until then. A later legitimate re-add is unaffected —
+chat's room, with the same delivery bounds as above (local eviction immediate,
+cross-instance eviction retried but not guaranteed). Otherwise they would keep
+receiving `message:new` and `chat:typing` for a chat they no longer belong to,
+for the whole lifetime of the connection. No event announces the removal: the
+client learns it lost access on its next REST fetch, so a chat opened at that
+moment simply goes quiet until then. A later legitimate re-add is unaffected —
 `chat:join` re-checks access and succeeds again.
 
 Redis transports room fan-out and presence between API instances.
@@ -260,10 +265,16 @@ user, not just the single message.
 This is why bulk mark-read (`POST /chats/actions` with `mark-read`) emits
 exactly one receipt per chat: the receipt references the newest message that
 actually transitioned from unread to read in that chat, and the cascade
-covers the rest. A chat where nothing was newly marked (everything already
-read, or no messages at all) emits no receipt. The single-message paths (WS
+covers the rest. The caller's own messages are never receipted — they are not
+counted as unread in the first place — so a receipt always references a message
+another participant sent, never one the reader themselves sent. A chat where
+nothing was newly marked (everything already read, only the caller's own
+messages, or no messages at all) emits no receipt. The single-message paths (WS
 `message:read`, REST `PATCH` with `read: true`) emit one receipt per call
-with the same cascading meaning.
+with the same cascading meaning, and apply the same own-message exclusion:
+marking your own message read succeeds (WS still answers
+`message:read:confirmed`, REST still answers `204`) but inserts no receipt
+and broadcasts nothing.
 
 ## Server to client events
 
@@ -310,7 +321,8 @@ only to users sharing at least one chat with the affected user (the legacy
 Socket.IO gateway broadcast it to every connected client; that leak is fixed
 here).
 
-Both transitions fire exactly once, and both survive a transient Redis failure:
+Both transitions normally fire exactly once. Their failure modes differ, and
+neither is fully protected against a Redis outage — the honest bounds:
 
 - **Offline** is decided by the user's presence going empty, not by the
   disconnecting connection being the one removed from it. A connection whose
@@ -318,13 +330,26 @@ Both transitions fire exactly once, and both survive a transient Redis failure:
   for longer than the staleness horizon — still takes the user offline (and
   still persists `lastSeen`) when its close is what leaves the user with no
   presence at all. Concurrent disconnects of the same user still produce one
-  event, never two.
+  event, never two. The offline presence write and the `lastSeen` write are
+  each retried a bounded number of times at disconnect (3 attempts with a
+  short backoff, each attempt under its own deadline) — a transient blip at
+  that exact moment no longer loses the transition — but the retry is
+  bounded, not a guarantee: if the datastore stays unreachable through every
+  attempt, no `presence:update{isOnline:false}` is broadcast and no
+  `lastSeen` is persisted. The stale entry is later reaped by its TTL, so a
+  REST presence snapshot eventually reads the user offline, but no push event
+  ever fires for it.
 - **Online** is retried by the server's own keepalive. If the connect-time
   presence write fails, the connection stays fully usable and the next
   keepalive tick (~30 s) puts the user back into presence and broadcasts the
   `presence:update{isOnline:true}` the connect could not send. Clients need no
-  special handling: they may see the online event up to one tick late, never
-  twice.
+  special handling: they may see the online event up to one tick late. "Exactly
+  once" is the normal case, not an invariant: if an instance's keepalives stall
+  past the staleness horizon while Redis stays reachable for its peers, another
+  user's presence write can prune the healthy connection's entry, and a later
+  disconnect elsewhere can then emit a spurious offline that the next keepalive
+  tick restores with a fresh online. Self-correcting, but observably more than
+  one event in that window.
 
 ### Seeding presence after (re)connect
 

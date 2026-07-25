@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: SkipperClub API
   description: API for the SkipperClub social platform – connecting skippers and sailing enthusiasts.
-  version: 1.9.0
+  version: 1.10.0
   contact:
     name: SkipperClub Team
     email: contact@skipperclub.com
@@ -1212,8 +1212,35 @@ paths:
       tags:
         - messages
       summary: Get chat list
-      description: Returns all chats for the current user (1:1, group, cruise-related)
+      description: |
+        Returns all chats for the current user (1:1, group, cruise-related).
+
+        Two paging modes are available and must not be mixed: classic
+        `offset` paging (deprecated), and keyset paging with the `cursor`
+        parameter. The chat list is ordered by `updatedAt` and reorders
+        whenever a chat receives a message, so `offset` paging can skip or
+        repeat chats between two page fetches; the keyset cursor is anchored
+        to a `(updatedAt, id)` position instead and is not affected by
+        reordering. Ties on `updatedAt` are broken by `id` (descending), so
+        the ordering — and every page boundary — is deterministic.
       parameters:
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >-
+            Keyset cursor. Returns only chats strictly older than the
+            referenced position, using (updatedAt, id) tuple ordering —
+            descending, the listing default. Opaque: pass back the
+            `nextCursor` value of a previous response verbatim, never
+            construct one client-side. Only valid with the default
+            `sort=updatedAt` and `order=desc`; combining it with `offset`
+            (including `offset=0`), with another `sort`, or with `order=asc`
+            is a 400, as is a malformed cursor. A chat that receives a
+            message mid-walk moves to the top of the list — pages behind the
+            cursor never repeat it; pick it up via `chat:updated`-style
+            refreshes or the next full reload.
         - name: limit
           in: query
           schema:
@@ -1224,18 +1251,26 @@ paths:
           description: Number of chats to return
         - name: offset
           in: query
+          deprecated: true
           schema:
             type: integer
             default: 0
             minimum: 0
-          description: Number of chats to skip
+          description: >-
+            Number of chats to skip. Deprecated — offset paging over a list
+            that reorders on every message skips or repeats chats; use
+            `cursor` instead. Kept for backward compatibility; mutually
+            exclusive with `cursor`.
         - name: search
           in: query
           required: false
           schema:
             type: string
-          description: Search phrase to filter chats by name or participant names
-          example: jan
+          description: >-
+            Search phrase matched against the chat name only (case-insensitive
+            substring). Participant names are not searched, so 1:1 chats —
+            which have no name — never match.
+          example: crew
         - name: type
           in: query
           required: false
@@ -1252,6 +1287,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ChatsList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
     post:
@@ -1491,10 +1528,12 @@ paths:
             Keyset cursor. Returns only messages strictly newer than the
             referenced one, using (createdAt, id) tuple ordering. Opaque —
             pass back the `nextCursor` value of a previous response verbatim.
+            Requires `order=asc` (the forward walk; `order` defaults to
+            `desc`, so `after` never works without an explicit `order=asc`).
             Mutually exclusive with `before` and with `offset`, and not
             supported together with `sort=updatedAt` (the cursor is built on
-            `createdAt`); any of those combinations, or a malformed cursor,
-            is a 400.
+            `createdAt`); any of those combinations, `after` with
+            `order=desc`, or a malformed cursor, is a 400.
         - name: before
           in: query
           schema:
@@ -1503,10 +1542,11 @@ paths:
             Keyset cursor. Returns only messages strictly older than the
             referenced one, using (createdAt, id) tuple ordering. Opaque —
             pass back the `nextCursor` value of a previous response verbatim.
-            Mutually exclusive with `after` and with `offset`, and not
-            supported together with `sort=updatedAt` (the cursor is built on
-            `createdAt`); any of those combinations, or a malformed cursor,
-            is a 400.
+            Requires `order=desc` (the default). Mutually exclusive with
+            `after` and with `offset`, and not supported together with
+            `sort=updatedAt` (the cursor is built on `createdAt`); any of
+            those combinations, `before` with `order=asc`, or a malformed
+            cursor, is a 400.
         - name: fromDate
           in: query
           schema:
@@ -1694,8 +1734,11 @@ paths:
         (`read: true`) broadcasts the same `message:read` receipt to the chat
         room as the WS `message:read` operation — receipts are cascading: a
         receipt for message M means the reader has read M and every earlier
-        message in the chat. Marking as unread emits no WebSocket event (see
-        api/asyncapi.yaml).
+        message in the chat. Marking the caller's **own** message as read
+        succeeds (204) but inserts no read receipt and broadcasts nothing —
+        own messages are never counted as unread, so they are never receipted
+        (consistent with the bulk mark-read action). Marking as unread emits
+        no WebSocket event (see api/asyncapi.yaml).
       parameters:
         - name: chatId
           in: path
@@ -8083,10 +8126,24 @@ components:
             $ref: '#/components/schemas/Chat'
         total:
           type: integer
+          description: >-
+            Chats matching the filters. With a `cursor`, counts only the
+            chats remaining past the cursor's position, not the whole list.
         limit:
           type: integer
         offset:
           type: integer
+        nextCursor:
+          type:
+            - string
+            - 'null'
+          description: >-
+            Opaque keyset cursor built from the last chat of this page: pass
+            it back as `cursor` to fetch the next page. `null` when this page
+            is the last one, and whenever the listing used a `sort` other
+            than `updatedAt` or `order=asc` (orderings the cursor cannot
+            express).
+          example: MjAyNi0wNy0yMlQxMDoxNToxMi4zNDU2N1p8MDE5MWZhMmUtOGUzYi03YjJlLThlM2ItN2IyZThlM2I3YzAy
     ChatPresence:
       type: object
       required:
