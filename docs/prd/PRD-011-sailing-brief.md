@@ -21,9 +21,9 @@ Deliver pre-generated sailing briefs for technical brief areas three times per d
 - ✅ Consumer REST endpoint: `GET /v1/sailing-briefs` (JWT authenticated)
 - ✅ Admin list endpoint: `GET /v1/sailing-briefs/list` (admin role)
 - ✅ Admin regenerate endpoint: `POST /v1/sailing-briefs/regenerate` (admin role)
-- ✅ BullMQ worker with retry and DLQ
-- ✅ Hourly distributed cron scheduler
-- ✅ CLI command for manual generation
+- ✅ River worker with retry and discarded-job state
+- ✅ Hourly River periodic scheduler with leader election
+- ✅ CLI command for manual generation: `cli sailing-briefs generate-now`
 - ✅ Initial rollout: configured technical brief areas
 - ✅ Immutable historical versioning
 - ✅ Timezone-aware scheduling with DST support
@@ -62,13 +62,13 @@ Deliver pre-generated sailing briefs for technical brief areas three times per d
 
 ### Architecture Decisions
 
-| Decision                                  | Rationale                                       |
-| ----------------------------------------- | ----------------------------------------------- |
-| **Separate worker process**               | Isolate heavy AI work from API server           |
-| **BullMQ over direct AI**                 | Retry logic, DLQ, monitoring, rate limiting     |
-| **Distributed cron lock**                 | Multi-instance deployment safety                |
-| **Deterministic job IDs**                 | Prevents duplicate scheduled generations        |
-| **Configurable AI timeout (default 90s)** | Allows web search attempt + fallback generation |
+| Decision                                  | Rationale                                                      |
+| ----------------------------------------- | -------------------------------------------------------------- |
+| **Separate worker process**               | Isolate heavy AI work from API server                          |
+| **River over direct AI**                  | PostgreSQL-backed retries, uniqueness, and discarded-job state |
+| **River leader election**                 | Multi-instance periodic scheduling safety                      |
+| **Deterministic job IDs**                 | Prevents duplicate scheduled generations                       |
+| **Configurable AI timeout (default 90s)** | Allows web search attempt + fallback generation                |
 
 ## User Stories
 
@@ -88,33 +88,35 @@ Deliver pre-generated sailing briefs for technical brief areas three times per d
 
 > "I want to manually trigger sailing brief generation for testing or to fill gaps from scheduler downtime."
 
-**Solution**: CLI command `sailing-brief:generate-now` enqueues generation for all enabled technical brief areas.
+**Solution**: `cli sailing-briefs generate-now` enqueues generation for the
+given (or every enabled) technical brief area, the CLI equivalent of
+`POST /v1/sailing-briefs/regenerate` for operators without REST access.
 
 ## Requirements
 
 ### Functional Requirements
 
-| ID   | Requirement                                                | Status |
-| ---- | ---------------------------------------------------------- | ------ |
-| FR-1 | Generate briefs 3× daily for enabled technical brief areas | ✅     |
-| FR-2 | Support EN/PL languages independently                      | ✅     |
-| FR-3 | Consumer endpoint returns latest brief                     | ✅     |
-| FR-4 | Admin can view historical briefs                           | ✅     |
-| FR-5 | Admin can regenerate with custom prompt                    | ✅     |
-| FR-6 | CLI command for manual generation                          | ✅     |
-| FR-7 | Include safety disclaimer in all briefs                    | ✅     |
-| FR-8 | Timezone-aware slot detection                              | ✅     |
+| ID   | Requirement                                                | Status                               |
+| ---- | ---------------------------------------------------------- | ------------------------------------ |
+| FR-1 | Generate briefs 3× daily for enabled technical brief areas | ✅                                   |
+| FR-2 | Support EN/PL languages independently                      | ✅                                   |
+| FR-3 | Consumer endpoint returns latest brief                     | ✅                                   |
+| FR-4 | Admin can view historical briefs                           | ✅                                   |
+| FR-5 | Admin can regenerate with custom prompt                    | ✅                                   |
+| FR-6 | CLI command for manual generation                          | ✅ `cli sailing-briefs generate-now` |
+| FR-7 | Include safety disclaimer in all briefs                    | ✅                                   |
+| FR-8 | Timezone-aware slot detection                              | ✅                                   |
 
 ### Non-Functional Requirements
 
-| ID    | Requirement                              | Status |
-| ----- | ---------------------------------------- | ------ |
-| NFR-1 | API response < 200ms for cached brief    | ✅     |
-| NFR-2 | Worker handles AI timeout gracefully     | ✅     |
-| NFR-3 | Scheduler idempotent across restarts     | ✅     |
-| NFR-4 | Failed jobs moved to DLQ after 3 retries | ✅     |
-| NFR-5 | Sentry monitoring for all errors         | ✅     |
-| NFR-6 | Database indexes optimize retrieval      | ✅     |
+| ID    | Requirement                                                | Status |
+| ----- | ---------------------------------------------------------- | ------ |
+| NFR-1 | API response < 200ms for cached brief                      | ✅     |
+| NFR-2 | Worker handles AI timeout gracefully                       | ✅     |
+| NFR-3 | Scheduler idempotent across restarts                       | ✅     |
+| NFR-4 | Failed jobs enter River's discarded state after 3 attempts | ✅     |
+| NFR-5 | Sentry monitoring for all errors                           | ✅     |
+| NFR-6 | Database indexes optimize retrieval                        | ✅     |
 
 ## API Contract
 
@@ -282,20 +284,21 @@ Accept-Language: pl,en;q=0.9
 
 ## Risks and Mitigations
 
-| Risk                   | Impact | Mitigation                                          | Status         |
-| ---------------------- | ------ | --------------------------------------------------- | -------------- |
-| OpenAI API rate limits | High   | Queue concurrency limit, exponential backoff        | ✅ Implemented |
-| Web search timeout     | Medium | Request timeout + fallback to pure model generation | ✅ Implemented |
-| Scheduler downtime     | Low    | CLI manual trigger available                        | ✅ Implemented |
-| Duplicate generation   | Low    | Deterministic job IDs, database uniqueness          | ✅ Implemented |
-| Worker crash           | Medium | BullMQ persistence, automatic restart               | ✅ Implemented |
+| Risk                   | Impact | Mitigation                                           | Status         |
+| ---------------------- | ------ | ---------------------------------------------------- | -------------- |
+| OpenAI API rate limits | High   | Queue concurrency limit, exponential backoff         | ✅ Implemented |
+| Web search timeout     | Medium | Request timeout + fallback to pure model generation  | ✅ Implemented |
+| Scheduler downtime     | Low    | Admin regenerate endpoint available                  | ✅ Implemented |
+| Duplicate generation   | Low    | Deterministic job IDs, database uniqueness           | ✅ Implemented |
+| Worker crash           | Medium | River persistence; process restart is platform-owned | ✅ Implemented |
 
 ## Dependencies
 
 - **OpenAI API**: Required for content generation
-- **Redis**: Required for BullMQ and distributed locks
+- **PostgreSQL**: Required for briefs and River job persistence
+- **Redis**: Required by the shared worker configuration and WebSocket/rate-limit infrastructure, not by River queue storage
 - **PostgreSQL**: Required for brief storage
-- **Luxon**: Required for timezone calculations
+- **Go `time` package + IANA timezone database**: Timezone and DST calculations
 
 ## Compliance
 
@@ -307,6 +310,4 @@ Accept-Language: pl,en;q=0.9
 ## Related Documentation
 
 - [Technical Architecture](../sailing-brief/index.md)
-- [OpenAPI Specification](../openapi.yaml)
-- [CHANGELOG](../../CHANGELOG.md)
-- [Task Specification](../../tasks/sailing-brief.md)
+- [OpenAPI Specification](../../api/openapi.yaml)

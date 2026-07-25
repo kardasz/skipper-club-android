@@ -73,12 +73,14 @@ reconnecting, the client must join each active chat again.
 Hiding a chat also ends membership server-side: both `DELETE /chats/{chatId}`
 and the bulk delete action (`POST /chats/actions` with `action: delete`) evict
 the hider's connections from that chat's room, so a chat the client was just
-told is gone stops pushing `message:new` and `chat:typing` at it. Eviction on
-the instance handling the request is immediate; reaching connections on
-_other_ instances rides a Redis publish, which is retried a bounded number of
-times (3 attempts with backoff) on failure — a best-effort-with-retries
-delivery, not a guarantee: if Redis stays unreachable through every attempt,
-connections on other instances keep the room until they disconnect. No
+told is gone stops pushing `message:new` and `chat:typing` at it. The
+eviction runs in the background after the hide commits — the HTTP response
+does not wait for it — and rides a Redis publish to reach connections on
+_other_ instances, retried a bounded number of times (3 attempts with
+backoff) on failure. That makes it a best-effort-with-retries delivery, not a
+guarantee: if Redis stays unreachable through every attempt, connections on
+other instances keep the room until they disconnect. In-flight evictions are
+drained during graceful shutdown, so a deploy cannot kill one mid-retry. No
 `chat:leave` is needed; an explicit one still works (leave is deliberately not
 access-checked) but is redundant after the eviction. A new message in the chat
 un-hides it, after which `chat:join` succeeds again.
@@ -87,8 +89,9 @@ Losing participation ends membership the same way: when a user is removed from
 a chat's participants — today the cruise group-chat membership sync, including
 its `cli cruises sync-chats` reconciliation (see
 [Cruise Chats](../cruises/chats.md)) — their connections are evicted from that
-chat's room, with the same delivery bounds as above (local eviction immediate,
-cross-instance eviction retried but not guaranteed). Otherwise they would keep
+chat's room, with the same delivery bounds as above (background publish,
+retried but not guaranteed, drained at teardown — the CLI waits for its
+evictions before exiting). Otherwise they would keep
 receiving `message:new` and `chat:typing` for a chat they no longer belong to,
 for the whole lifetime of the connection. No event announces the removal: the
 client learns it lost access on its next REST fetch, so a chat opened at that

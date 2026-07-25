@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: SkipperClub API
   description: API for the SkipperClub social platform – connecting skippers and sailing enthusiasts.
-  version: 1.10.0
+  version: 1.10.1
   contact:
     name: SkipperClub Team
     email: contact@skipperclub.com
