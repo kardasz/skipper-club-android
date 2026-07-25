@@ -854,6 +854,69 @@ class ChatConversationControllerTest {
     }
 
     @Test
+    fun staleLoadMoreResolvingDuringAnInFlightReloadIsQueuedBehindIt() {
+        // The other half of the D-AN-3 race: the stale page resolves while the retry()'s reload is
+        // STILL in flight. An immediate re-issue would bounce off `isLoading` and — because the
+        // scroll trigger only fires on a value change — be silently swallowed. It must be queued
+        // and run by the reload's completion (pattern: catchUpRerunRequested).
+        gateway.messagePages = listOf(
+            // Initial page 0.
+            messagesPage(
+                listOf(
+                    testMessage("m5", createdAt = "2026-06-12T10:05:00Z"),
+                    testMessage("m4", createdAt = "2026-06-12T10:04:00Z"),
+                ),
+                total = 10,
+            ),
+            // The stale page the parked loadMore receives (resume order) — must be discarded.
+            messagesPage(listOf(testMessage("stale", createdAt = "2026-06-12T09:00:00Z")), total = 10),
+            // The retry()'s reload page 0, still parked when the stale page resolves.
+            messagesPage(
+                listOf(
+                    testMessage("m6", createdAt = "2026-06-12T10:06:00Z"),
+                    testMessage("m5", createdAt = "2026-06-12T10:05:00Z"),
+                ),
+                total = 10,
+            ),
+            // The queued loadMore's page, fetched with the fresh window's cursor.
+            messagesPage(
+                listOf(
+                    testMessage("m3", createdAt = "2026-06-12T10:03:00Z"),
+                    testMessage("m2", createdAt = "2026-06-12T10:02:00Z"),
+                ),
+                total = 2,
+            ),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+        val loadMoreGate = CompletableDeferred<Unit>()
+        gateway.listMessagesGate = loadMoreGate
+        controller.loadMore() // parks with the old window's cursor
+        val reloadGate = CompletableDeferred<Unit>()
+        gateway.listMessagesGate = reloadGate
+        controller.retry() // reload parks too; isLoading stays true
+
+        loadMoreGate.complete(Unit) // stale page resolves mid-reload
+
+        // Not merged, not re-issued yet — queued behind the reload still in flight.
+        assertEquals(3, gateway.calls.count { it.startsWith("listMessages") })
+        assertFalse(controller.state.value.isLoadingMore)
+        assertTrue(controller.state.value.isLoading)
+
+        gateway.listMessagesGate = null
+        reloadGate.complete(Unit) // reload commits and runs the queued pass
+
+        val state = controller.state.value
+        assertEquals(listOf("m2", "m3", "m5", "m6"), state.messages.map { it.id })
+        assertFalse(state.messages.any { it.id == "stale" })
+        assertFalse(state.hasMore)
+        assertFalse(state.isLoadingMore)
+        // null (initial), cursor-0 (parked loadMore), null (retry reload), cursor-2 (queued
+        // loadMore threading the fresh window's cursor).
+        assertEquals(listOf<String?>(null, "cursor-0", null, "cursor-2"), gateway.listMessagesBefores)
+    }
+
+    @Test
     fun retryResetsTheHistoryOffset() {
         gateway.messagePages = listOf(
             messagesPage(

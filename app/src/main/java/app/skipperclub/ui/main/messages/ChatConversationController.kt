@@ -184,6 +184,15 @@ class ChatConversationController(
      */
     private var historyGeneration = 0
 
+    /**
+     * A stale-generation [loadMore] result wanted to re-issue itself while the reload that
+     * invalidated it ([retry] → [loadInitialIfNeeded]) was still in flight. The immediate
+     * re-entrant call bounces off `isLoading`, and the UI scroll trigger only fires on a value
+     * change, so without queuing the request would be silently swallowed (same class as
+     * [catchUpRerunRequested]). The reload's completion runs the queued pass.
+     */
+    private var loadMoreRerunRequested: Boolean = false
+
     /** The catch-up loop in flight, so a second trigger coalesces into it instead of stacking. */
     private var catchUpJob: Job? = null
 
@@ -229,6 +238,7 @@ class ChatConversationController(
         scope.launch {
             val token = requireToken() ?: run {
                 _state.update { it.copy(isLoading = false, loadFailed = true, hasLoadedOnce = true) }
+                consumeQueuedLoadMoreRerun()
                 return@launch
             }
             try {
@@ -261,11 +271,27 @@ class ChatConversationController(
                     mergeFetched(buffered) && buffered.any { it.user.id != currentUserId }
                 }
                 markRead(token, hadUnread = chat.unreadCount > 0 || gainedFromOthers)
+                consumeQueuedLoadMoreRerun()
             } catch (error: ChatsError) {
                 _state.update { it.copy(isLoading = false, loadFailed = true, hasLoadedOnce = true) }
                 _events.tryEmit(ChatConversationEvent.OperationFailed(error))
+                consumeQueuedLoadMoreRerun()
             }
         }
+    }
+
+    /**
+     * Runs the load-more pass a stale-generation result queued behind an in-flight reload. Called
+     * from every completion path of [loadInitialIfNeeded] — success, load failure, and missing
+     * token — because the queued trigger must never outlive the reload that blocked it. [loadMore]
+     * re-checks its own guards, so on a failed reload this degrades to a no-op (the reset
+     * [historyCursor] reports `hasMore = false`), which correctly consumes the trigger: the retry
+     * UI owns recovery from there.
+     */
+    private fun consumeQueuedLoadMoreRerun() {
+        if (!loadMoreRerunRequested) return
+        loadMoreRerunRequested = false
+        loadMore()
     }
 
     fun retry() {
@@ -307,9 +333,15 @@ class ChatConversationController(
                     // merging or writing either would tear a hole into the fresh window (D-AN-3).
                     // Re-run instead of just dropping: the scroll trigger that requested this page
                     // fires only on a state *change*, so a silent drop could stall paging until
-                    // the user scrolls away and back.
+                    // the user scrolls away and back. If the invalidating reload is itself still
+                    // in flight, the immediate call would bounce off its `isLoading` guard — queue
+                    // the pass for the reload's completion instead of losing it.
                     _state.update { it.copy(isLoadingMore = false) }
-                    loadMore()
+                    if (_state.value.isLoading) {
+                        loadMoreRerunRequested = true
+                    } else {
+                        loadMore()
+                    }
                     return@launch
                 }
                 // Advance to the next page's cursor; `hasMore` follows from it, never from a
