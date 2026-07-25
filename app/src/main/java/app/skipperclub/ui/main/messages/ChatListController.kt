@@ -30,12 +30,12 @@ data class ChatListUiState(
     val loadFailed: Boolean = false,
     val hasLoadedOnce: Boolean = false,
 ) {
-    fun toQuery(limit: Int, offset: Int): ChatListQuery =
+    fun toQuery(limit: Int, cursor: String?): ChatListQuery =
         ChatListQuery(
             type = typeFilter,
             search = searchQuery.trim().takeIf { it.isNotEmpty() },
             limit = limit,
-            offset = offset,
+            cursor = cursor,
         )
 }
 
@@ -69,13 +69,17 @@ class ChatListController(
     private var reloadJob: Job? = null
 
     /**
-     * How many rows this controller has fetched through paged requests — the offset the next
-     * [loadMore] must use. Not derived from [ChatListUiState.chats]: that list also grows from
-     * [onRealtimeMessage] and [onChatCreated] prepends, and every such row would shift the server's
-     * `updatedAt DESC` window by one and silently skip a chat on the next page. Same rule as the
-     * conversation's history offset (task_shared_catchup_contract.md §3.1).
+     * Opaque keyset cursor for the next older chat-list page — the [ChatsPage.nextCursor] of the
+     * last paged fetch, `null` before the first page or once the server reports no more chats. A
+     * cursor names a fixed `(updatedAt, id)` position on the server's list, so the local-prepend
+     * compensation the old `listOffset` needed ([onRealtimeMessage]/[onChatCreated] rows shifting
+     * the offset window) is structurally unnecessary: rows added or bumped locally cannot move the
+     * cursor's position. A chat that reorders to the top mid-walk is picked up by
+     * [onRealtimeMessage] or the next reload, never by later pages (same contract as the message
+     * history migration, task_shared_catchup_contract.md). Advanced only by [loadMore]; reset by
+     * [reload].
      */
-    private var listOffset: Int = 0
+    private var listCursor: String? = null
 
     fun loadInitialIfNeeded() {
         val current = _state.value
@@ -106,6 +110,8 @@ class ChatListController(
     fun loadMore() {
         val current = _state.value
         if (!current.hasMore || current.isLoading || current.isRefreshing || current.isLoadingMore) return
+        // `hasMore` and the cursor are written together, so this is unreachable; kept consistent.
+        val cursor = listCursor ?: run { _state.update { it.copy(hasMore = false) }; return }
         _state.update { it.copy(isLoadingMore = true) }
         loadJob = scope.launch {
             val token = requireToken() ?: run {
@@ -115,11 +121,11 @@ class ChatListController(
             try {
                 val page = gateway.listChats(
                     token,
-                    _state.value.toQuery(limit = pageSize, offset = listOffset),
+                    _state.value.toQuery(limit = pageSize, cursor = cursor),
                 )
-                // Advance by the raw row count, before deduplication: the offset counts rows on the
-                // server's list, not the ones we chose to keep.
-                listOffset += page.chats.size
+                // Advance to the next page's cursor; `hasMore` follows from it, never from a
+                // post-dedupe count (a fully-overlapping page would otherwise stop paging).
+                listCursor = page.nextCursor
                 _state.update { state ->
                     val knownIds = state.chats.mapTo(mutableSetOf()) { it.id }
                     state.copy(
@@ -266,10 +272,10 @@ class ChatListController(
             try {
                 val page = gateway.listChats(
                     token,
-                    _state.value.toQuery(limit = pageSize, offset = 0),
+                    _state.value.toQuery(limit = pageSize, cursor = null),
                 )
                 // A reload replaces `chats` wholesale, so the paging cursor restarts from this page.
-                listOffset = page.chats.size
+                listCursor = page.nextCursor
                 _state.update {
                     it.copy(
                         chats = page.chats,

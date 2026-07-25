@@ -24,7 +24,6 @@ class ChatsApiTest {
                 sort = ChatSortField.Name,
                 order = SortOrder.Asc,
                 limit = 10,
-                offset = 30,
             ),
         )
 
@@ -36,9 +35,22 @@ class ChatsApiTest {
         assertEquals("name", url.queryParameter("sort"))
         assertEquals("asc", url.queryParameter("order"))
         assertEquals("10", url.queryParameter("limit"))
-        assertEquals("30", url.queryParameter("offset"))
         assertEquals("Bearer access-token", request.header("Authorization"))
         assertEquals(Locale.getDefault().toLanguageTag(), request.header("Accept-Language"))
+    }
+
+    @Test
+    fun listChatsRequestIncludesCursorAndNeverOffset() {
+        val request = ChatsApi.listChatsRequest(
+            accessToken = "token",
+            query = ChatListQuery(cursor = "chats-cursor-abc"),
+        )
+
+        val url = request.url
+        assertEquals("chats-cursor-abc", url.queryParameter("cursor"))
+        // Keyset paging never sends an offset — the server rejects the combination (even
+        // offset=0), and offset paging is deprecated for this endpoint outright.
+        assertNull(url.queryParameter("offset"))
     }
 
     @Test
@@ -50,6 +62,9 @@ class ChatsApiTest {
         assertNull(url.queryParameter("search"))
         assertEquals("updatedAt", url.queryParameter("sort"))
         assertEquals("desc", url.queryParameter("order"))
+        // The first page is cursor-less and, like every page, offset-less.
+        assertNull(url.queryParameter("cursor"))
+        assertNull(url.queryParameter("offset"))
     }
 
     @Test

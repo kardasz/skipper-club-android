@@ -52,8 +52,15 @@ internal fun testChat(
     updatedAt = "2026-06-12T10:00:00Z",
 )
 
-internal fun chatsPage(chats: List<Chat>, total: Int = chats.size, offset: Int = 0) =
-    ChatsPage(chats = chats, total = total, limit = 20, offset = offset)
+internal fun chatsPage(
+    chats: List<Chat>,
+    total: Int = chats.size,
+    offset: Int = 0,
+    // Preserve the pre-cursor "has more" intent (offset + size < total) by mapping it onto a
+    // non-null nextCursor, so tests keep expressing "more pages" via `total` while the client now
+    // reads `hasMore` from the cursor (same bridge as messagesPage below).
+    nextCursor: String? = if (offset + chats.size < total) "chats-cursor-${offset + chats.size}" else null,
+) = ChatsPage(chats = chats, total = total, limit = 20, offset = offset, nextCursor = nextCursor)
 
 internal fun messagesPage(
     messages: List<ChatMessage>,
@@ -111,9 +118,13 @@ internal class FakeChatsGateway : ChatsGateway {
         calls += "listChats"
         listChatsQueries += query
         listChatsError?.let { throw it }
-        val page = chatPages[minOf(listChatsCallCount, chatPages.lastIndex)]
+        val servedIndex = listChatsCallCount
+        val basePage = chatPages[minOf(listChatsCallCount, chatPages.lastIndex)]
         listChatsCallCount++
-        return page
+        // Give every "has more" page a distinct, call-indexed cursor so the controller threads a
+        // distinct `cursor` on the next call (same rationale as listMessages below). A last page
+        // keeps its null cursor.
+        return if (basePage.nextCursor != null) basePage.copy(nextCursor = "chats-cursor-$servedIndex") else basePage
     }
 
     override suspend fun createChat(accessToken: String, payload: CreateChatRequest): Chat {

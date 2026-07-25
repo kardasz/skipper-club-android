@@ -44,7 +44,8 @@ class ChatsModelsTest {
               ],
               "total": 5,
               "limit": 20,
-              "offset": 0
+              "offset": 0,
+              "nextCursor": "MjAyNi0wNy0yMlQxMDoxNQ"
             }
         """.trimIndent()
 
@@ -59,7 +60,27 @@ class ChatsModelsTest {
         assertEquals("m1", chat.lastReadMessageId)
         assertEquals(2, chat.unreadCount)
         assertEquals(5, page.total)
+        assertEquals("MjAyNi0wNy0yMlQxMDoxNQ", page.nextCursor)
         assertTrue(page.hasMore)
+    }
+
+    @Test
+    fun chatsListWithoutNextCursorIsTheLastPage() {
+        val payload = """
+            {
+              "chats": [],
+              "total": 40,
+              "limit": 20,
+              "offset": 0
+            }
+        """.trimIndent()
+
+        val page = json.decodeFromString<ChatsListDto>(payload).toDomain()
+
+        // No nextCursor → last page → hasMore false, regardless of what total claims (parity with
+        // the messages migration: hasMore follows the cursor, never an offset/total count).
+        assertNull(page.nextCursor)
+        assertFalse(page.hasMore)
     }
 
     @Test
@@ -131,16 +152,16 @@ class ChatsModelsTest {
     }
 
     @Test
-    fun hasMoreAccountsForOffset() {
+    fun chatsHasMoreFollowsNextCursor() {
         val page = ChatsPage(
             chats = listOf(),
             total = 40,
             limit = 20,
-            offset = 40,
+            offset = 0,
         )
 
         assertFalse(page.hasMore)
-        assertTrue(page.copy(offset = 20).hasMore)
+        assertTrue(page.copy(nextCursor = "chats-cursor").hasMore)
     }
 
     @Test

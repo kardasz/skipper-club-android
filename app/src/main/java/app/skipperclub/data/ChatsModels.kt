@@ -21,14 +21,21 @@ enum class ChatSortField(val wireValue: String) {
     Name("name"),
 }
 
-/** Query parameters for `GET /v1/chats`. */
+/**
+ * Query parameters for `GET /v1/chats`.
+ *
+ * Paging is keyset-only: [cursor] is the opaque `nextCursor` of a previous response, passed back
+ * verbatim (never constructed client-side). The server accepts it only with the default
+ * `sort=updatedAt` + `order=desc` and rejects any combination with `offset` — which is deprecated
+ * server-side and no longer sent by this client at all (docs/api/messages/chats.md, "Paging modes").
+ */
 data class ChatListQuery(
     val type: ChatType? = null,
     val search: String? = null,
     val sort: ChatSortField = ChatSortField.UpdatedAt,
     val order: SortOrder = SortOrder.Desc,
     val limit: Int = 20,
-    val offset: Int = 0,
+    val cursor: String? = null,
 )
 
 data class ChatUser(
@@ -71,9 +78,16 @@ data class ChatsPage(
     val total: Int,
     val limit: Int,
     val offset: Int,
+    /**
+     * Opaque keyset cursor built from the last chat of this page: pass it back as
+     * [ChatListQuery.cursor] to fetch the next page. `null` on the last page — which is exactly
+     * how [hasMore] is derived, never from an offset/total count (parity with [MessagesPage] and
+     * the messages migration).
+     */
+    val nextCursor: String? = null,
 ) {
     val hasMore: Boolean
-        get() = offset + chats.size < total
+        get() = nextCursor != null
 }
 
 data class MessagesPage(
@@ -190,6 +204,7 @@ internal data class ChatsListDto(
     val total: Int = 0,
     val limit: Int = 0,
     val offset: Int = 0,
+    val nextCursor: String? = null,
 ) {
     fun toDomain(): ChatsPage =
         ChatsPage(
@@ -197,6 +212,7 @@ internal data class ChatsListDto(
             total = total,
             limit = limit,
             offset = offset,
+            nextCursor = nextCursor,
         )
 }
 

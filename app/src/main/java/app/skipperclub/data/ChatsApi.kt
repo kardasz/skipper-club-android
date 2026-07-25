@@ -50,7 +50,11 @@ object ChatsApi {
             addQueryParameter("sort", query.sort.wireValue)
             addQueryParameter("order", query.order.wireValue)
             addQueryParameter("limit", query.limit.toString())
-            addQueryParameter("offset", query.offset.toString())
+            // Keyset paging: the opaque `cursor` addresses a fixed `(updatedAt, id)` position, so
+            // a chat bumped to the top mid-walk cannot shift the window the way `offset` did. No
+            // chat-list request sends `offset` any more — it is deprecated server-side and
+            // mutually exclusive with `cursor` (even `offset=0` alongside it is a 400).
+            query.cursor?.let { addQueryParameter("cursor", it) }
         }.build()
         return baseRequest(accessToken).url(url).get().build()
     }

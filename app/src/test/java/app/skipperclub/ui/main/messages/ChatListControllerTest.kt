@@ -59,7 +59,8 @@ class ChatListControllerTest {
         assertTrue(state.hasMore)
         assertTrue(state.hasLoadedOnce)
         assertFalse(state.isLoading)
-        assertEquals(0, gateway.listChatsQueries.single().offset)
+        // The first page is always cursor-less; offset paging is gone entirely.
+        assertNull(gateway.listChatsQueries.single().cursor)
     }
 
     @Test
@@ -113,7 +114,7 @@ class ChatListControllerTest {
     }
 
     @Test
-    fun loadMoreAppendsNextPageWithOffsetAndDeduplicates() {
+    fun loadMoreAppendsNextPageWithCursorAndDeduplicates() {
         gateway.chatPages = listOf(
             chatsPage(listOf(testChat("c1"), testChat("c2")), total = 3),
             chatsPage(listOf(testChat("c2"), testChat("c3")), total = 3, offset = 2),
@@ -125,14 +126,16 @@ class ChatListControllerTest {
 
         val state = controller.state.value
         assertEquals(listOf("c1", "c2", "c3"), state.chats.map { it.id })
-        assertEquals(2, gateway.listChatsQueries.last().offset)
+        // Load-more threads the first page's nextCursor, never an offset over the array.
+        assertEquals("chats-cursor-0", gateway.listChatsQueries.last().cursor)
+        assertFalse(state.hasMore)
     }
 
     @Test
-    fun loadMoreOffsetIgnoresRealtimePrepends() {
-        // Same rule as the conversation's history offset: the offset counts rows fetched by paged
-        // requests, never the size of the rendered list. A bumped or freshly created chat sitting at
-        // the top would otherwise shift the server's window and skip exactly one older chat.
+    fun loadMoreCursorIgnoresRealtimePrepends() {
+        // The cursor names a fixed (updatedAt, id) position on the server's list, so a bumped or
+        // freshly created chat sitting at the top of the local list cannot shift the next page's
+        // window — the old listOffset compensation is structurally unnecessary with keyset paging.
         gateway.chatPages = listOf(
             chatsPage(listOf(testChat("c1"), testChat("c2")), total = 9),
             chatsPage(listOf(testChat("c3"), testChat("c4")), total = 9, offset = 2),
@@ -144,12 +147,12 @@ class ChatListControllerTest {
         controller.onChatCreated(testChat("c-new"))
         controller.loadMore()
 
-        assertEquals(2, gateway.listChatsQueries.last().offset)
+        assertEquals("chats-cursor-0", gateway.listChatsQueries.last().cursor)
         assertEquals(listOf("c-new", "c2", "c1", "c3", "c4"), controller.state.value.chats.map { it.id })
     }
 
     @Test
-    fun reloadResetsTheLoadMoreOffset() {
+    fun reloadResetsTheLoadMoreCursor() {
         gateway.chatPages = listOf(
             chatsPage(listOf(testChat("c1"), testChat("c2")), total = 9),
             chatsPage(listOf(testChat("c3"), testChat("c4")), total = 9, offset = 2),
@@ -159,14 +162,33 @@ class ChatListControllerTest {
         val controller = controller()
         controller.loadInitialIfNeeded()
         controller.loadMore()
-        assertEquals(2, gateway.listChatsQueries.last().offset)
+        assertEquals("chats-cursor-0", gateway.listChatsQueries.last().cursor)
 
-        // The reload replaces `chats` wholesale, so the cursor restarts from the fresh page.
+        // The reload replaces `chats` wholesale, so the paging cursor restarts from the fresh
+        // page: the refresh itself is cursor-less and the next load-more threads *its* nextCursor.
         controller.refresh()
-        assertEquals(0, gateway.listChatsQueries.last().offset)
+        assertNull(gateway.listChatsQueries.last().cursor)
         controller.loadMore()
 
-        assertEquals(2, gateway.listChatsQueries.last().offset)
+        assertEquals("chats-cursor-2", gateway.listChatsQueries.last().cursor)
+    }
+
+    @Test
+    fun loadMoreKeepsPagingWhenAFullyOverlappingPageStillCarriesACursor() {
+        // hasMore follows the server's nextCursor, never a post-dedupe count: a page whose rows are
+        // all already known (reordered chats) must not stop pagination mid-list.
+        gateway.chatPages = listOf(
+            chatsPage(listOf(testChat("c1"), testChat("c2")), total = 9),
+            chatsPage(listOf(testChat("c1"), testChat("c2")), total = 9, offset = 2),
+        )
+        val controller = controller()
+        controller.loadInitialIfNeeded()
+
+        controller.loadMore()
+
+        val state = controller.state.value
+        assertEquals(listOf("c1", "c2"), state.chats.map { it.id })
+        assertTrue(state.hasMore)
     }
 
     @Test
