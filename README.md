@@ -200,11 +200,18 @@ adb shell am start -W -a android.intent.action.VIEW \
 
 ### Backend compatibility (deploy order)
 
-Message-history pagination is keyset-based: the client sends the opaque `before` cursor and reads
-`nextCursor` from `GET /v1/chats/{chatId}/messages`, treating a missing/`null` `nextCursor` as
-"no older messages". Against a backend that does not emit `nextCursor` yet (pre-cursor API, or a
-proxy stripping unknown fields) history pagination therefore stops after the first page. **Deploy
-the backend (API ≥ v1.9.0, cursor fields) before shipping this app version.**
+Pagination is keyset-based on both messaging endpoints, and in both cases the client treats a
+missing/`null` `nextCursor` as "no more pages":
+
+- **Message history** — the client sends the opaque `before` cursor and reads `nextCursor` from
+  `GET /v1/chats/{chatId}/messages` (requires API ≥ v1.9.0).
+- **Chat list** — the client sends the opaque `cursor` parameter and reads `nextCursor` from
+  `GET /v1/chats`; it never sends `offset` (deprecated, and rejected in combination with a
+  cursor). Requires API ≥ v1.10.0.
+
+Against a backend that does not emit `nextCursor` yet (pre-cursor API, or a proxy stripping
+unknown fields) pagination therefore stops after the first page. **Deploy the backend
+(API ≥ v1.10.0) before shipping this app version.**
 
 ---
 
