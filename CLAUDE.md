@@ -5,6 +5,8 @@ Working agreement for Claude Code in the SkipperClub Android repo. Read this fir
 For a complete tech reference see [`TECH_STACK.md`](./TECH_STACK.md). For the product surface see [`docs/prd/index.md`](./docs/prd/index.md).
 For API work, use [`docs/api/openapi.yaml`](./docs/api/openapi.yaml) as the contract and [`docs/api/index.md`](./docs/api/index.md) as the documentation entry point; module-specific API notes live in subdirectories under `docs/api/`.
 
+Binding rules live in `.claude/rules/` (auto-loaded), including `websocket.md` — the realtime contract, client/controller invariants and the anti-regression checklist. The `websocket` skill (`.claude/skills/websocket/`) carries the rationale behind that stack; read it before touching `ChatRealtimeClient`, the app-scoped stores or the messages controllers.
+
 ---
 
 ## What this app is
