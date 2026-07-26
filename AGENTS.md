@@ -1,8 +1,28 @@
 # AGENTS.md
 
-Guidance for AI coding agents (Cursor, OpenAI Codex, Aider, etc.) working in the SkipperClub Android repo. This file mirrors the working agreement in [`CLAUDE.md`](./CLAUDE.md) in the format expected by tools that look for `AGENTS.md`.
+Working agreement for OpenAI Codex and other agents that discover repository
+instructions through `AGENTS.md`. It mirrors the shared project guidance in
+[`CLAUDE.md`](./CLAUDE.md); keep the two files aligned when that guidance
+changes.
 
-If you are operating as Claude Code, prefer the more detailed [`CLAUDE.md`](./CLAUDE.md). The two files are kept in sync; if they disagree, treat `CLAUDE.md` as authoritative.
+## Codex instruction loading
+
+Codex does not auto-load `.claude/rules/` or `.claude/skills/`. Apply their
+shared rules through these Codex-native entry points:
+
+- Before creating, amending, squashing, or proposing a commit, read
+  [`.claude/rules/commit-messages.md`](./.claude/rules/commit-messages.md) in
+  full. Its commit-message requirements are binding. Do not create a commit
+  unless the user explicitly asks for one.
+- Before inspecting, changing, reviewing, or debugging the realtime WebSocket
+  client, connection manager, app-scoped presence/unread stores, or messages
+  controllers/screens, use the repository `websocket` skill from
+  [`.agents/skills/websocket/SKILL.md`](./.agents/skills/websocket/SKILL.md).
+  The skill loads both the architecture rationale and the binding anti-regression
+  rules.
+- Treat `.claude/` as the canonical shared source for those documents. The
+  `.agents/` skill is a Codex discovery adapter, so do not duplicate the
+  realtime contract there.
 
 ---
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "SkipperClub Android Realtime"
+  short_description: "Safely modify SkipperClub Android realtime"
+  default_prompt: "Use $websocket to review or change the SkipperClub Android realtime stack safely."
